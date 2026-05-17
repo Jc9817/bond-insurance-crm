@@ -4,15 +4,19 @@ import { useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { useStore } from '@/lib/store'
+import { useAuth } from '@/lib/auth'
 import { CASE_STATUSES } from '@/lib/types'
-import type { CaseStatus } from '@/lib/types'
+import type { CaseStatus, CaseFile } from '@/lib/types'
 import { formatDate, formatCurrency, timeAgo, getDaysUntil } from '@/lib/utils'
 import StatusBadge from '@/components/ui/StatusBadge'
 import Modal from '@/components/ui/Modal'
+import FileUploadZone from '@/components/ui/FileUploadZone'
+import AIScanPanel from '@/components/ui/AIScanPanel'
 
 export default function CaseDetailPage() {
   const { id } = useParams<{ id: string }>()
-  const { cases, customers, contacts, caseNotes, followUps, pics, updateCase, addCaseNote, addFollowUp, toggleFollowUp, deleteFollowUp } = useStore()
+  const { cases, customers, contacts, caseNotes, followUps, pics, settingsData, updateCase, addCaseNote, addFollowUp, toggleFollowUp, deleteFollowUp, addActivityLog } = useStore()
+  const { currentUser } = useAuth()
 
   const caseItem = cases.find(c => c.id === id)
   const [noteText, setNoteText] = useState('')
@@ -21,6 +25,9 @@ export default function CaseDetailPage() {
   const [newStatus, setNewStatus] = useState<CaseStatus>(caseItem?.currentStatus ?? 'New')
   const [followUpModal, setFollowUpModal] = useState(false)
   const [fuForm, setFuForm] = useState({ title: '', personInCharge: pics[0]?.name ?? '', dueDate: '' })
+  const [scanFile, setScanFile] = useState<CaseFile | null>(null)
+
+  const documentTypes = settingsData.documentTypes.filter(d => d.isActive).map(d => d.name)
 
   if (!caseItem) {
     return (
@@ -98,7 +105,10 @@ export default function CaseDetailPage() {
               <div key={status} className="flex items-center">
                 <button
                   type="button"
-                  onClick={() => updateCase(id, { currentStatus: status })}
+                  onClick={() => {
+                    updateCase(id, { currentStatus: status })
+                    addActivityLog({ action: 'Case status updated', user: currentUser?.fullName ?? 'Unknown', target: `${caseItem?.caseTitle} → ${status}` })
+                  }}
                   className="flex flex-col items-center group focus:outline-none"
                   title={`Set to ${status}`}
                 >
@@ -215,12 +225,14 @@ export default function CaseDetailPage() {
             </div>
           )}
 
-          {/* Files placeholder */}
+          {/* Files */}
           <div className="mt-5 pt-5 border-t border-gray-100">
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2">Files</p>
-            <div className="bg-gray-50 rounded-xl p-4 text-center">
-              <p className="text-xs text-gray-400">File upload coming soon.</p>
-            </div>
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">Files</p>
+            <FileUploadZone
+              caseId={id}
+              documentTypes={documentTypes}
+              onScanReady={file => setScanFile(file)}
+            />
           </div>
         </div>
       </div>
@@ -282,7 +294,11 @@ export default function CaseDetailPage() {
           <div className="flex gap-3 pt-3">
             <button onClick={() => setStatusModal(false)} className="btn-secondary flex-1">Cancel</button>
             <button
-              onClick={() => { updateCase(id, { currentStatus: newStatus }); setStatusModal(false) }}
+              onClick={() => {
+                updateCase(id, { currentStatus: newStatus })
+                addActivityLog({ action: 'Case status updated', user: currentUser?.fullName ?? 'Unknown', target: `${caseItem?.caseTitle} → ${newStatus}` })
+                setStatusModal(false)
+              }}
               className="btn-primary flex-1"
             >
               Update
@@ -290,6 +306,11 @@ export default function CaseDetailPage() {
           </div>
         </div>
       </Modal>
+
+      {/* AI Scan panel */}
+      {scanFile && (
+        <AIScanPanel file={scanFile} onClose={() => setScanFile(null)} />
+      )}
 
       {/* Add follow-up modal */}
       <Modal isOpen={followUpModal} onClose={() => setFollowUpModal(false)} title="Add Follow-Up" maxWidth="sm">

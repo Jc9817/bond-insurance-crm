@@ -122,3 +122,80 @@ export const INDUSTRIES = [
   'Transportation',
   'Other',
 ]
+
+// ─── Users & Auth ─────────────────────────────────────────────────────────────
+
+export const USER_ROLES = ['Admin', 'Manager', 'Staff', 'Viewer'] as const
+export type UserRole = (typeof USER_ROLES)[number]
+
+export const USER_STATUSES = ['Active', 'Inactive'] as const
+export type UserStatus = (typeof USER_STATUSES)[number]
+
+export type User = {
+  id: string
+  fullName: string
+  email: string
+  password: string
+  role: UserRole
+  status: UserStatus
+  createdAt: string
+}
+
+// ─── Case Files ───────────────────────────────────────────────────────────────
+
+export const AI_STATUSES = [
+  'Not Scanned',
+  'Processing',
+  'Ready for Review',
+  'Approved',
+  'Rejected',
+] as const
+export type AiStatus = (typeof AI_STATUSES)[number]
+
+export type AiExtractedData = {
+  customerName: string
+  projectName: string
+  caseType: string
+  amount: string
+  expiryDate: string
+  notes: string
+}
+
+export type CaseFile = {
+  id: string
+  caseId: string
+  fileName: string
+  fileSize: number
+  fileType: string
+  documentType: string
+  uploadedBy: string
+  uploadedAt: string
+  aiScanned: boolean
+  aiStatus: AiStatus
+  aiExtractedData: AiExtractedData | null
+}
+
+// ─── Activity Log ─────────────────────────────────────────────────────────────
+
+export type ActivityLog = {
+  id: string
+  action: string
+  user: string
+  target: string
+  timestamp: string
+}
+
+// ─── Editable Settings Items ──────────────────────────────────────────────────
+
+export type SettingsItem = {
+  id: string
+  name: string
+  isActive: boolean
+}
+
+export type SettingsCategory =
+  | 'caseTypes'
+  | 'industries'
+  | 'contactTypes'
+  | 'followUpCategories'
+  | 'documentTypes'

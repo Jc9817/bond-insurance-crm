@@ -1,4 +1,4 @@
-import type { Customer, Contact, Case, CaseNote, FollowUp, PicUser } from './types'
+import type { Customer, Contact, Case, CaseNote, FollowUp, PicUser, User, CaseFile, ActivityLog, SettingsItem } from './types'
 
 export const mockPics: PicUser[] = [
   { id: 'pic1', name: 'Ahmad Farid', email: 'ahmad@bondinsurance.com' },
@@ -330,4 +330,193 @@ export const mockFollowUps: FollowUp[] = [
     status: 'Open',
     createdAt: '2026-05-08T11:00:00Z',
   },
+]
+
+// ─── Users ────────────────────────────────────────────────────────────────────
+
+export const mockUsers: User[] = [
+  {
+    id: 'usr1',
+    fullName: 'Ahmad Farid',
+    email: 'ahmad@bondinsurance.com',
+    password: 'password123',
+    role: 'Admin',
+    status: 'Active',
+    createdAt: '2024-01-01T08:00:00Z',
+  },
+  {
+    id: 'usr2',
+    fullName: 'Nurul Ain',
+    email: 'nurul@bondinsurance.com',
+    password: 'password123',
+    role: 'Staff',
+    status: 'Active',
+    createdAt: '2024-01-15T08:00:00Z',
+  },
+  {
+    id: 'usr3',
+    fullName: 'David Lim',
+    email: 'david@bondinsurance.com',
+    password: 'password123',
+    role: 'Staff',
+    status: 'Active',
+    createdAt: '2024-02-01T08:00:00Z',
+  },
+]
+
+// ─── Case Files ───────────────────────────────────────────────────────────────
+
+export const mockCaseFiles: CaseFile[] = [
+  {
+    id: 'file1',
+    caseId: 'case1',
+    fileName: 'Project_Contract_MRR2.pdf',
+    fileSize: 2150000,
+    fileType: 'PDF',
+    documentType: 'Contract',
+    uploadedBy: 'Ahmad Farid',
+    uploadedAt: '2026-01-12T10:00:00Z',
+    aiScanned: true,
+    aiStatus: 'Approved',
+    aiExtractedData: {
+      customerName: 'Bina Perkasa Sdn Bhd',
+      projectName: 'Projek Lebuh Raya MRR2',
+      caseType: 'Bond Request',
+      amount: 'RM 250,000.00',
+      expiryDate: '2027-01-31',
+      notes: 'Performance bond for MRR2 road construction. Insurer: Allianz. Effective 1 Feb 2026.',
+    },
+  },
+  {
+    id: 'file2',
+    caseId: 'case1',
+    fileName: 'SSM_Certificate_BinaPerkasa.pdf',
+    fileSize: 485000,
+    fileType: 'PDF',
+    documentType: 'SSM',
+    uploadedBy: 'Ahmad Farid',
+    uploadedAt: '2026-01-12T10:15:00Z',
+    aiScanned: false,
+    aiStatus: 'Not Scanned',
+    aiExtractedData: null,
+  },
+  {
+    id: 'file3',
+    caseId: 'case4',
+    fileName: 'Audited_Accounts_2025.pdf',
+    fileSize: 3200000,
+    fileType: 'PDF',
+    documentType: 'Financial Statement',
+    uploadedBy: 'Ahmad Farid',
+    uploadedAt: '2026-05-03T09:30:00Z',
+    aiScanned: false,
+    aiStatus: 'Not Scanned',
+    aiExtractedData: null,
+  },
+]
+
+// ─── Activity Logs ────────────────────────────────────────────────────────────
+
+export const mockActivityLogs: ActivityLog[] = [
+  {
+    id: 'log1',
+    action: 'Case created',
+    user: 'Ahmad Farid',
+    target: 'Performance Bond — Projek Lebuh Raya MRR2',
+    timestamp: '2026-01-10T08:00:00Z',
+  },
+  {
+    id: 'log2',
+    action: 'File uploaded',
+    user: 'Ahmad Farid',
+    target: 'Project_Contract_MRR2.pdf',
+    timestamp: '2026-01-12T10:00:00Z',
+  },
+  {
+    id: 'log3',
+    action: 'AI scan approved',
+    user: 'Ahmad Farid',
+    target: 'Project_Contract_MRR2.pdf',
+    timestamp: '2026-01-12T10:05:00Z',
+  },
+  {
+    id: 'log4',
+    action: 'Case status updated',
+    user: 'Nurul Ain',
+    target: 'Customs Bond — Annual Renewal 2026 → Submitted',
+    timestamp: '2026-03-14T09:30:00Z',
+  },
+  {
+    id: 'log5',
+    action: 'Follow-up added',
+    user: 'David Lim',
+    target: 'Send quotation comparison to client for review',
+    timestamp: '2026-05-10T10:00:00Z',
+  },
+  {
+    id: 'log6',
+    action: 'Note added',
+    user: 'Ahmad Farid',
+    target: 'Advance Payment Bond — Phase 3 Construction',
+    timestamp: '2026-05-03T09:00:00Z',
+  },
+]
+
+// ─── Editable Settings ────────────────────────────────────────────────────────
+
+export const mockSettingsCaseTypes: SettingsItem[] = [
+  { id: 'sct1', name: 'Bond Request', isActive: true },
+  { id: 'sct2', name: 'Insurance Request', isActive: true },
+  { id: 'sct3', name: 'Policy Issuance', isActive: true },
+  { id: 'sct4', name: 'Renewal', isActive: true },
+  { id: 'sct5', name: 'Endorsement', isActive: true },
+  { id: 'sct6', name: 'Claim', isActive: true },
+  { id: 'sct7', name: 'Servicing Request', isActive: true },
+  { id: 'sct8', name: 'Quotation Request', isActive: true },
+  { id: 'sct9', name: 'Other', isActive: true },
+]
+
+export const mockSettingsIndustries: SettingsItem[] = [
+  { id: 'si1', name: 'Construction', isActive: true },
+  { id: 'si2', name: 'Manufacturing', isActive: true },
+  { id: 'si3', name: 'Trading', isActive: true },
+  { id: 'si4', name: 'Retail', isActive: true },
+  { id: 'si5', name: 'Services', isActive: true },
+  { id: 'si6', name: 'Technology', isActive: true },
+  { id: 'si7', name: 'Healthcare', isActive: true },
+  { id: 'si8', name: 'Education', isActive: true },
+  { id: 'si9', name: 'Transportation', isActive: true },
+  { id: 'si10', name: 'Other', isActive: true },
+]
+
+export const mockSettingsContactTypes: SettingsItem[] = [
+  { id: 'sco1', name: 'Owner', isActive: true },
+  { id: 'sco2', name: 'Director', isActive: true },
+  { id: 'sco3', name: 'Manager', isActive: true },
+  { id: 'sco4', name: 'Finance', isActive: true },
+  { id: 'sco5', name: 'Operations', isActive: true },
+  { id: 'sco6', name: 'Worker', isActive: true },
+  { id: 'sco7', name: 'Referral', isActive: true },
+  { id: 'sco8', name: 'Introducer', isActive: true },
+  { id: 'sco9', name: 'Other', isActive: true },
+]
+
+export const mockSettingsFollowUpCategories: SettingsItem[] = [
+  { id: 'sfu1', name: 'Client Follow-Up', isActive: true },
+  { id: 'sfu2', name: 'Insurer Follow-Up', isActive: true },
+  { id: 'sfu3', name: 'Renewal Reminder', isActive: true },
+  { id: 'sfu4', name: 'Documentation', isActive: true },
+  { id: 'sfu5', name: 'Internal', isActive: true },
+  { id: 'sfu6', name: 'Payment', isActive: true },
+  { id: 'sfu7', name: 'Other', isActive: true },
+]
+
+export const mockSettingsDocumentTypes: SettingsItem[] = [
+  { id: 'sdt1', name: 'Contract', isActive: true },
+  { id: 'sdt2', name: 'Financial Statement', isActive: true },
+  { id: 'sdt3', name: 'SSM', isActive: true },
+  { id: 'sdt4', name: 'Application Form', isActive: true },
+  { id: 'sdt5', name: 'Quotation', isActive: true },
+  { id: 'sdt6', name: 'Supporting Document', isActive: true },
+  { id: 'sdt7', name: 'Other', isActive: true },
 ]

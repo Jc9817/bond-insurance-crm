@@ -1,7 +1,8 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
+import { useAuth } from '@/lib/auth'
 
 const nav = [
   {
@@ -63,9 +64,22 @@ const nav = [
 
 export default function Sidebar() {
   const pathname = usePathname()
+  const router = useRouter()
+  const { currentUser, logout } = useAuth()
 
   const isActive = (href: string) =>
     pathname === href || (href !== '/dashboard' && pathname.startsWith(href))
+
+  const handleLogout = () => {
+    logout()
+    router.push('/login')
+  }
+
+  const initials = currentUser?.fullName
+    .split(' ')
+    .slice(0, 2)
+    .map(w => w[0]?.toUpperCase() ?? '')
+    .join('') ?? ''
 
   return (
     <aside className="w-52 shrink-0 bg-white border-r border-gray-150 flex flex-col h-screen sticky top-0">
@@ -95,9 +109,28 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      {/* Footer */}
-      <div className="px-5 py-4 border-t border-gray-100">
-        <p className="text-gray-400 text-xs">Bond Insurance Sdn Bhd</p>
+      {/* Current user + logout */}
+      <div className="px-3 py-3 border-t border-gray-100">
+        {currentUser && (
+          <div className="flex items-center gap-2.5 px-2 py-2 rounded-xl mb-1">
+            <div className="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold shrink-0">
+              {initials}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-semibold text-gray-800 truncate">{currentUser.fullName}</p>
+              <p className="text-xs text-gray-400">{currentUser.role}</p>
+            </div>
+          </div>
+        )}
+        <button
+          onClick={handleLogout}
+          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm text-gray-500 hover:bg-red-50 hover:text-red-600 transition-colors"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+          </svg>
+          Sign Out
+        </button>
       </div>
     </aside>
   )

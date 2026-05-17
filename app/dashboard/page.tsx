@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useStore } from '@/lib/store'
+import { useAuth } from '@/lib/auth'
 import { CASE_STATUSES } from '@/lib/types'
 import { getDaysUntil, formatDate, formatCurrency, timeAgo } from '@/lib/utils'
 import StatCard from '@/components/ui/StatCard'
@@ -9,10 +10,13 @@ import StatusBadge from '@/components/ui/StatusBadge'
 import PageHeader from '@/components/ui/PageHeader'
 
 export default function HomePage() {
-  const { customers, cases, followUps } = useStore()
+  const { customers, cases, followUps, activityLogs } = useStore()
+  const { currentUser } = useAuth()
 
   const today = new Date()
   const dateLabel = today.toLocaleDateString('en-MY', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+  const greeting = currentUser ? `, ${currentUser.fullName.split(' ')[0]}` : ''
+  const recentActivity = activityLogs.slice(0, 8)
 
   const activeCases = cases.filter(c => c.currentStatus !== 'Closed')
   const openFollowUps = followUps.filter(f => f.status === 'Open')
@@ -39,7 +43,7 @@ export default function HomePage() {
       {/* Greeting */}
       <div className="mb-8">
         <p className="text-sm text-gray-400 mb-1">{dateLabel}</p>
-        <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Good day.</h1>
+        <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Good day{greeting}.</h1>
         <p className="text-gray-500 mt-1">Here is what needs your attention today.</p>
       </div>
 
@@ -111,30 +115,7 @@ export default function HomePage() {
           </div>
         </div>
 
-        {/* Cases needing action */}
-        <div className="card-section">
-          <div className="flex items-center justify-between mb-5">
-            <h2 className="text-base font-semibold text-gray-800">Needs Your Action</h2>
-            <span className="text-xs text-gray-400">{casesNeedingAction.length} cases</span>
-          </div>
-          {casesNeedingAction.length === 0 ? (
-            <p className="text-sm text-gray-400">All cases are up to date.</p>
-          ) : (
-            <div className="space-y-3">
-              {casesNeedingAction.slice(0, 4).map(c => (
-                <Link key={c.id} href={`/cases/${c.id}`} className="block group">
-                  <p className="text-sm font-medium text-gray-800 group-hover:text-blue-600 line-clamp-1">{c.caseTitle}</p>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <StatusBadge status={c.currentStatus} />
-                    <span className="text-xs text-gray-400">{c.customerName}</span>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Open follow-ups today */}
+        {/* Open follow-ups */}
         <div className="card-section">
           <div className="flex items-center justify-between mb-5">
             <h2 className="text-base font-semibold text-gray-800">Open Follow-Ups</h2>
@@ -163,6 +144,74 @@ export default function HomePage() {
                   </div>
                 )
               })}
+            </div>
+          )}
+        </div>
+
+        {/* Quick stats */}
+        <div className="card-section">
+          <h2 className="text-base font-semibold text-gray-800 mb-5">Quick Summary</h2>
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-gray-500">Total Customers</span>
+              <span className="text-lg font-bold text-gray-900">{customers.length}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-gray-500">Active Cases</span>
+              <span className="text-lg font-bold text-blue-600">{activeCases.length}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-gray-500">Overdue Follow-Ups</span>
+              <span className={`text-lg font-bold ${overdueFollowUps.length > 0 ? 'text-red-600' : 'text-gray-400'}`}>{overdueFollowUps.length}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-gray-500">Due Today</span>
+              <span className={`text-lg font-bold ${dueTodayFollowUps.length > 0 ? 'text-amber-600' : 'text-gray-400'}`}>{dueTodayFollowUps.length}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Recent activity + Recent cases side by side */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+        <div className="card-section">
+          <h2 className="text-base font-semibold text-gray-800 mb-5">Recent Activity</h2>
+          {recentActivity.length === 0 ? (
+            <p className="text-sm text-gray-400">No activity yet.</p>
+          ) : (
+            <div className="space-y-3">
+              {recentActivity.map(log => (
+                <div key={log.id} className="flex items-start gap-3">
+                  <div className="w-1.5 h-1.5 rounded-full bg-blue-400 mt-1.5 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-800">{log.action}</p>
+                    <p className="text-xs text-gray-400 truncate">{log.target}</p>
+                    <p className="text-xs text-gray-300">{log.user} · {timeAgo(log.timestamp)}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="lg:col-span-2 card-section">
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="text-base font-semibold text-gray-800">Needs Your Action</h2>
+            <span className="text-xs text-gray-400">{casesNeedingAction.length} cases</span>
+          </div>
+          {casesNeedingAction.length === 0 ? (
+            <p className="text-sm text-gray-400">All cases are up to date.</p>
+          ) : (
+            <div className="space-y-3">
+              {casesNeedingAction.slice(0, 6).map(c => (
+                <Link key={c.id} href={`/cases/${c.id}`} className="block group">
+                  <p className="text-sm font-medium text-gray-800 group-hover:text-blue-600 line-clamp-1">{c.caseTitle}</p>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <StatusBadge status={c.currentStatus} />
+                    <span className="text-xs text-gray-400">{c.customerName}</span>
+                  </div>
+                </Link>
+              ))}
             </div>
           )}
         </div>
