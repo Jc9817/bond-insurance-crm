@@ -3,20 +3,19 @@
 import Link from 'next/link'
 import { useStore } from '@/lib/store'
 import { useAuth } from '@/lib/auth'
-import { CASE_STATUSES } from '@/lib/types'
-import { getDaysUntil, formatDate, formatCurrency, timeAgo } from '@/lib/utils'
+import { getDaysUntil, formatCurrency, timeAgo } from '@/lib/utils'
+import { getWorkflowTemplate, getCaseReadiness, getMissingRequiredDocs, getStuckDays } from '@/lib/workflow'
+import { getActionMeta, ACTION_COLOR_DOT } from '@/lib/activity'
 import StatCard from '@/components/ui/StatCard'
 import StatusBadge from '@/components/ui/StatusBadge'
-import PageHeader from '@/components/ui/PageHeader'
 
 export default function HomePage() {
-  const { customers, cases, followUps, activityLogs } = useStore()
+  const { customers, cases, followUps, activityLogs, caseFiles, workflowTemplates } = useStore()
   const { currentUser } = useAuth()
 
   const today = new Date()
   const dateLabel = today.toLocaleDateString('en-MY', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
   const greeting = currentUser ? `, ${currentUser.fullName.split(' ')[0]}` : ''
-  const recentActivity = activityLogs.slice(0, 8)
 
   const activeCases = cases.filter(c => c.currentStatus !== 'Closed')
   const openFollowUps = followUps.filter(f => f.status === 'Open')
@@ -25,18 +24,40 @@ export default function HomePage() {
     return d !== null && d < 0
   })
   const dueTodayFollowUps = openFollowUps.filter(f => getDaysUntil(f.dueDate) === 0)
-  const casesNeedingAction = cases.filter(c =>
-    c.currentStatus === 'Waiting Documents' || c.currentStatus === 'Sent to Customer'
-  )
-  const recentCases = [...cases]
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    .slice(0, 6)
 
-  const casesByStatus = CASE_STATUSES.map(s => ({
-    status: s,
-    count: cases.filter(c => c.currentStatus === s).length,
-  })).filter(x => x.count > 0)
-  const maxCount = Math.max(...casesByStatus.map(x => x.count), 1)
+  const thisMonth = today.getMonth()
+  const thisYear = today.getFullYear()
+  const wonThisMonth = cases.filter(c => {
+    if (c.result !== 'Won' || !c.closedAt) return false
+    const d = new Date(c.closedAt)
+    return d.getMonth() === thisMonth && d.getFullYear() === thisYear
+  })
+
+  const casesWithMissingDocs = activeCases.filter(c => {
+    const template = getWorkflowTemplate(c.caseType, workflowTemplates)
+    if (!template) return false
+    return getMissingRequiredDocs(c.id, template, caseFiles).length > 0
+  })
+
+  const casesReadyToMove = activeCases.filter(c => {
+    const template = getWorkflowTemplate(c.caseType, workflowTemplates)
+    if (!template) return false
+    const missing = getMissingRequiredDocs(c.id, template, caseFiles)
+    const caseOD = overdueFollowUps.some(f => f.caseId === c.id)
+    return missing.length === 0 && !caseOD
+  })
+
+  const stuckCases = activeCases.filter(c => getStuckDays(c) > 14)
+
+  const needsAttentionCases = activeCases.filter(c => {
+    const hasOD = overdueFollowUps.some(f => f.caseId === c.id)
+    const template = getWorkflowTemplate(c.caseType, workflowTemplates)
+    const hasMissingDocs = template ? getMissingRequiredDocs(c.id, template, caseFiles).length > 0 : false
+    const isStuck = getStuckDays(c) > 14
+    return hasOD || hasMissingDocs || isStuck
+  }).slice(0, 8)
+
+  const recentActivity = activityLogs.slice(0, 10)
 
   return (
     <div className="p-8 max-w-screen-xl mx-auto">
@@ -69,192 +90,225 @@ export default function HomePage() {
               )
             })}
           </div>
-          <Link href="/followups?tab=Overdue" className="mt-3 inline-block text-xs font-medium text-red-600 hover:underline">
+          <Link href="/followups" className="mt-3 inline-block text-xs font-medium text-red-600 hover:underline">
             See all overdue follow-ups →
           </Link>
         </div>
       )}
 
-      {/* Due today */}
-      {dueTodayFollowUps.length > 0 && overdueFollowUps.length === 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 mb-6">
-          <p className="text-sm font-semibold text-amber-700 mb-1">
-            {dueTodayFollowUps.length} follow-up{dueTodayFollowUps.length > 1 ? 's' : ''} due today
-          </p>
-          {dueTodayFollowUps.map(f => (
-            <p key={f.id} className="text-sm text-amber-800 mt-1">· {f.title} <span className="text-amber-500">({f.personInCharge})</span></p>
-          ))}
-        </div>
-      )}
-
-      {/* Stat cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <StatCard label="Total Customers" value={customers.length} />
-        <StatCard label="Active Cases" value={activeCases.length} sub="not closed" color="blue" />
-        <StatCard label="Open Follow-Ups" value={openFollowUps.length} color={overdueFollowUps.length > 0 ? 'amber' : 'default'} />
+      {/* KPI Cards Row 1 */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+        <StatCard label="Active Cases" value={activeCases.length} color="blue" sub="not closed" />
         <StatCard label="Overdue Follow-Ups" value={overdueFollowUps.length} color={overdueFollowUps.length > 0 ? 'red' : 'default'} />
+        <StatCard label="Missing Documents" value={casesWithMissingDocs.length} color={casesWithMissingDocs.length > 0 ? 'amber' : 'default'} sub="cases affected" />
+        <StatCard label="Won This Month" value={wonThisMonth.length} color="green" />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-        {/* Cases by status */}
-        <div className="card-section">
-          <h2 className="text-base font-semibold text-gray-800 mb-5">Cases by Status</h2>
-          <div className="space-y-3">
-            {casesByStatus.map(({ status, count }) => (
-              <div key={status} className="flex items-center gap-3">
-                <span className="text-sm text-gray-500 w-36 shrink-0">{status}</span>
-                <div className="flex-1 bg-gray-100 rounded-full h-1.5 overflow-hidden">
-                  <div
-                    className="h-full bg-blue-400 rounded-full"
-                    style={{ width: `${(count / maxCount) * 100}%` }}
-                  />
-                </div>
-                <span className="text-sm font-semibold text-gray-700 w-4 text-right">{count}</span>
-              </div>
-            ))}
-          </div>
-        </div>
+      {/* KPI Cards Row 2 */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <StatCard label="Total Customers" value={customers.length} />
+        <StatCard label="Open Follow-Ups" value={openFollowUps.length} />
+        <StatCard label="Ready to Move" value={casesReadyToMove.length} color={casesReadyToMove.length > 0 ? 'green' : 'default'} sub="docs complete" />
+        <StatCard label="Stuck Cases" value={stuckCases.length} color={stuckCases.length > 0 ? 'amber' : 'default'} sub=">14 days" />
+      </div>
 
-        {/* Open follow-ups */}
-        <div className="card-section">
+      {/* Needs Attention + Today's Follow-Ups */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+        <div className="lg:col-span-2 card-section">
           <div className="flex items-center justify-between mb-5">
-            <h2 className="text-base font-semibold text-gray-800">Open Follow-Ups</h2>
-            <Link href="/followups" className="text-xs text-blue-600 hover:underline">View all</Link>
+            <h2 className="text-base font-semibold text-gray-800">Needs Attention</h2>
+            <span className="text-xs text-gray-400">{needsAttentionCases.length} cases</span>
           </div>
-          {openFollowUps.length === 0 ? (
-            <p className="text-sm text-gray-400">No open follow-ups.</p>
+          {needsAttentionCases.length === 0 ? (
+            <div className="text-center py-8">
+              <p className="text-sm font-medium text-gray-600">All caught up</p>
+              <p className="text-xs text-gray-400 mt-1">No cases need immediate attention.</p>
+            </div>
           ) : (
-            <div className="space-y-3">
-              {openFollowUps.slice(0, 5).map(f => {
-                const d = getDaysUntil(f.dueDate)
-                const isOD = d !== null && d < 0
+            <div className="space-y-4">
+              {needsAttentionCases.map(c => {
+                const template = getWorkflowTemplate(c.caseType, workflowTemplates)
+                const missing = template ? getMissingRequiredDocs(c.id, template, caseFiles) : []
+                const hasOD = overdueFollowUps.some(f => f.caseId === c.id)
+                const isStuck = getStuckDays(c) > 14
+                const readiness = getCaseReadiness(c, template, caseFiles, followUps)
                 return (
-                  <div key={f.id} className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-gray-800 line-clamp-1">{f.title}</p>
-                      <p className="text-xs text-gray-400">{f.personInCharge}</p>
+                  <Link key={c.id} href={`/cases/${c.id}`} className="block group">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-gray-800 group-hover:text-blue-600 line-clamp-1">{c.caseTitle}</p>
+                        <div className="flex items-center gap-2 mt-1 flex-wrap">
+                          <StatusBadge status={c.currentStatus} />
+                          <span className="text-xs text-gray-400">{c.customerName}</span>
+                          {missing.length > 0 && (
+                            <span className="text-xs text-amber-700 bg-amber-50 rounded px-1.5 py-0.5 font-medium">{missing.length} docs missing</span>
+                          )}
+                          {hasOD && (
+                            <span className="text-xs text-red-600 bg-red-50 rounded px-1.5 py-0.5 font-medium">Follow-up overdue</span>
+                          )}
+                          {isStuck && !hasOD && (
+                            <span className="text-xs text-gray-500 bg-gray-100 rounded px-1.5 py-0.5 font-medium">{getStuckDays(c)}d no update</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <span className={`text-sm font-bold ${readiness >= 70 ? 'text-green-600' : readiness >= 40 ? 'text-amber-600' : 'text-red-600'}`}>
+                          {readiness}%
+                        </span>
+                      </div>
                     </div>
-                    {isOD ? (
-                      <span className="text-xs text-red-500 font-medium shrink-0">{Math.abs(d!)}d overdue</span>
-                    ) : d === 0 ? (
-                      <span className="text-xs text-amber-600 font-medium shrink-0">Today</span>
-                    ) : d !== null ? (
-                      <span className="text-xs text-gray-400 shrink-0">{formatDate(f.dueDate)}</span>
-                    ) : null}
-                  </div>
+                  </Link>
                 )
               })}
             </div>
           )}
         </div>
 
-        {/* Quick stats */}
+        {/* Today's Follow-Ups */}
         <div className="card-section">
-          <h2 className="text-base font-semibold text-gray-800 mb-5">Quick Summary</h2>
-          <div className="space-y-4">
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-gray-500">Total Customers</span>
-              <span className="text-lg font-bold text-gray-900">{customers.length}</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-gray-500">Active Cases</span>
-              <span className="text-lg font-bold text-blue-600">{activeCases.length}</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-gray-500">Overdue Follow-Ups</span>
-              <span className={`text-lg font-bold ${overdueFollowUps.length > 0 ? 'text-red-600' : 'text-gray-400'}`}>{overdueFollowUps.length}</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-gray-500">Due Today</span>
-              <span className={`text-lg font-bold ${dueTodayFollowUps.length > 0 ? 'text-amber-600' : 'text-gray-400'}`}>{dueTodayFollowUps.length}</span>
-            </div>
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="text-base font-semibold text-gray-800">Today&rsquo;s Follow-Ups</h2>
+            <span className="text-xs text-gray-400">{dueTodayFollowUps.length}</span>
           </div>
-        </div>
-      </div>
-
-      {/* Recent activity + Recent cases side by side */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-        <div className="card-section">
-          <h2 className="text-base font-semibold text-gray-800 mb-5">Recent Activity</h2>
-          {recentActivity.length === 0 ? (
-            <p className="text-sm text-gray-400">No activity yet.</p>
+          {dueTodayFollowUps.length === 0 ? (
+            <p className="text-sm text-gray-400">Nothing due today.</p>
           ) : (
             <div className="space-y-3">
-              {recentActivity.map(log => (
-                <div key={log.id} className="flex items-start gap-3">
-                  <div className="w-1.5 h-1.5 rounded-full bg-blue-400 mt-1.5 shrink-0" />
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-gray-800">{log.action}</p>
-                    <p className="text-xs text-gray-400 truncate">{log.target}</p>
-                    <p className="text-xs text-gray-300">{log.user} · {timeAgo(log.timestamp)}</p>
-                  </div>
+              {dueTodayFollowUps.map(f => (
+                <div key={f.id} className="border-l-2 border-amber-400 pl-3">
+                  <p className="text-sm font-medium text-gray-800 line-clamp-1">{f.title}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{f.personInCharge} · {f.customerName}</p>
                 </div>
               ))}
             </div>
           )}
-        </div>
 
-        <div className="lg:col-span-2 card-section">
-          <div className="flex items-center justify-between mb-5">
-            <h2 className="text-base font-semibold text-gray-800">Needs Your Action</h2>
-            <span className="text-xs text-gray-400">{casesNeedingAction.length} cases</span>
-          </div>
-          {casesNeedingAction.length === 0 ? (
-            <p className="text-sm text-gray-400">All cases are up to date.</p>
-          ) : (
-            <div className="space-y-3">
-              {casesNeedingAction.slice(0, 6).map(c => (
-                <Link key={c.id} href={`/cases/${c.id}`} className="block group">
-                  <p className="text-sm font-medium text-gray-800 group-hover:text-blue-600 line-clamp-1">{c.caseTitle}</p>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <StatusBadge status={c.currentStatus} />
-                    <span className="text-xs text-gray-400">{c.customerName}</span>
-                  </div>
-                </Link>
-              ))}
+          {openFollowUps.length > dueTodayFollowUps.length && (
+            <div className="mt-5 pt-5 border-t border-gray-100">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-semibold text-gray-500">Upcoming</p>
+                <Link href="/followups" className="text-xs text-blue-600 hover:underline">View all</Link>
+              </div>
+              <div className="space-y-2">
+                {openFollowUps.filter(f => getDaysUntil(f.dueDate) !== 0 && (getDaysUntil(f.dueDate) ?? -1) >= 0).slice(0, 4).map(f => {
+                  const d = getDaysUntil(f.dueDate)
+                  return (
+                    <div key={f.id} className="flex items-center justify-between gap-2">
+                      <p className="text-xs text-gray-700 line-clamp-1 flex-1">{f.title}</p>
+                      <span className="text-xs text-gray-400 shrink-0">{d}d</span>
+                    </div>
+                  )
+                })}
+              </div>
             </div>
           )}
         </div>
       </div>
 
-      {/* Recent cases */}
+      {/* Document Gaps + Ready to Move */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        <div className="card-section">
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="text-base font-semibold text-gray-800">Document Gaps</h2>
+            <Link href="/cases" className="text-xs text-blue-600 hover:underline">View cases</Link>
+          </div>
+          {casesWithMissingDocs.length === 0 ? (
+            <p className="text-sm text-gray-400">All cases have complete documents.</p>
+          ) : (
+            <div className="space-y-3">
+              {casesWithMissingDocs.slice(0, 5).map(c => {
+                const template = getWorkflowTemplate(c.caseType, workflowTemplates)
+                const missing = template ? getMissingRequiredDocs(c.id, template, caseFiles) : []
+                return (
+                  <Link key={c.id} href={`/cases/${c.id}`} className="block group">
+                    <p className="text-sm font-medium text-gray-800 group-hover:text-blue-600 line-clamp-1">{c.caseTitle}</p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-xs text-gray-400">{c.customerName}</span>
+                      <span className="text-xs text-amber-700 bg-amber-50 rounded px-1.5 py-0.5 font-medium">{missing.length} missing</span>
+                      {missing[0] && <span className="text-xs text-gray-400 truncate">{missing[0].name}</span>}
+                    </div>
+                  </Link>
+                )
+              })}
+              {casesWithMissingDocs.length > 5 && (
+                <Link href="/cases" className="block text-xs text-blue-600 hover:underline">{casesWithMissingDocs.length - 5} more cases →</Link>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="card-section">
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="text-base font-semibold text-gray-800">Ready to Move</h2>
+            <span className="text-xs text-gray-400">{casesReadyToMove.length} cases</span>
+          </div>
+          {casesReadyToMove.length === 0 ? (
+            <p className="text-sm text-gray-400">No cases fully ready at this time.</p>
+          ) : (
+            <div className="space-y-3">
+              {casesReadyToMove.slice(0, 5).map(c => {
+                const template = getWorkflowTemplate(c.caseType, workflowTemplates)
+                const readiness = getCaseReadiness(c, template, caseFiles, followUps)
+                return (
+                  <Link key={c.id} href={`/cases/${c.id}`} className="block group">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-800 group-hover:text-blue-600 line-clamp-1">{c.caseTitle}</p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <StatusBadge status={c.currentStatus} />
+                          <span className="text-xs text-gray-400">{c.personInCharge}</span>
+                        </div>
+                      </div>
+                      <span className="text-sm font-bold text-green-600 shrink-0">{readiness}%</span>
+                    </div>
+                  </Link>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Recent Activity */}
       <div className="card-section">
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-base font-semibold text-gray-800">Recent Cases</h2>
-          <Link href="/cases" className="text-xs text-blue-600 hover:underline">View all</Link>
+          <h2 className="text-base font-semibold text-gray-800">Recent Activity</h2>
+          <span className="text-xs text-gray-400">{recentActivity.length} entries</span>
         </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full">
-            <thead>
-              <tr className="border-b border-gray-100">
-                <th className="table-th pl-0">Case</th>
-                <th className="table-th">Customer</th>
-                <th className="table-th">Type</th>
-                <th className="table-th">Amount</th>
-                <th className="table-th">Person in Charge</th>
-                <th className="table-th">Current Status</th>
-                <th className="table-th">Added</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {recentCases.map(c => (
-                <tr key={c.id} className="group hover:bg-stone-50 transition-colors">
-                  <td className="table-td pl-0">
-                    <Link href={`/cases/${c.id}`} className="font-semibold text-gray-900 hover:text-blue-600 line-clamp-1 max-w-[220px] block">
-                      {c.caseTitle}
-                    </Link>
-                  </td>
-                  <td className="table-td text-gray-500">{c.customerName}</td>
-                  <td className="table-td text-gray-500 whitespace-nowrap">{c.caseType}</td>
-                  <td className="table-td font-medium text-gray-800 whitespace-nowrap">{formatCurrency(c.amount)}</td>
-                  <td className="table-td text-gray-500 whitespace-nowrap">{c.personInCharge}</td>
-                  <td className="table-td"><StatusBadge status={c.currentStatus} /></td>
-                  <td className="table-td text-gray-400 whitespace-nowrap text-xs">{timeAgo(c.createdAt)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        {recentActivity.length === 0 ? (
+          <p className="text-sm text-gray-400">No activity yet.</p>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-3">
+            {recentActivity.map(log => {
+              const meta = getActionMeta(log.actionType)
+              const dotColor = ACTION_COLOR_DOT[meta.color]
+              return (
+                <div key={log.id} className="flex items-start gap-3">
+                  <div className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${dotColor}`} />
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <p className="text-sm font-medium text-gray-800">{log.title}</p>
+                      {log.oldValue && log.newValue && (
+                        <span className="text-xs text-gray-400">
+                          <span className="line-through">{log.oldValue}</span>
+                          {' → '}
+                          <span className="font-medium text-gray-600">{log.newValue}</span>
+                        </span>
+                      )}
+                    </div>
+                    {log.caseTitle && (
+                      <p className="text-xs text-gray-500 truncate">{log.caseTitle}</p>
+                    )}
+                    {log.description && !log.caseTitle && (
+                      <p className="text-xs text-gray-400 truncate">{log.description}</p>
+                    )}
+                    <p className="text-xs text-gray-300">{log.changedBy} · {timeAgo(log.timestamp)}</p>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
       </div>
     </div>
   )

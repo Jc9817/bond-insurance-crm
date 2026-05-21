@@ -1,0 +1,262 @@
+'use client'
+
+import { useParams, useRouter } from 'next/navigation'
+import { useStore } from '@/lib/store'
+import { formatDate, formatCurrency } from '@/lib/utils'
+import type { CaseFile, AiExtractedData } from '@/lib/types'
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const STANDARD_KEYS = new Set(['customerName', 'projectName', 'caseType', 'amount', 'bondValue', 'expiryDate', 'notes', 'raw'])
+
+function formatLabel(key: string): string {
+  return key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+}
+
+function isMoneyKey(key: string): boolean {
+  return /value|compensation|liability|amount|sum|price|cost/i.test(key)
+}
+
+function formatRMNumber(value: unknown): string {
+  const num = Number(value)
+  if (isNaN(num)) return String(value)
+  return `RM ${num.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+function todayLong(): string {
+  return new Date().toLocaleDateString('en-MY', { day: 'numeric', month: 'long', year: 'numeric' })
+}
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="border-b-2 border-gray-800 pb-1 mb-4">
+      <h2 className="text-xs font-bold tracking-widest uppercase text-gray-600">{children}</h2>
+    </div>
+  )
+}
+
+function DetailRow({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="grid grid-cols-[180px_1fr] gap-2 py-1.5 border-b border-gray-100 last:border-0">
+      <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{label}</span>
+      <span className="text-sm text-gray-800">{value || '—'}</span>
+    </div>
+  )
+}
+
+function ExtractedDocSection({ file }: { file: CaseFile }) {
+  const data = file.aiExtractedData as AiExtractedData
+  const extras = data.raw ? Object.entries(data.raw).filter(([k]) => !STANDARD_KEYS.has(k)) : []
+
+  return (
+    <div className="mb-8 break-inside-avoid">
+      {/* Document header */}
+      <div className="flex items-center gap-3 mb-3">
+        <div className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
+        <div>
+          <p className="text-sm font-bold text-gray-800">{file.documentType}</p>
+          <p className="text-xs text-gray-400">
+            {file.fileName} &nbsp;·&nbsp; Approved {formatDate(file.uploadedAt)}
+          </p>
+        </div>
+      </div>
+
+      {/* Standard fields */}
+      <div className="pl-5 border-l-2 border-green-200">
+        <div className="bg-gray-50 rounded-lg p-4 space-y-0">
+          {data.customerName && <DetailRow label="Contractor / Insured" value={data.customerName} />}
+          {data.projectName && <DetailRow label="Project / Works" value={data.projectName} />}
+          {data.caseType && <DetailRow label="Bond / Insurance Type" value={data.caseType} />}
+          {data.amount && <DetailRow label="Contract Value" value={<span className="font-semibold">{data.amount}</span>} />}
+          {data.bondValue && <DetailRow label="Bond / Policy Value" value={<span className="font-semibold text-violet-700">{data.bondValue}</span>} />}
+          {data.expiryDate && <DetailRow label="Expiry / Completion Date" value={formatDate(data.expiryDate)} />}
+          {data.notes && <DetailRow label="Reference Numbers" value={data.notes} />}
+        </div>
+
+        {/* Extra fields from custom prompt */}
+        {extras.length > 0 && (
+          <div className="mt-3 bg-blue-50 rounded-lg p-4 space-y-0">
+            <p className="text-xs font-bold text-blue-500 uppercase tracking-widest mb-2">Additional Extracted Fields</p>
+            {extras.map(([key, value]) => {
+              if (value === null || value === undefined) return null
+
+              if (typeof value === 'object' && !Array.isArray(value)) {
+                const nested = value as Record<string, unknown>
+                return (
+                  <div key={key} className="mb-3">
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{formatLabel(key)}</p>
+                    <div className="pl-3 border-l border-blue-200 space-y-1">
+                      {Object.entries(nested).map(([nk, nv]) => (
+                        <div key={nk} className="grid grid-cols-[200px_1fr] gap-2">
+                          <span className="text-xs text-gray-500">{formatLabel(nk)}</span>
+                          <span className="text-xs text-gray-800">{nv !== null && nv !== undefined && nv !== '' ? String(nv) : '—'}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )
+              }
+
+              if (key.endsWith('_note') || key.endsWith('_reason')) {
+                return (
+                  <div key={key} className="py-1.5 border-b border-blue-100 last:border-0">
+                    <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-0.5">{formatLabel(key)}</span>
+                    <span className="text-xs text-blue-800 italic">{String(value)}</span>
+                  </div>
+                )
+              }
+
+              return (
+                <DetailRow
+                  key={key}
+                  label={formatLabel(key)}
+                  value={
+                    typeof value === 'number' && isMoneyKey(key)
+                      ? <span className="font-semibold">{formatRMNumber(value)}</span>
+                      : String(value)
+                  }
+                />
+              )
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Main report page ─────────────────────────────────────────────────────────
+
+export default function CaseReportPage() {
+  const { id } = useParams<{ id: string }>()
+  const router = useRouter()
+  const { cases, customers, caseFiles, pics } = useStore()
+
+  const caseItem = cases.find(c => c.id === id)
+  const customer = customers.find(c => c.id === caseItem?.customerId)
+  const pic = pics.find(p => p.name === caseItem?.personInCharge)
+
+  const approvedFiles = caseFiles.filter(
+    f => f.caseId === id && f.aiStatus === 'Approved' && f.aiExtractedData !== null
+  )
+
+  if (!caseItem) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <p className="text-gray-400">Case not found.</p>
+      </div>
+    )
+  }
+
+  return (
+    <>
+      {/* Print styles */}
+      <style>{`
+        @media print {
+          .no-print { display: none !important; }
+          body { background: white !important; }
+          @page { margin: 18mm 15mm; size: A4; }
+        }
+      `}</style>
+
+      <div className="min-h-screen bg-white">
+        {/* Toolbar — hidden when printing */}
+        <div className="no-print sticky top-0 z-10 bg-white border-b border-gray-200 px-8 py-3 flex items-center justify-between">
+          <button
+            onClick={() => router.push(`/cases/${id}`)}
+            className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-800"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+            </svg>
+            Back to Case
+          </button>
+          <button
+            onClick={() => window.print()}
+            className="flex items-center gap-2 bg-blue-600 text-white text-sm font-medium px-5 py-2 rounded-xl hover:bg-blue-700 transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+            </svg>
+            Print / Save as PDF
+          </button>
+        </div>
+
+        {/* Report body */}
+        <div className="max-w-3xl mx-auto px-8 py-10">
+
+          {/* Report header */}
+          <div className="flex items-start justify-between mb-8 pb-6 border-b-2 border-gray-800">
+            <div>
+              <p className="text-xs font-bold tracking-widest uppercase text-gray-400 mb-1">Case Report</p>
+              <h1 className="text-2xl font-bold text-gray-900 leading-tight">{caseItem.caseTitle}</h1>
+              <p className="text-sm text-gray-500 mt-1">{customer?.customerName ?? '—'}</p>
+            </div>
+            <div className="text-right shrink-0 ml-6">
+              <p className="text-xs text-gray-400">Generated</p>
+              <p className="text-sm font-semibold text-gray-700">{todayLong()}</p>
+              <p className="text-xs text-gray-400 mt-2">Case ID</p>
+              <p className="text-xs font-mono text-gray-600">{caseItem.id}</p>
+            </div>
+          </div>
+
+          {/* Case Details */}
+          <div className="mb-10">
+            <SectionTitle>Case Details</SectionTitle>
+            <div className="space-y-0">
+              <DetailRow label="Case Title" value={caseItem.caseTitle} />
+              <DetailRow label="Customer" value={customer?.customerName} />
+              {customer?.companyRegistrationNo && (
+                <DetailRow label="Registration No." value={customer.companyRegistrationNo} />
+              )}
+              <DetailRow label="Case Type" value={caseItem.caseType} />
+              <DetailRow label="Person in Charge" value={caseItem.personInCharge} />
+              {pic?.email && <DetailRow label="PIC Email" value={pic.email} />}
+              <DetailRow label="Status" value={caseItem.currentStatus} />
+              {caseItem.amount > 0 && (
+                <DetailRow label="Case Amount" value={<span className="font-semibold">{formatCurrency(caseItem.amount)}</span>} />
+              )}
+              {caseItem.finalAmount != null && caseItem.finalAmount > 0 && (
+                <DetailRow label="Final Amount" value={<span className="font-semibold">{formatCurrency(caseItem.finalAmount)}</span>} />
+              )}
+              {caseItem.finalInsurer && <DetailRow label="Insurer" value={caseItem.finalInsurer} />}
+              <DetailRow label="Created" value={formatDate(caseItem.createdAt)} />
+              {caseItem.updatedAt && <DetailRow label="Last Updated" value={formatDate(caseItem.updatedAt)} />}
+              {caseItem.closingRemarks && <DetailRow label="Closing Remarks" value={caseItem.closingRemarks} />}
+            </div>
+          </div>
+
+          {/* AI-Extracted Document Information */}
+          <div className="mb-10">
+            <SectionTitle>AI-Extracted Document Information</SectionTitle>
+
+            {approvedFiles.length === 0 ? (
+              <p className="text-sm text-gray-400 py-4">
+                No documents have been scanned and approved yet. AI-extracted information will appear here after documents are scanned.
+              </p>
+            ) : (
+              <div>
+                {approvedFiles.map(file => (
+                  <ExtractedDocSection key={file.id} file={file} />
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="pt-6 border-t border-gray-200 text-center">
+            <p className="text-xs text-gray-400">
+              Generated by Bond Insurance CRM &nbsp;·&nbsp; {todayLong()}
+            </p>
+            <p className="text-xs text-gray-300 mt-0.5">
+              This report contains AI-extracted information. Always verify against original documents.
+            </p>
+          </div>
+
+        </div>
+      </div>
+    </>
+  )
+}

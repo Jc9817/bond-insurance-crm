@@ -5,7 +5,8 @@ import Link from 'next/link'
 import { useStore } from '@/lib/store'
 import type { Case, CaseStatus } from '@/lib/types'
 import { CASE_STATUSES, CASE_TYPES } from '@/lib/types'
-import { formatDate, formatCurrency, timeAgo } from '@/lib/utils'
+import { formatCurrency, timeAgo } from '@/lib/utils'
+import { getWorkflowTemplate, getCaseReadiness, getMissingRequiredDocs } from '@/lib/workflow'
 import PageHeader from '@/components/ui/PageHeader'
 import StatusBadge from '@/components/ui/StatusBadge'
 import Modal from '@/components/ui/Modal'
@@ -20,6 +21,7 @@ const emptyCase = (customers: { id: string; customerName: string }[]): FormData 
   amount: 0,
   personInCharge: '',
   currentStatus: 'New',
+  currentWorkflowStepId: '',
   result: '',
   closingRemarks: '',
 })
@@ -31,6 +33,7 @@ function CaseForm({ initial, customers, pics, onSave, onCancel }: {
   onSave: (d: FormData) => void
   onCancel: () => void
 }) {
+  const { workflowTemplates } = useStore()
   const [form, setForm] = useState<FormData>(initial)
   const [error, setError] = useState('')
 
@@ -41,6 +44,11 @@ function CaseForm({ initial, customers, pics, onSave, onCancel }: {
         setForm(prev => ({ ...prev, customerId: e.target.value, customerName: c?.customerName ?? '' }))
       } else if (k === 'amount') {
         setForm(prev => ({ ...prev, amount: Number(e.target.value) }))
+      } else if (k === 'caseType') {
+        // Auto-set workflow step when case type selected
+        const template = getWorkflowTemplate(e.target.value, workflowTemplates)
+        const firstStep = template?.workflowSteps.filter(s => s.isActive).sort((a, b) => a.order - b.order)[0]
+        setForm(prev => ({ ...prev, caseType: e.target.value, currentWorkflowStepId: firstStep?.id ?? '' }))
       } else {
         setForm(prev => ({ ...prev, [k]: e.target.value }))
       }
@@ -92,18 +100,6 @@ function CaseForm({ initial, customers, pics, onSave, onCancel }: {
             {CASE_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
-        <div>
-          <label className="label">Result</label>
-          <select className="input" value={form.result} onChange={set('result')}>
-            <option value="">Not decided yet</option>
-            <option value="Won">Won</option>
-            <option value="Lost">Lost</option>
-          </select>
-        </div>
-        <div>
-          <label className="label">Closing Remarks</label>
-          <input className="input" value={form.closingRemarks} onChange={set('closingRemarks')} placeholder="Optional notes on outcome" />
-        </div>
       </div>
       <div className="flex gap-3 pt-1">
         <button type="button" onClick={onCancel} className="btn-secondary flex-1">Cancel</button>
@@ -114,7 +110,7 @@ function CaseForm({ initial, customers, pics, onSave, onCancel }: {
 }
 
 export default function CasesPage() {
-  const { cases, customers, pics, addCase, updateCase, deleteCase } = useStore()
+  const { cases, customers, pics, caseFiles, followUps, workflowTemplates, addCase, updateCase, deleteCase } = useStore()
   const [view, setView] = useState<'list' | 'board'>('list')
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('All')
@@ -137,32 +133,19 @@ export default function CasesPage() {
       <PageHeader
         title="Cases"
         subtitle={`${cases.length} total cases`}
-        action={
-          <button className="btn-primary" onClick={() => setModal('add')}>+ New Case</button>
-        }
+        action={<button className="btn-primary" onClick={() => setModal('add')}>+ New Case</button>}
       />
 
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-3 mb-5">
-        <input
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder="Search cases…"
-          className="input w-64"
-        />
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search cases…" className="input w-64" />
         <select className="input w-52" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
           <option value="All">All Statuses</option>
           {CASE_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
         <div className="ml-auto flex rounded-xl border border-gray-200 overflow-hidden bg-white">
           {(['list', 'board'] as const).map(v => (
-            <button
-              key={v}
-              onClick={() => setView(v)}
-              className={`px-4 py-2 text-sm font-medium transition-colors capitalize ${
-                view === v ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-50'
-              }`}
-            >
+            <button key={v} onClick={() => setView(v)} className={`px-4 py-2 text-sm font-medium transition-colors capitalize ${view === v ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
               {v === 'board' ? 'Board View' : 'List View'}
             </button>
           ))}
@@ -172,6 +155,9 @@ export default function CasesPage() {
       {view === 'board' ? (
         <KanbanBoard
           cases={filtered}
+          caseFiles={caseFiles}
+          followUps={followUps}
+          workflowTemplates={workflowTemplates}
           onStatusChange={(caseId, newStatus) => updateCase(caseId, { currentStatus: newStatus })}
         />
       ) : (
@@ -184,47 +170,64 @@ export default function CasesPage() {
                 <th className="table-th">Type</th>
                 <th className="table-th">Amount</th>
                 <th className="table-th">Person in Charge</th>
-                <th className="table-th">Current Status</th>
+                <th className="table-th">Status</th>
+                <th className="table-th">Readiness</th>
                 <th className="table-th">Added</th>
                 <th className="table-th">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="px-5 py-12 text-center text-gray-400">
-                    No cases found.
-                  </td>
-                </tr>
-              ) : filtered.map(c => (
-                <tr key={c.id} className="hover:bg-stone-50 transition-colors">
-                  <td className="table-td">
-                    <Link href={`/cases/${c.id}`} className="font-semibold text-gray-900 hover:text-blue-600 line-clamp-1 max-w-[240px] block">
-                      {c.caseTitle}
-                    </Link>
-                  </td>
-                  <td className="table-td text-gray-500 whitespace-nowrap">{c.customerName}</td>
-                  <td className="table-td text-gray-500 whitespace-nowrap">{c.caseType || '—'}</td>
-                  <td className="table-td font-semibold text-gray-800 whitespace-nowrap">{formatCurrency(c.amount)}</td>
-                  <td className="table-td text-gray-500 whitespace-nowrap">{c.personInCharge || '—'}</td>
-                  <td className="table-td"><StatusBadge status={c.currentStatus} /></td>
-                  <td className="table-td text-gray-400 whitespace-nowrap text-xs">{timeAgo(c.createdAt)}</td>
-                  <td className="table-td whitespace-nowrap">
-                    <div className="flex items-center gap-2">
-                      <Link href={`/cases/${c.id}`} className="btn-xs bg-gray-100 hover:bg-gray-200 text-gray-700">View</Link>
-                      <button onClick={() => { setSelected(c); setModal('edit') }} className="btn-xs bg-gray-100 hover:bg-gray-200 text-gray-700">Edit</button>
-                      {deleteId === c.id ? (
-                        <>
-                          <button onClick={() => { deleteCase(c.id); setDeleteId(null) }} className="btn-xs bg-red-600 text-white hover:bg-red-700">Confirm</button>
-                          <button onClick={() => setDeleteId(null)} className="btn-xs bg-gray-100 text-gray-600">Cancel</button>
-                        </>
+                <tr><td colSpan={9} className="px-5 py-12 text-center text-gray-400">No cases found.</td></tr>
+              ) : filtered.map(c => {
+                const template = getWorkflowTemplate(c.caseType, workflowTemplates)
+                const readiness = getCaseReadiness(c, template, caseFiles, followUps)
+                const missing = getMissingRequiredDocs(c.id, template, caseFiles)
+                return (
+                  <tr key={c.id} className="hover:bg-stone-50 transition-colors">
+                    <td className="table-td">
+                      <Link href={`/cases/${c.id}`} className="font-semibold text-gray-900 hover:text-blue-600 line-clamp-1 max-w-[240px] block">
+                        {c.caseTitle}
+                      </Link>
+                    </td>
+                    <td className="table-td text-gray-500 whitespace-nowrap">{c.customerName}</td>
+                    <td className="table-td text-gray-500 whitespace-nowrap">{c.caseType || '—'}</td>
+                    <td className="table-td font-semibold text-gray-800 whitespace-nowrap">{formatCurrency(c.amount)}</td>
+                    <td className="table-td text-gray-500 whitespace-nowrap">{c.personInCharge || '—'}</td>
+                    <td className="table-td"><StatusBadge status={c.currentStatus} /></td>
+                    <td className="table-td whitespace-nowrap">
+                      {template ? (
+                        <div className="flex items-center gap-2">
+                          <div className="w-16 bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                            <div className={`h-full rounded-full ${readiness >= 70 ? 'bg-green-400' : readiness >= 40 ? 'bg-amber-400' : 'bg-red-400'}`} style={{ width: `${readiness}%` }} />
+                          </div>
+                          <span className="text-xs text-gray-600 font-medium">{readiness}%</span>
+                          {missing.length > 0 && (
+                            <span className="text-xs text-red-500 font-medium">{missing.length} missing</span>
+                          )}
+                        </div>
                       ) : (
-                        <button onClick={() => setDeleteId(c.id)} className="btn-xs bg-red-50 text-red-600 hover:bg-red-100">Delete</button>
+                        <span className="text-xs text-gray-300">—</span>
                       )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="table-td text-gray-400 whitespace-nowrap text-xs">{timeAgo(c.createdAt)}</td>
+                    <td className="table-td whitespace-nowrap">
+                      <div className="flex items-center gap-2">
+                        <Link href={`/cases/${c.id}`} className="btn-xs bg-gray-100 hover:bg-gray-200 text-gray-700">View</Link>
+                        <button onClick={() => { setSelected(c); setModal('edit') }} className="btn-xs bg-gray-100 hover:bg-gray-200 text-gray-700">Edit</button>
+                        {deleteId === c.id ? (
+                          <>
+                            <button onClick={() => { deleteCase(c.id); setDeleteId(null) }} className="btn-xs bg-red-600 text-white hover:bg-red-700">Confirm</button>
+                            <button onClick={() => setDeleteId(null)} className="btn-xs bg-gray-100 text-gray-600">Cancel</button>
+                          </>
+                        ) : (
+                          <button onClick={() => setDeleteId(c.id)} className="btn-xs bg-red-50 text-red-600 hover:bg-red-100">Delete</button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
@@ -237,7 +240,7 @@ export default function CasesPage() {
       <Modal isOpen={modal === 'edit'} onClose={closeModal} title="Edit Case" maxWidth="lg">
         {selected && (
           <CaseForm
-            initial={{ caseTitle: selected.caseTitle, customerId: selected.customerId, customerName: selected.customerName, caseType: selected.caseType, amount: selected.amount, personInCharge: selected.personInCharge, currentStatus: selected.currentStatus, result: selected.result, closingRemarks: selected.closingRemarks }}
+            initial={{ caseTitle: selected.caseTitle, customerId: selected.customerId, customerName: selected.customerName, caseType: selected.caseType, amount: selected.amount, personInCharge: selected.personInCharge, currentStatus: selected.currentStatus, currentWorkflowStepId: selected.currentWorkflowStepId ?? '', result: selected.result, closingRemarks: selected.closingRemarks }}
             customers={customers}
             pics={pics}
             onSave={d => { updateCase(selected.id, d); closeModal() }}

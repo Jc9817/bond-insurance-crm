@@ -3,19 +3,19 @@
 import { useState } from 'react'
 import { useStore } from '@/lib/store'
 import { useAuth } from '@/lib/auth'
-import { USER_ROLES, USER_STATUSES, CASE_STATUSES } from '@/lib/types'
-import type { SettingsCategory, User, UserRole, UserStatus } from '@/lib/types'
+import { USER_ROLES, USER_STATUSES } from '@/lib/types'
+import type { SettingsCategory, User, UserRole, UserStatus, WorkflowTemplate, WorkflowStep, RequiredDocument } from '@/lib/types'
 import PageHeader from '@/components/ui/PageHeader'
 import Modal from '@/components/ui/Modal'
 
 // ─── Tab type ─────────────────────────────────────────────────────────────────
 
-type Tab = 'users' | 'caseTypes' | 'caseStatuses' | 'industries' | 'contactTypes' | 'followUpCategories' | 'documentTypes' | 'pic'
+type Tab = 'users' | 'caseTypes' | 'industries' | 'contactTypes' | 'followUpCategories' | 'documentTypes' | 'pic' | 'workflowTemplates'
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'users', label: 'Users' },
+  { key: 'workflowTemplates', label: 'Workflow Templates' },
   { key: 'caseTypes', label: 'Case Types' },
-  { key: 'caseStatuses', label: 'Case Statuses' },
   { key: 'industries', label: 'Industries' },
   { key: 'contactTypes', label: 'Contact Types' },
   { key: 'followUpCategories', label: 'Follow-Up Categories' },
@@ -188,6 +188,557 @@ function ListSection({ category }: { category: SettingsCategory }) {
   )
 }
 
+// ─── Workflow Templates tab ───────────────────────────────────────────────────
+
+type StepFormData = Omit<WorkflowStep, 'id' | 'caseTypeId'>
+type DocFormData = Omit<RequiredDocument, 'id' | 'caseTypeId'> & { aiPrompt: string }
+
+const emptyStep = (): StepFormData => ({
+  name: '',
+  order: 1,
+  description: '',
+  requireDocumentsComplete: false,
+  defaultFollowUpSuggestion: '',
+  isActive: true,
+})
+
+const emptyDoc = (): DocFormData => ({
+  name: '',
+  description: '',
+  required: true,
+  acceptedFileTypes: ['pdf', 'doc', 'docx', 'jpg', 'png'],
+  isActive: true,
+  aiPrompt: '',
+})
+
+function StepModal({ initial, onSave, onClose, title, maxOrder }: {
+  initial: StepFormData; onSave: (d: StepFormData) => void; onClose: () => void; title: string; maxOrder: number
+}) {
+  const [form, setForm] = useState<StepFormData>(initial)
+  const [error, setError] = useState('')
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!form.name.trim()) { setError('Step name is required.'); return }
+    onSave(form)
+  }
+
+  return (
+    <Modal isOpen onClose={onClose} title={title} maxWidth="sm">
+      <form onSubmit={submit} className="px-6 py-5 space-y-4">
+        {error && <p className="text-sm text-red-600 bg-red-50 rounded-xl p-3">{error}</p>}
+        <div>
+          <label className="label">Step Name *</label>
+          <input className="input" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Submit to Insurer" />
+        </div>
+        <div>
+          <label className="label">Order</label>
+          <input className="input" type="number" min={1} max={maxOrder + 1} value={form.order}
+            onChange={e => setForm(p => ({ ...p, order: Number(e.target.value) }))} />
+        </div>
+        <div>
+          <label className="label">Description</label>
+          <input className="input" value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} placeholder="What happens in this step?" />
+        </div>
+        <div>
+          <label className="label">Default Follow-Up Suggestion</label>
+          <input className="input" value={form.defaultFollowUpSuggestion} onChange={e => setForm(p => ({ ...p, defaultFollowUpSuggestion: e.target.value }))} placeholder="e.g. Follow up with insurer for approval" />
+        </div>
+        <div className="flex items-center gap-3">
+          <input
+            type="checkbox"
+            id="reqDocs"
+            checked={form.requireDocumentsComplete}
+            onChange={e => setForm(p => ({ ...p, requireDocumentsComplete: e.target.checked }))}
+            className="w-4 h-4 rounded border-gray-300 text-blue-600"
+          />
+          <label htmlFor="reqDocs" className="text-sm text-gray-700">Require all documents complete before this step</label>
+        </div>
+        <div className="flex gap-3 pt-1">
+          <button type="button" onClick={onClose} className="btn-secondary flex-1">Cancel</button>
+          <button type="submit" className="btn-primary flex-1">Save Step</button>
+        </div>
+      </form>
+    </Modal>
+  )
+}
+
+function DocModal({ initial, onSave, onClose, title }: {
+  initial: DocFormData; onSave: (d: DocFormData) => void; onClose: () => void; title: string
+}) {
+  const [form, setForm] = useState<DocFormData>(initial)
+  const [fileTypesStr, setFileTypesStr] = useState(initial.acceptedFileTypes.join(', '))
+  const [error, setError] = useState('')
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!form.name.trim()) { setError('Document name is required.'); return }
+    const types = fileTypesStr.split(',').map(s => s.trim()).filter(Boolean)
+    onSave({ ...form, acceptedFileTypes: types })
+  }
+
+  return (
+    <Modal isOpen onClose={onClose} title={title} maxWidth="sm">
+      <form onSubmit={submit} className="px-6 py-5 space-y-4">
+        {error && <p className="text-sm text-red-600 bg-red-50 rounded-xl p-3">{error}</p>}
+        <div>
+          <label className="label">Document Name *</label>
+          <input className="input" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Company Profile" />
+        </div>
+        <div>
+          <label className="label">Description</label>
+          <input className="input" value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} placeholder="Brief note on what to upload" />
+        </div>
+        <div className="flex items-center gap-3">
+          <input
+            type="checkbox"
+            id="required"
+            checked={form.required}
+            onChange={e => setForm(p => ({ ...p, required: e.target.checked }))}
+            className="w-4 h-4 rounded border-gray-300 text-blue-600"
+          />
+          <label htmlFor="required" className="text-sm text-gray-700">Required document (counts toward readiness)</label>
+        </div>
+        <div>
+          <label className="label">Accepted File Types (comma-separated)</label>
+          <input className="input" value={fileTypesStr} onChange={e => setFileTypesStr(e.target.value)} placeholder="pdf, doc, docx, jpg, png" />
+        </div>
+        <div>
+          <label className="label">AI Extraction Prompt</label>
+          <textarea
+            className="input min-h-[220px] text-xs leading-relaxed font-mono resize-y"
+            value={form.aiPrompt ?? ''}
+            onChange={e => setForm(p => ({ ...p, aiPrompt: e.target.value }))}
+            placeholder={`Write extraction instructions or paste a complete prompt with a custom JSON schema.\n\nSimple example:\n  This is a Surat Setuju Terima (SST).\n  - customerName: contractor company name\n  - amount: contract value (Harga Kontrak)\n\nCustom JSON schema example:\n  Extract ... Return this exact JSON:\n  {\n    "contract_value": number | null,\n    "bond_value": number | null\n  }`}
+          />
+          <p className="text-xs text-gray-400 mt-1">
+            Leave blank to use automatic detection based on the document name. The AI will always return: customerName, projectName, caseType, amount, bondValue, expiryDate, notes.
+          </p>
+        </div>
+        <div className="flex gap-3 pt-1">
+          <button type="button" onClick={onClose} className="btn-secondary flex-1">Cancel</button>
+          <button type="submit" className="btn-primary flex-1">Save Document</button>
+        </div>
+      </form>
+    </Modal>
+  )
+}
+
+function WorkflowTemplateDetail({ template, onBack }: { template: WorkflowTemplate; onBack: () => void }) {
+  const {
+    updateWorkflowTemplate, deleteWorkflowTemplate,
+    addWorkflowStep, updateWorkflowStep, deleteWorkflowStep,
+    addRequiredDocument, updateRequiredDocument, deleteRequiredDocument,
+  } = useStore()
+
+  const [section, setSection] = useState<'steps' | 'docs'>('steps')
+
+  // Step modal state
+  const [stepModal, setStepModal] = useState<'add' | 'edit' | null>(null)
+  const [selectedStep, setSelectedStep] = useState<WorkflowStep | null>(null)
+  const [deleteStepId, setDeleteStepId] = useState<string | null>(null)
+
+  // Doc modal state
+  const [docModal, setDocModal] = useState<'add' | 'edit' | null>(null)
+  const [selectedDoc, setSelectedDoc] = useState<RequiredDocument | null>(null)
+  const [deleteDocId, setDeleteDocId] = useState<string | null>(null)
+
+  // Template name edit
+  const [editingName, setEditingName] = useState(false)
+  const [nameVal, setNameVal] = useState(template.caseType)
+  const [descVal, setDescVal] = useState(template.description)
+
+  const activeSteps = [...template.workflowSteps].filter(s => s.isActive).sort((a, b) => a.order - b.order)
+  const allSteps = [...template.workflowSteps].sort((a, b) => a.order - b.order)
+  const requiredDocs = template.requiredDocuments.filter(d => d.required)
+  const optionalDocs = template.requiredDocuments.filter(d => !d.required)
+
+  const saveTemplateName = () => {
+    if (nameVal.trim()) {
+      updateWorkflowTemplate(template.id, { caseType: nameVal.trim(), description: descVal.trim() })
+    }
+    setEditingName(false)
+  }
+
+  return (
+    <div>
+      {/* Back + header */}
+      <div className="flex items-center gap-3 mb-6">
+        <button onClick={onBack} className="text-sm text-gray-500 hover:text-gray-800 flex items-center gap-1.5">
+          ← Back
+        </button>
+        <span className="text-gray-300">/</span>
+        <h2 className="text-base font-semibold text-gray-800">{template.caseType}</h2>
+      </div>
+
+      {/* Template name / description edit */}
+      <div className="card-section mb-5">
+        <div className="flex items-start justify-between gap-4">
+          {editingName ? (
+            <div className="flex-1 space-y-3">
+              <div>
+                <label className="label">Template Name</label>
+                <input className="input" value={nameVal} onChange={e => setNameVal(e.target.value)} autoFocus />
+              </div>
+              <div>
+                <label className="label">Description</label>
+                <input className="input" value={descVal} onChange={e => setDescVal(e.target.value)} placeholder="Brief description of this template" />
+              </div>
+              <div className="flex gap-2">
+                <button onClick={saveTemplateName} className="btn-primary text-sm px-4 py-2">Save</button>
+                <button onClick={() => setEditingName(false)} className="btn-secondary text-sm px-4 py-2">Cancel</button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex-1">
+              <p className="text-base font-semibold text-gray-800">{template.caseType}</p>
+              <p className="text-sm text-gray-500 mt-0.5">{template.description || 'No description'}</p>
+            </div>
+          )}
+          {!editingName && (
+            <button onClick={() => setEditingName(true)} className="btn-xs bg-gray-100 hover:bg-gray-200 text-gray-700 shrink-0">
+              Edit
+            </button>
+          )}
+        </div>
+        <div className="flex items-center gap-4 mt-4 pt-4 border-t border-gray-100 text-sm text-gray-500">
+          <span>{activeSteps.length} workflow steps</span>
+          <span>·</span>
+          <span>{requiredDocs.length} required docs</span>
+          <span>·</span>
+          <span>{optionalDocs.length} optional docs</span>
+        </div>
+      </div>
+
+      {/* Sub-tabs */}
+      <div className="flex gap-1 mb-5 border-b border-gray-200">
+        {(['steps', 'docs'] as const).map(s => (
+          <button
+            key={s}
+            onClick={() => setSection(s)}
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors capitalize ${
+              section === s ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            {s === 'steps' ? 'Workflow Steps' : 'Required Documents'}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Workflow Steps ── */}
+      {section === 'steps' && (
+        <div>
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-sm text-gray-500">Steps that define the case lifecycle for this template.</p>
+            <button onClick={() => { setSelectedStep(null); setStepModal('add') }} className="btn-primary text-xs px-4 py-2">
+              + Add Step
+            </button>
+          </div>
+          <div className="space-y-2">
+            {allSteps.map((step, idx) => (
+              <div key={step.id} className={`bg-white rounded-xl border p-4 flex items-start gap-4 ${step.isActive ? 'border-gray-200' : 'border-gray-100 opacity-60'}`}>
+                <div className="w-7 h-7 rounded-full bg-blue-100 text-blue-700 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
+                  {step.order}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="text-sm font-semibold text-gray-800">{step.name}</p>
+                    {!step.isActive && <span className="text-xs text-gray-400 bg-gray-100 rounded-full px-2 py-0.5">Inactive</span>}
+                    {step.requireDocumentsComplete && (
+                      <span className="text-xs text-amber-700 bg-amber-50 rounded-full px-2 py-0.5">Requires docs</span>
+                    )}
+                  </div>
+                  {step.description && <p className="text-xs text-gray-500 mt-0.5">{step.description}</p>}
+                  {step.defaultFollowUpSuggestion && (
+                    <p className="text-xs text-blue-600 mt-0.5">FU: {step.defaultFollowUpSuggestion}</p>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => { setSelectedStep(step); setStepModal('edit') }}
+                    className="btn-xs bg-gray-100 hover:bg-gray-200 text-gray-700"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => updateWorkflowStep(template.id, step.id, { isActive: !step.isActive })}
+                    className={`btn-xs ${step.isActive ? 'bg-amber-50 text-amber-700 hover:bg-amber-100' : 'bg-green-50 text-green-700 hover:bg-green-100'}`}
+                  >
+                    {step.isActive ? 'Disable' : 'Enable'}
+                  </button>
+                  {deleteStepId === step.id ? (
+                    <>
+                      <button onClick={() => { deleteWorkflowStep(template.id, step.id); setDeleteStepId(null) }} className="btn-xs bg-red-600 text-white hover:bg-red-700">Confirm</button>
+                      <button onClick={() => setDeleteStepId(null)} className="btn-xs bg-gray-100 text-gray-600">Cancel</button>
+                    </>
+                  ) : (
+                    <button onClick={() => setDeleteStepId(step.id)} className="btn-xs bg-red-50 text-red-500 hover:bg-red-100">Delete</button>
+                  )}
+                </div>
+              </div>
+            ))}
+            {allSteps.length === 0 && (
+              <p className="text-sm text-gray-400 py-4">No steps defined yet. Add the first step to get started.</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Required Documents ── */}
+      {section === 'docs' && (
+        <div>
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-sm text-gray-500">Documents required or recommended for this case type.</p>
+            <button onClick={() => { setSelectedDoc(null); setDocModal('add') }} className="btn-primary text-xs px-4 py-2">
+              + Add Document
+            </button>
+          </div>
+
+          {requiredDocs.length > 0 && (
+            <div className="mb-5">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">Required</p>
+              <div className="space-y-2">
+                {requiredDocs.map(doc => (
+                  <DocRow
+                    key={doc.id}
+                    doc={doc}
+                    templateId={template.id}
+                    onEdit={() => { setSelectedDoc(doc); setDocModal('edit') }}
+                    deleteDocId={deleteDocId}
+                    setDeleteDocId={setDeleteDocId}
+                    updateRequiredDocument={updateRequiredDocument}
+                    deleteRequiredDocument={deleteRequiredDocument}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {optionalDocs.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">Optional</p>
+              <div className="space-y-2">
+                {optionalDocs.map(doc => (
+                  <DocRow
+                    key={doc.id}
+                    doc={doc}
+                    templateId={template.id}
+                    onEdit={() => { setSelectedDoc(doc); setDocModal('edit') }}
+                    deleteDocId={deleteDocId}
+                    setDeleteDocId={setDeleteDocId}
+                    updateRequiredDocument={updateRequiredDocument}
+                    deleteRequiredDocument={deleteRequiredDocument}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {template.requiredDocuments.length === 0 && (
+            <p className="text-sm text-gray-400 py-4">No documents configured yet.</p>
+          )}
+        </div>
+      )}
+
+      {/* Step modals */}
+      {stepModal === 'add' && (
+        <StepModal
+          title="Add Workflow Step"
+          initial={{ ...emptyStep(), order: allSteps.length + 1 }}
+          maxOrder={allSteps.length}
+          onSave={d => { addWorkflowStep(template.id, d); setStepModal(null) }}
+          onClose={() => setStepModal(null)}
+        />
+      )}
+      {stepModal === 'edit' && selectedStep && (
+        <StepModal
+          title="Edit Workflow Step"
+          initial={{ name: selectedStep.name, order: selectedStep.order, description: selectedStep.description, requireDocumentsComplete: selectedStep.requireDocumentsComplete, defaultFollowUpSuggestion: selectedStep.defaultFollowUpSuggestion, isActive: selectedStep.isActive }}
+          maxOrder={allSteps.length}
+          onSave={d => { updateWorkflowStep(template.id, selectedStep.id, d); setStepModal(null) }}
+          onClose={() => setStepModal(null)}
+        />
+      )}
+
+      {/* Doc modals */}
+      {docModal === 'add' && (
+        <DocModal
+          title="Add Required Document"
+          initial={emptyDoc()}
+          onSave={d => { addRequiredDocument(template.id, d); setDocModal(null) }}
+          onClose={() => setDocModal(null)}
+        />
+      )}
+      {docModal === 'edit' && selectedDoc && (
+        <DocModal
+          title="Edit Document"
+          initial={{ name: selectedDoc.name, description: selectedDoc.description, required: selectedDoc.required, acceptedFileTypes: selectedDoc.acceptedFileTypes, isActive: selectedDoc.isActive, aiPrompt: selectedDoc.aiPrompt ?? '' }}
+          onSave={d => { updateRequiredDocument(template.id, selectedDoc.id, d); setDocModal(null) }}
+          onClose={() => setDocModal(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+function DocRow({ doc, templateId, onEdit, deleteDocId, setDeleteDocId, updateRequiredDocument, deleteRequiredDocument }: {
+  doc: RequiredDocument
+  templateId: string
+  onEdit: () => void
+  deleteDocId: string | null
+  setDeleteDocId: (id: string | null) => void
+  updateRequiredDocument: (templateId: string, docId: string, data: Partial<RequiredDocument>) => void
+  deleteRequiredDocument: (templateId: string, docId: string) => void
+}) {
+  return (
+    <div className={`bg-white rounded-xl border p-4 flex items-start gap-4 ${doc.isActive ? 'border-gray-200' : 'border-gray-100 opacity-60'}`}>
+      <div className={`w-5 h-5 rounded-full flex items-center justify-center text-xs shrink-0 mt-0.5 ${doc.required ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-500'}`}>
+        {doc.required ? '!' : '?'}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <p className="text-sm font-semibold text-gray-800">{doc.name}</p>
+          <span className={`text-xs rounded-full px-2 py-0.5 font-medium ${doc.required ? 'bg-red-50 text-red-600' : 'bg-gray-100 text-gray-500'}`}>
+            {doc.required ? 'Required' : 'Optional'}
+          </span>
+          {!doc.isActive && <span className="text-xs text-gray-400 bg-gray-100 rounded-full px-2 py-0.5">Inactive</span>}
+        </div>
+        {doc.description && <p className="text-xs text-gray-500 mt-0.5">{doc.description}</p>}
+        {doc.acceptedFileTypes.length > 0 && (
+          <p className="text-xs text-gray-400 mt-0.5">{doc.acceptedFileTypes.join(', ')}</p>
+        )}
+        {doc.aiPrompt ? (
+          <span className="inline-block mt-1 text-xs text-violet-600 bg-violet-50 rounded-full px-2 py-0.5 font-medium">AI prompt configured</span>
+        ) : (
+          <span className="inline-block mt-1 text-xs text-gray-400 bg-gray-50 rounded-full px-2 py-0.5">No AI prompt</span>
+        )}
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        <button onClick={onEdit} className="btn-xs bg-gray-100 hover:bg-gray-200 text-gray-700">Edit</button>
+        <button
+          onClick={() => updateRequiredDocument(templateId, doc.id, { isActive: !doc.isActive })}
+          className={`btn-xs ${doc.isActive ? 'bg-amber-50 text-amber-700 hover:bg-amber-100' : 'bg-green-50 text-green-700 hover:bg-green-100'}`}
+        >
+          {doc.isActive ? 'Disable' : 'Enable'}
+        </button>
+        {deleteDocId === doc.id ? (
+          <>
+            <button onClick={() => { deleteRequiredDocument(templateId, doc.id); setDeleteDocId(null) }} className="btn-xs bg-red-600 text-white hover:bg-red-700">Confirm</button>
+            <button onClick={() => setDeleteDocId(null)} className="btn-xs bg-gray-100 text-gray-600">Cancel</button>
+          </>
+        ) : (
+          <button onClick={() => setDeleteDocId(doc.id)} className="btn-xs bg-red-50 text-red-500 hover:bg-red-100">Delete</button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function WorkflowTemplatesTab() {
+  const { workflowTemplates, addWorkflowTemplate, deleteWorkflowTemplate } = useStore()
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null)
+  const [addModal, setAddModal] = useState(false)
+  const [newName, setNewName] = useState('')
+  const [newDesc, setNewDesc] = useState('')
+  const [addError, setAddError] = useState('')
+  const [deleteId, setDeleteId] = useState<string | null>(null)
+
+  const selectedTemplate = workflowTemplates.find(t => t.id === selectedTemplateId) ?? null
+
+  if (selectedTemplate) {
+    return (
+      <WorkflowTemplateDetail
+        template={selectedTemplate}
+        onBack={() => setSelectedTemplateId(null)}
+      />
+    )
+  }
+
+  const handleAdd = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!newName.trim()) { setAddError('Template name is required.'); return }
+    addWorkflowTemplate({ caseType: newName.trim(), description: newDesc.trim(), requiredDocuments: [], workflowSteps: [], isActive: true })
+    setNewName('')
+    setNewDesc('')
+    setAddError('')
+    setAddModal(false)
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-5">
+        <p className="text-sm text-gray-500">Configure the steps and required documents for each case/policy type.</p>
+        <button onClick={() => setAddModal(true)} className="btn-primary text-xs px-4 py-2">+ New Template</button>
+      </div>
+
+      <div className="space-y-3">
+        {workflowTemplates.map(t => {
+          const activeSteps = t.workflowSteps.filter(s => s.isActive).length
+          const reqDocs = t.requiredDocuments.filter(d => d.required).length
+          const optDocs = t.requiredDocuments.filter(d => !d.required).length
+          return (
+            <div key={t.id} className={`bg-white rounded-2xl border p-5 flex items-center gap-5 hover:border-blue-200 transition-colors ${t.isActive ? 'border-gray-200' : 'border-gray-100 opacity-60'}`}>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1">
+                  <p className="text-base font-semibold text-gray-800">{t.caseType}</p>
+                  {!t.isActive && <span className="text-xs text-gray-400 bg-gray-100 rounded-full px-2 py-0.5">Inactive</span>}
+                </div>
+                <p className="text-sm text-gray-500">{t.description || 'No description'}</p>
+                <div className="flex items-center gap-3 mt-2 text-xs text-gray-400">
+                  <span>{activeSteps} steps</span>
+                  <span>·</span>
+                  <span>{reqDocs} required docs</span>
+                  {optDocs > 0 && <><span>·</span><span>{optDocs} optional docs</span></>}
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => setSelectedTemplateId(t.id)}
+                  className="btn-xs bg-blue-50 text-blue-700 hover:bg-blue-100 font-medium"
+                >
+                  Configure
+                </button>
+                {deleteId === t.id ? (
+                  <>
+                    <button onClick={() => { deleteWorkflowTemplate(t.id); setDeleteId(null) }} className="btn-xs bg-red-600 text-white hover:bg-red-700">Confirm</button>
+                    <button onClick={() => setDeleteId(null)} className="btn-xs bg-gray-100 text-gray-600">Cancel</button>
+                  </>
+                ) : (
+                  <button onClick={() => setDeleteId(t.id)} className="btn-xs bg-red-50 text-red-500 hover:bg-red-100">Delete</button>
+                )}
+              </div>
+            </div>
+          )
+        })}
+        {workflowTemplates.length === 0 && (
+          <p className="text-sm text-gray-400 py-4">No workflow templates yet.</p>
+        )}
+      </div>
+
+      {addModal && (
+        <Modal isOpen onClose={() => setAddModal(false)} title="New Workflow Template" maxWidth="sm">
+          <form onSubmit={handleAdd} className="px-6 py-5 space-y-4">
+            {addError && <p className="text-sm text-red-600 bg-red-50 rounded-xl p-3">{addError}</p>}
+            <div>
+              <label className="label">Template Name *</label>
+              <input className="input" value={newName} onChange={e => setNewName(e.target.value)} placeholder="e.g. Bond Request" autoFocus />
+              <p className="text-xs text-gray-400 mt-1">This should match the Case Type name exactly.</p>
+            </div>
+            <div>
+              <label className="label">Description</label>
+              <input className="input" value={newDesc} onChange={e => setNewDesc(e.target.value)} placeholder="Brief description of this workflow" />
+            </div>
+            <div className="flex gap-3 pt-1">
+              <button type="button" onClick={() => setAddModal(false)} className="btn-secondary flex-1">Cancel</button>
+              <button type="submit" className="btn-primary flex-1">Create Template</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+    </div>
+  )
+}
+
 // ─── Main settings page ───────────────────────────────────────────────────────
 
 export default function SettingsPage() {
@@ -307,36 +858,20 @@ export default function SettingsPage() {
         </div>
       )}
 
+      {/* ── Workflow Templates tab ─────────────────────────────────────────── */}
+      {tab === 'workflowTemplates' && (
+        <div className="card-section">
+          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-5">Workflow Templates</h2>
+          <WorkflowTemplatesTab />
+        </div>
+      )}
+
       {/* ── Case Types tab ─────────────────────────────────────────────────── */}
       {tab === 'caseTypes' && (
         <div className="card-section">
           <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-5">Case Types</h2>
           <p className="text-sm text-gray-500 mb-5">These are the types available when creating a new case.</p>
           <ListSection category="caseTypes" />
-        </div>
-      )}
-
-      {/* ── Case Statuses tab ──────────────────────────────────────────────── */}
-      {tab === 'caseStatuses' && (
-        <div className="card-section">
-          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-5">Case Workflow Statuses</h2>
-          <p className="text-sm text-gray-500 mb-5">
-            Fixed stages that every case moves through, in order. These are part of the core workflow.
-          </p>
-          <div className="flex flex-wrap gap-2 items-center">
-            {CASE_STATUSES.map((s, i) => (
-              <div key={s} className="flex items-center gap-2">
-                <div className="flex items-center gap-1.5">
-                  <span className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 text-xs flex items-center justify-center font-bold shrink-0">{i + 1}</span>
-                  <span className="text-sm text-gray-700">{s}</span>
-                </div>
-                {i < CASE_STATUSES.length - 1 && <span className="text-gray-300">→</span>}
-              </div>
-            ))}
-          </div>
-          <p className="text-xs text-gray-400 mt-5">
-            Case statuses are part of the core workflow and are managed in the system configuration.
-          </p>
         </div>
       )}
 

@@ -21,9 +21,11 @@ export default function AIScanPanel({ file, onClose }: Props) {
   const approve = () => {
     updateCaseFile(file.id, { aiStatus: 'Approved' })
     addActivityLog({
-      action: 'AI scan approved',
-      user: currentUser?.fullName ?? 'Unknown',
-      target: file.fileName,
+      caseId: file.caseId,
+      actionType: 'AI_EXTRACTION_APPROVED',
+      title: 'AI extraction approved',
+      description: `Extracted data from ${file.fileName} approved`,
+      changedBy: currentUser?.fullName ?? 'Unknown',
     })
     setDecision('approved')
     setDone(true)
@@ -32,9 +34,11 @@ export default function AIScanPanel({ file, onClose }: Props) {
   const reject = () => {
     updateCaseFile(file.id, { aiStatus: 'Rejected' })
     addActivityLog({
-      action: 'AI scan rejected',
-      user: currentUser?.fullName ?? 'Unknown',
-      target: file.fileName,
+      caseId: file.caseId,
+      actionType: 'AI_EXTRACTION_REJECTED',
+      title: 'AI extraction rejected',
+      description: `Extracted data from ${file.fileName} rejected`,
+      changedBy: currentUser?.fullName ?? 'Unknown',
     })
     setDecision('rejected')
     setDone(true)
@@ -58,21 +62,43 @@ export default function AIScanPanel({ file, onClose }: Props) {
               The following information was extracted from this document. Please review carefully before approving.
             </p>
 
-            <div className="space-y-3 mb-6">
-              {[
-                { label: 'Customer Name', value: data.customerName },
-                { label: 'Project / Bond Name', value: data.projectName },
-                { label: 'Case Type', value: data.caseType },
-                { label: 'Amount', value: data.amount },
-                { label: 'Expiry Date', value: data.expiryDate },
-                { label: 'Notes', value: data.notes },
-              ].map(row => (
-                <div key={row.label} className="bg-gray-50 rounded-xl px-4 py-3">
-                  <p className="text-xs text-gray-400 mb-0.5">{row.label}</p>
-                  <p className="text-sm font-medium text-gray-800">{row.value || '—'}</p>
+            <div className="space-y-2 mb-6">
+              <div className="bg-gray-50 rounded-xl px-4 py-3">
+                <p className="text-xs text-gray-400 mb-0.5">Contractor / Client</p>
+                <p className="text-sm font-medium text-gray-800">{data.customerName || '—'}</p>
+              </div>
+              <div className="bg-gray-50 rounded-xl px-4 py-3">
+                <p className="text-xs text-gray-400 mb-0.5">Project Title / Description of Works</p>
+                <p className="text-sm font-medium text-gray-800 leading-snug">{data.projectName || '—'}</p>
+              </div>
+              <div className="bg-gray-50 rounded-xl px-4 py-3">
+                <p className="text-xs text-gray-400 mb-0.5">Bond / Insurance Type</p>
+                <p className="text-sm font-medium text-gray-800">{data.caseType || '—'}</p>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="bg-blue-50 rounded-xl px-4 py-3">
+                  <p className="text-xs text-blue-400 mb-0.5">Contract Value</p>
+                  <p className="text-sm font-bold text-blue-800">{data.amount || '—'}</p>
                 </div>
-              ))}
+                <div className="bg-violet-50 rounded-xl px-4 py-3">
+                  <p className="text-xs text-violet-400 mb-0.5">Bond Value</p>
+                  <p className="text-sm font-bold text-violet-800">{data.bondValue || '—'}</p>
+                </div>
+              </div>
+              <div className="bg-gray-50 rounded-xl px-4 py-3">
+                <p className="text-xs text-gray-400 mb-0.5">Bond / Policy Expiry</p>
+                <p className="text-sm font-medium text-gray-800">{data.expiryDate || '—'}</p>
+              </div>
+              {data.notes && (
+                <div className="bg-gray-50 rounded-xl px-4 py-3">
+                  <p className="text-xs text-gray-400 mb-0.5">Reference / Notes</p>
+                  <p className="text-sm font-medium text-gray-800">{data.notes}</p>
+                </div>
+              )}
             </div>
+
+            {/* Extended fields from custom prompts */}
+            {data.raw && <ExtendedFields raw={data.raw} />}
 
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-5">
               <p className="text-xs text-amber-700">
@@ -121,5 +147,86 @@ export default function AIScanPanel({ file, onClose }: Props) {
         )}
       </div>
     </Modal>
+  )
+}
+
+// ─── Extended fields renderer for custom-prompt responses ────────────────────
+
+const STANDARD_KEYS = new Set(['customerName', 'projectName', 'caseType', 'amount', 'bondValue', 'expiryDate', 'notes'])
+
+function formatRMDisplay(value: unknown): string {
+  if (value === null || value === undefined || value === '') return '—'
+  const num = Number(value)
+  if (isNaN(num)) return String(value)
+  return `RM ${num.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+function formatLabel(key: string): string {
+  return key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+}
+
+function isMoneyKey(key: string): boolean {
+  return /value|compensation|liability|amount|sum|price|cost/i.test(key)
+}
+
+function ExtendedFields({ raw }: { raw: Record<string, unknown> }) {
+  const extras = Object.entries(raw).filter(([k]) => !STANDARD_KEYS.has(k))
+  if (extras.length === 0) return null
+
+  return (
+    <div className="mb-4">
+      <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2">Additional Extracted Fields</p>
+      <div className="space-y-2">
+        {extras.map(([key, value]) => {
+          if (value === null || value === undefined) return null
+
+          // Nested object (e.g. cover_duration)
+          if (typeof value === 'object' && !Array.isArray(value)) {
+            const nested = value as Record<string, unknown>
+            return (
+              <div key={key} className="bg-gray-50 rounded-xl px-4 py-3">
+                <p className="text-xs text-gray-400 mb-1.5">{formatLabel(key)}</p>
+                <div className="space-y-1">
+                  {Object.entries(nested).map(([nk, nv]) => (
+                    <div key={nk} className="flex items-start gap-2">
+                      <span className="text-xs text-gray-400 shrink-0 w-40">{formatLabel(nk)}</span>
+                      <span className="text-xs font-medium text-gray-700">{nv !== null && nv !== undefined && nv !== '' ? String(nv) : '—'}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
+          }
+
+          // Note/explanation string paired with a numeric field (e.g. workmen_compensation_note)
+          if (key.endsWith('_note') || key.endsWith('_reason')) {
+            return (
+              <div key={key} className="bg-blue-50 rounded-xl px-4 py-2.5">
+                <p className="text-xs text-blue-400 mb-0.5">{formatLabel(key)}</p>
+                <p className="text-xs text-blue-700">{String(value)}</p>
+              </div>
+            )
+          }
+
+          // Numeric monetary value
+          if (typeof value === 'number' && isMoneyKey(key)) {
+            return (
+              <div key={key} className="bg-violet-50 rounded-xl px-4 py-3">
+                <p className="text-xs text-violet-400 mb-0.5">{formatLabel(key)}</p>
+                <p className="text-sm font-bold text-violet-800">{formatRMDisplay(value)}</p>
+              </div>
+            )
+          }
+
+          // Plain value
+          return (
+            <div key={key} className="bg-gray-50 rounded-xl px-4 py-3">
+              <p className="text-xs text-gray-400 mb-0.5">{formatLabel(key)}</p>
+              <p className="text-sm font-medium text-gray-800">{String(value) || '—'}</p>
+            </div>
+          )
+        })}
+      </div>
+    </div>
   )
 }

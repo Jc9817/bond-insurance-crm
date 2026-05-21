@@ -11,6 +11,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter()
 
   const isLoginPage = pathname === '/login'
+  const isReportPage = pathname.endsWith('/report')
 
   useEffect(() => {
     if (!ready) return
@@ -42,6 +43,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
       </div>
     )
+  }
+
+  // Report pages: full-width, no sidebar (clean for printing)
+  if (isReportPage) {
+    return <div className="flex-1 overflow-y-auto bg-white">{children}</div>
   }
 
   // Authenticated: sidebar + content

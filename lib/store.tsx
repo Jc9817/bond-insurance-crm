@@ -4,10 +4,11 @@ import { createContext, useContext, useState, ReactNode } from 'react'
 import type {
   Customer, Contact, Case, CaseNote, FollowUp, PicUser,
   User, CaseFile, ActivityLog, SettingsItem, SettingsCategory,
+  WorkflowTemplate, RequiredDocument, WorkflowStep,
 } from './types'
 import {
   mockCustomers, mockContacts, mockCases, mockCaseNotes, mockFollowUps, mockPics,
-  mockUsers, mockCaseFiles, mockActivityLogs,
+  mockUsers, mockCaseFiles, mockActivityLogs, mockWorkflowTemplates,
   mockSettingsCaseTypes, mockSettingsIndustries, mockSettingsContactTypes,
   mockSettingsFollowUpCategories, mockSettingsDocumentTypes,
 } from './mock-data'
@@ -26,6 +27,7 @@ type StoreCtx = {
   caseFiles: CaseFile[]
   activityLogs: ActivityLog[]
   settingsData: SettingsData
+  workflowTemplates: WorkflowTemplate[]
 
   // Customers
   addCustomer: (c: Omit<Customer, 'id' | 'createdAt'>) => void
@@ -67,13 +69,24 @@ type StoreCtx = {
   startAiScan: (id: string) => void
 
   // Activity Logs
-  addActivityLog: (log: Omit<ActivityLog, 'id' | 'timestamp'>) => void
+  addActivityLog: (log: Omit<ActivityLog, 'id' | 'timestamp'> & { timestamp?: string }) => void
 
   // Settings
   addSettingsItem: (category: SettingsCategory, name: string) => void
   updateSettingsItem: (category: SettingsCategory, id: string, name: string) => void
   toggleSettingsItem: (category: SettingsCategory, id: string) => void
   deleteSettingsItem: (category: SettingsCategory, id: string) => void
+
+  // Workflow Templates
+  addWorkflowTemplate: (t: Omit<WorkflowTemplate, 'id'>) => void
+  updateWorkflowTemplate: (id: string, t: Partial<WorkflowTemplate>) => void
+  deleteWorkflowTemplate: (id: string) => void
+  addWorkflowStep: (templateId: string, step: Omit<WorkflowStep, 'id' | 'caseTypeId'>) => void
+  updateWorkflowStep: (templateId: string, stepId: string, step: Partial<WorkflowStep>) => void
+  deleteWorkflowStep: (templateId: string, stepId: string) => void
+  addRequiredDocument: (templateId: string, doc: Omit<RequiredDocument, 'id' | 'caseTypeId'>) => void
+  updateRequiredDocument: (templateId: string, docId: string, doc: Partial<RequiredDocument>) => void
+  deleteRequiredDocument: (templateId: string, docId: string) => void
 }
 
 const StoreContext = createContext<StoreCtx | null>(null)
@@ -88,6 +101,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [users, setUsers] = useState<User[]>(mockUsers)
   const [caseFiles, setCaseFiles] = useState<CaseFile[]>(mockCaseFiles)
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>(mockActivityLogs)
+  const [workflowTemplates, setWorkflowTemplates] = useState<WorkflowTemplate[]>(mockWorkflowTemplates)
   const [settingsData, setSettingsData] = useState<SettingsData>({
     caseTypes: mockSettingsCaseTypes,
     industries: mockSettingsIndustries,
@@ -118,9 +132,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   // Cases
   const addCase = (c: Omit<Case, 'id' | 'createdAt'>) =>
-    setCases(prev => [{ ...c, id: generateId(), createdAt: nowIso() }, ...prev])
+    setCases(prev => [{ ...c, id: generateId(), createdAt: nowIso(), updatedAt: nowIso() }, ...prev])
   const updateCase = (id: string, c: Partial<Case>) =>
-    setCases(prev => prev.map(x => x.id === id ? { ...x, ...c } : x))
+    setCases(prev => prev.map(x => x.id === id ? { ...x, ...c, updatedAt: nowIso() } : x))
   const deleteCase = (id: string) =>
     setCases(prev => prev.filter(x => x.id !== id))
 
@@ -161,29 +175,42 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setCaseFiles(prev => prev.map(x => x.id === id ? { ...x, ...f } : x))
   const startAiScan = (id: string) => {
     updateCaseFile(id, { aiStatus: 'Processing' })
-    setTimeout(() => {
-      const file = caseFiles.find(f => f.id === id)
-      const relatedCase = file ? cases.find(c => c.id === file.caseId) : null
-      const mockData = {
-        customerName: relatedCase?.customerName ?? 'Detected Customer Name',
-        projectName: relatedCase?.caseTitle.replace(/^[^—–]+[—–]\s*/, '') ?? 'Detected Project Name',
-        caseType: relatedCase?.caseType ?? 'Bond Request',
-        amount: relatedCase ? `RM ${relatedCase.amount.toLocaleString('en-MY', { minimumFractionDigits: 2 })}` : 'RM 0.00',
-        expiryDate: '2027-12-31',
-        notes: 'Document reviewed. Key fields extracted. Please verify before approving.',
-      }
-      setCaseFiles(prev =>
-        prev.map(x => x.id === id
-          ? { ...x, aiStatus: 'Ready for Review', aiScanned: true, aiExtractedData: mockData }
+    const file = caseFiles.find(f => f.id === id)
+    if (!file?.fileDataUrl) {
+      setCaseFiles(prev => prev.map(x => x.id === id
+        ? { ...x, aiStatus: 'Not Scanned' }
+        : x
+      ))
+      return
+    }
+    fetch('/api/ai-scan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fileDataUrl: file.fileDataUrl,
+        fileName: file.fileName,
+        documentType: file.documentType,
+        aiPrompt: file.aiPrompt,
+      }),
+    })
+      .then(res => res.json())
+      .then(data => {
+        setCaseFiles(prev => prev.map(x => x.id === id
+          ? { ...x, aiStatus: 'Ready for Review', aiScanned: true, aiExtractedData: data }
           : x
-        )
-      )
-    }, 2000)
+        ))
+      })
+      .catch(() => {
+        setCaseFiles(prev => prev.map(x => x.id === id
+          ? { ...x, aiStatus: 'Not Scanned' }
+          : x
+        ))
+      })
   }
 
   // Activity Logs
-  const addActivityLog = (log: Omit<ActivityLog, 'id' | 'timestamp'>) =>
-    setActivityLogs(prev => [{ ...log, id: generateId(), timestamp: nowIso() }, ...prev])
+  const addActivityLog = (log: Omit<ActivityLog, 'id' | 'timestamp'> & { timestamp?: string }) =>
+    setActivityLogs(prev => [{ ...log, id: generateId(), timestamp: log.timestamp ?? nowIso() }, ...prev])
 
   // Settings
   const addSettingsItem = (category: SettingsCategory, name: string) =>
@@ -207,10 +234,56 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       [category]: prev[category].filter(x => x.id !== id),
     }))
 
+  // Workflow Templates
+  const addWorkflowTemplate = (t: Omit<WorkflowTemplate, 'id'>) =>
+    setWorkflowTemplates(prev => [...prev, { ...t, id: generateId() }])
+  const updateWorkflowTemplate = (id: string, t: Partial<WorkflowTemplate>) =>
+    setWorkflowTemplates(prev => prev.map(x => x.id === id ? { ...x, ...t } : x))
+  const deleteWorkflowTemplate = (id: string) =>
+    setWorkflowTemplates(prev => prev.filter(x => x.id !== id))
+
+  const addWorkflowStep = (templateId: string, step: Omit<WorkflowStep, 'id' | 'caseTypeId'>) =>
+    setWorkflowTemplates(prev => prev.map(t =>
+      t.id === templateId
+        ? { ...t, workflowSteps: [...t.workflowSteps, { ...step, id: generateId(), caseTypeId: templateId }] }
+        : t
+    ))
+  const updateWorkflowStep = (templateId: string, stepId: string, step: Partial<WorkflowStep>) =>
+    setWorkflowTemplates(prev => prev.map(t =>
+      t.id === templateId
+        ? { ...t, workflowSteps: t.workflowSteps.map(s => s.id === stepId ? { ...s, ...step } : s) }
+        : t
+    ))
+  const deleteWorkflowStep = (templateId: string, stepId: string) =>
+    setWorkflowTemplates(prev => prev.map(t =>
+      t.id === templateId
+        ? { ...t, workflowSteps: t.workflowSteps.filter(s => s.id !== stepId) }
+        : t
+    ))
+
+  const addRequiredDocument = (templateId: string, doc: Omit<RequiredDocument, 'id' | 'caseTypeId'>) =>
+    setWorkflowTemplates(prev => prev.map(t =>
+      t.id === templateId
+        ? { ...t, requiredDocuments: [...t.requiredDocuments, { ...doc, id: generateId(), caseTypeId: templateId }] }
+        : t
+    ))
+  const updateRequiredDocument = (templateId: string, docId: string, doc: Partial<RequiredDocument>) =>
+    setWorkflowTemplates(prev => prev.map(t =>
+      t.id === templateId
+        ? { ...t, requiredDocuments: t.requiredDocuments.map(d => d.id === docId ? { ...d, ...doc } : d) }
+        : t
+    ))
+  const deleteRequiredDocument = (templateId: string, docId: string) =>
+    setWorkflowTemplates(prev => prev.map(t =>
+      t.id === templateId
+        ? { ...t, requiredDocuments: t.requiredDocuments.filter(d => d.id !== docId) }
+        : t
+    ))
+
   return (
     <StoreContext.Provider value={{
       customers, contacts, cases, caseNotes, followUps, pics,
-      users, caseFiles, activityLogs, settingsData,
+      users, caseFiles, activityLogs, settingsData, workflowTemplates,
       addCustomer, updateCustomer, deleteCustomer,
       addContact, updateContact, deleteContact, setPrimaryContact,
       addCase, updateCase, deleteCase,
@@ -221,6 +294,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       addCaseFile, deleteCaseFile, updateCaseFile, startAiScan,
       addActivityLog,
       addSettingsItem, updateSettingsItem, toggleSettingsItem, deleteSettingsItem,
+      addWorkflowTemplate, updateWorkflowTemplate, deleteWorkflowTemplate,
+      addWorkflowStep, updateWorkflowStep, deleteWorkflowStep,
+      addRequiredDocument, updateRequiredDocument, deleteRequiredDocument,
     }}>
       {children}
     </StoreContext.Provider>

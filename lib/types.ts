@@ -71,9 +71,15 @@ export type Case = {
   amount: number
   personInCharge: string
   createdAt: string
+  updatedAt?: string
   currentStatus: CaseStatus
-  result: string        // '', 'Won', 'Lost'
+  currentWorkflowStepId?: string
+  result: string        // '', 'Won', 'Lost', 'Cancelled', 'On Hold'
   closingRemarks: string
+  lossReason?: string
+  finalAmount?: number
+  finalInsurer?: string
+  closedAt?: string
 }
 
 export type CaseNote = {
@@ -157,8 +163,10 @@ export type AiExtractedData = {
   projectName: string
   caseType: string
   amount: string
+  bondValue: string
   expiryDate: string
   notes: string
+  raw?: Record<string, unknown>   // full parsed response when a custom prompt schema is used
 }
 
 export type CaseFile = {
@@ -168,20 +176,47 @@ export type CaseFile = {
   fileSize: number
   fileType: string
   documentType: string
+  requiredDocumentId?: string   // links to RequiredDocument.id when uploaded via checklist
   uploadedBy: string
   uploadedAt: string
   aiScanned: boolean
   aiStatus: AiStatus
   aiExtractedData: AiExtractedData | null
+  fileDataUrl?: string
+  aiPrompt?: string            // extraction instructions copied from RequiredDocument at upload time
 }
 
 // ─── Activity Log ─────────────────────────────────────────────────────────────
 
+export const ACTIVITY_LOG_ACTION_TYPES = [
+  'CASE_CREATED',
+  'STATUS_CHANGED',
+  'WORKFLOW_STEP_CHANGED',
+  'DOCUMENT_UPLOADED',
+  'DOCUMENT_DELETED',
+  'AI_SCAN_STARTED',
+  'AI_SCAN_COMPLETED',
+  'AI_EXTRACTION_APPROVED',
+  'AI_EXTRACTION_REJECTED',
+  'FOLLOW_UP_CREATED',
+  'FOLLOW_UP_COMPLETED',
+  'CASE_CLOSED',
+  'CASE_REOPENED',
+  'RESULT_SET',
+  'NOTE_ADDED',
+] as const
+export type ActivityLogActionType = (typeof ACTIVITY_LOG_ACTION_TYPES)[number]
+
 export type ActivityLog = {
   id: string
-  action: string
-  user: string
-  target: string
+  caseId?: string
+  caseTitle?: string
+  actionType?: ActivityLogActionType
+  title: string
+  description?: string
+  oldValue?: string
+  newValue?: string
+  changedBy: string
   timestamp: string
 }
 
@@ -199,3 +234,36 @@ export type SettingsCategory =
   | 'contactTypes'
   | 'followUpCategories'
   | 'documentTypes'
+
+// ─── Workflow Templates ───────────────────────────────────────────────────────
+
+export type RequiredDocument = {
+  id: string
+  caseTypeId: string
+  name: string
+  description: string
+  required: boolean            // true = required, false = optional
+  acceptedFileTypes: string[]
+  isActive: boolean
+  aiPrompt?: string            // custom extraction instructions sent to AI when scanning this document
+}
+
+export type WorkflowStep = {
+  id: string
+  caseTypeId: string
+  name: string
+  order: number
+  description: string
+  requireDocumentsComplete: boolean
+  defaultFollowUpSuggestion: string
+  isActive: boolean
+}
+
+export type WorkflowTemplate = {
+  id: string
+  caseType: string              // matches Case.caseType
+  description: string
+  requiredDocuments: RequiredDocument[]
+  workflowSteps: WorkflowStep[]
+  isActive: boolean
+}

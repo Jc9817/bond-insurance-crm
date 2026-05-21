@@ -81,9 +81,10 @@ export default function FileUploadZone({ caseId, documentTypes, onScanReady }: P
           aiExtractedData: null,
         })
         addActivityLog({
-          action: 'File uploaded',
-          user: currentUser?.fullName ?? 'Unknown',
-          target: file.name,
+          actionType: 'DOCUMENT_UPLOADED',
+          title: 'File uploaded',
+          description: `${file.name} uploaded`,
+          changedBy: currentUser?.fullName ?? 'Unknown',
         })
         setUploading(null)
         setUploadProgress(0)
@@ -107,9 +108,10 @@ export default function FileUploadZone({ caseId, documentTypes, onScanReady }: P
   const handleScan = (file: CaseFile) => {
     startAiScan(file.id)
     addActivityLog({
-      action: 'AI scan started',
-      user: currentUser?.fullName ?? 'Unknown',
-      target: file.fileName,
+      actionType: 'AI_SCAN_STARTED',
+      title: 'AI scan started',
+      description: `AI scanning ${file.fileName}`,
+      changedBy: currentUser?.fullName ?? 'Unknown',
     })
     // Notify parent when ready (poll for status change)
     const check = setInterval(() => {
