@@ -8,7 +8,7 @@ import { useAuth } from '@/lib/auth'
 import type { CaseFile } from '@/lib/types'
 import {
   getWorkflowTemplate, getActiveSteps, getCaseReadiness, getDocumentCompleteness,
-  getMissingRequiredDocs, getCurrentStep, getNextStep,
+  getMissingRequiredDocs, getCurrentStep, getNextStep, getUnassignedFiles,
 } from '@/lib/workflow'
 import { formatDate, formatCurrency, timeAgo, getDaysUntil } from '@/lib/utils'
 import StatusBadge from '@/components/ui/StatusBadge'
@@ -24,6 +24,9 @@ export default function CaseDetailPage() {
     activityLogs, updateCase, addCaseNote, addFollowUp, toggleFollowUp, deleteFollowUp,
     addActivityLog, caseFiles,
   } = useStore()
+
+  const [editInfoModal, setEditInfoModal] = useState(false)
+  const [editInfoForm, setEditInfoForm] = useState({ caseTitle: '', caseType: '', amount: 0, personInCharge: '' })
   const { currentUser } = useAuth()
 
   const caseItem = cases.find(c => c.id === id)
@@ -52,9 +55,12 @@ export default function CaseDetailPage() {
     )
   }
 
-  const template = getWorkflowTemplate(caseItem.caseType, workflowTemplates)
+  const customer = customers.find(c => c.id === caseItem.customerId)
+  const template = getWorkflowTemplate(caseItem.caseType, workflowTemplates, customer?.businessType)
   const steps = getActiveSteps(template)
   const caseDocs = caseFiles.filter(f => f.caseId === id)
+  const unassignedDocs = getUnassignedFiles(id, template, caseDocs)
+  const caseTypeOptions = [...new Set(workflowTemplates.filter(t => t.isActive).map(t => t.caseType))]
   const readiness = getCaseReadiness(caseItem, template, caseFiles, followUps)
   const docCompleteness = getDocumentCompleteness(id, template, caseFiles)
   const missingDocs = getMissingRequiredDocs(id, template, caseFiles)
@@ -68,8 +74,6 @@ export default function CaseDetailPage() {
       if (!acc[log.newValue!]) acc[log.newValue!] = log.timestamp
       return acc
     }, {})
-
-  const customer = customers.find(c => c.id === caseItem.customerId)
   const custContacts = contacts.filter(c => c.customerId === caseItem.customerId)
   const notes = caseNotes
     .filter(n => n.caseId === id)
@@ -183,13 +187,20 @@ export default function CaseDetailPage() {
         <div className="lg:col-span-2 card-section">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Document Checklist</h2>
-            <span className={`text-xs font-semibold rounded-full px-2.5 py-1 ${
-              docCompleteness >= 100 ? 'bg-green-100 text-green-700' :
-              missingDocs.length > 0 ? 'bg-red-100 text-red-600' :
-              'bg-gray-100 text-gray-500'
-            }`}>
-              {missingDocs.length > 0 ? `${missingDocs.length} missing` : 'Complete'}
-            </span>
+            <div className="flex items-center gap-2">
+              {unassignedDocs.length > 0 && (
+                <span className="text-xs font-semibold rounded-full px-2.5 py-1 bg-amber-100 text-amber-700">
+                  {unassignedDocs.length} unassigned
+                </span>
+              )}
+              <span className={`text-xs font-semibold rounded-full px-2.5 py-1 ${
+                docCompleteness >= 100 ? 'bg-green-100 text-green-700' :
+                missingDocs.length > 0 ? 'bg-red-100 text-red-600' :
+                'bg-gray-100 text-gray-500'
+              }`}>
+                {missingDocs.length > 0 ? `${missingDocs.length} missing` : 'Complete'}
+              </span>
+            </div>
           </div>
           <div className="mb-5">
             <div className="flex items-center justify-between mb-1">
@@ -315,7 +326,18 @@ export default function CaseDetailPage() {
       {/* ─── Case Info + Follow-Ups ───────────────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-5">
         <div className="lg:col-span-2 card-section">
-          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-5">Case Information</h2>
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Case Information</h2>
+            <button
+              onClick={() => {
+                setEditInfoForm({ caseTitle: caseItem.caseTitle, caseType: caseItem.caseType, amount: caseItem.amount, personInCharge: caseItem.personInCharge })
+                setEditInfoModal(true)
+              }}
+              className="btn-xs bg-gray-100 hover:bg-gray-200 text-gray-700"
+            >
+              Edit
+            </button>
+          </div>
           <div className="grid grid-cols-2 gap-5">
             <DetailRow label="Customer">
               {customer
@@ -602,6 +624,84 @@ export default function CaseDetailPage() {
           <div className="flex gap-3">
             <button type="button" onClick={() => setFollowUpModal(false)} className="btn-secondary flex-1">Cancel</button>
             <button type="submit" className="btn-primary flex-1">Add Follow-Up</button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Edit Case Info Modal */}
+      <Modal isOpen={editInfoModal} onClose={() => setEditInfoModal(false)} title="Edit Case Info" maxWidth="sm">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            const changes: string[] = []
+            if (editInfoForm.caseTitle !== caseItem.caseTitle) changes.push(`Title: "${caseItem.caseTitle}" → "${editInfoForm.caseTitle}"`)
+            if (editInfoForm.caseType !== caseItem.caseType) changes.push(`Type: ${caseItem.caseType || '—'} → ${editInfoForm.caseType || '—'}`)
+            if (editInfoForm.amount !== caseItem.amount) changes.push(`Amount: RM ${caseItem.amount.toLocaleString()} → RM ${editInfoForm.amount.toLocaleString()}`)
+            if (editInfoForm.personInCharge !== caseItem.personInCharge) changes.push(`PIC: ${caseItem.personInCharge || '—'} → ${editInfoForm.personInCharge || '—'}`)
+            updateCase(id, {
+              caseTitle: editInfoForm.caseTitle,
+              caseType: editInfoForm.caseType,
+              amount: editInfoForm.amount,
+              personInCharge: editInfoForm.personInCharge,
+            })
+            if (changes.length > 0) {
+              addActivityLog({
+                caseId: id,
+                caseTitle: editInfoForm.caseTitle,
+                actionType: 'CASE_UPDATED',
+                title: 'Case info updated',
+                description: changes.join('; '),
+                changedBy: currentUser?.fullName ?? 'Unknown',
+              })
+            }
+            setEditInfoModal(false)
+          }}
+          className="px-6 py-5 space-y-4"
+        >
+          <div>
+            <label className="label">Case Title *</label>
+            <input
+              className="input"
+              value={editInfoForm.caseTitle}
+              onChange={e => setEditInfoForm(p => ({ ...p, caseTitle: e.target.value }))}
+              required
+            />
+          </div>
+          <div>
+            <label className="label">Case Type</label>
+            <select
+              className="input"
+              value={editInfoForm.caseType}
+              onChange={e => setEditInfoForm(p => ({ ...p, caseType: e.target.value }))}
+            >
+              <option value="">— Select type —</option>
+              {caseTypeOptions.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="label">Estimated Amount (RM)</label>
+            <input
+              className="input"
+              type="number"
+              min={0}
+              value={editInfoForm.amount || ''}
+              onChange={e => setEditInfoForm(p => ({ ...p, amount: Number(e.target.value) }))}
+            />
+          </div>
+          <div>
+            <label className="label">Person in Charge</label>
+            <select
+              className="input"
+              value={editInfoForm.personInCharge}
+              onChange={e => setEditInfoForm(p => ({ ...p, personInCharge: e.target.value }))}
+            >
+              <option value="">— Select —</option>
+              {pics.map(p => <option key={p.name} value={p.name}>{p.name}</option>)}
+            </select>
+          </div>
+          <div className="flex gap-3 pt-1">
+            <button type="button" onClick={() => setEditInfoModal(false)} className="btn-secondary flex-1">Cancel</button>
+            <button type="submit" className="btn-primary flex-1">Save Changes</button>
           </div>
         </form>
       </Modal>

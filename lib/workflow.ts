@@ -3,9 +3,18 @@ import { getDaysUntil } from './utils'
 
 export function getWorkflowTemplate(
   caseType: string,
-  templates: WorkflowTemplate[]
+  templates: WorkflowTemplate[],
+  businessType?: string
 ): WorkflowTemplate | null {
-  return templates.find(t => t.isActive && t.caseType === caseType) ?? null
+  const matching = templates.filter(t => t.isActive && t.caseType === caseType)
+  if (matching.length === 0) return null
+
+  // Prefer exact business-type match, fall back to generic (no businessType set)
+  if (businessType) {
+    const exact = matching.find(t => t.businessType === businessType)
+    if (exact) return exact
+  }
+  return matching.find(t => !t.businessType) ?? matching[0]
 }
 
 export function getActiveSteps(template: WorkflowTemplate | null): WorkflowStep[] {
@@ -145,6 +154,17 @@ export function isDocumentCheckComplete(
   caseFiles: CaseFile[]
 ): boolean {
   return getMissingRequiredDocs(caseId, template, caseFiles).length === 0
+}
+
+export function getUnassignedFiles(
+  caseId: string,
+  template: WorkflowTemplate | null,
+  caseFiles: CaseFile[]
+): CaseFile[] {
+  const docIds = template ? new Set(getActiveDocs(template).map(d => d.id)) : new Set<string>()
+  return caseFiles.filter(
+    f => f.caseId === caseId && (!f.requiredDocumentId || !docIds.has(f.requiredDocumentId))
+  )
 }
 
 export function getStuckDays(caseItem: Case): number {

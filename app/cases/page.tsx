@@ -28,7 +28,7 @@ const emptyCase = (customers: { id: string; customerName: string }[]): FormData 
 
 function CaseForm({ initial, customers, pics, onSave, onCancel }: {
   initial: FormData
-  customers: { id: string; customerName: string }[]
+  customers: { id: string; customerName: string; businessType?: string }[]
   pics: { name: string }[]
   onSave: (d: FormData) => void
   onCancel: () => void
@@ -41,12 +41,20 @@ function CaseForm({ initial, customers, pics, onSave, onCancel }: {
     (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
       if (k === 'customerId') {
         const c = customers.find(x => x.id === e.target.value)
-        setForm(prev => ({ ...prev, customerId: e.target.value, customerName: c?.customerName ?? '' }))
+        setForm(prev => {
+          const caseType = prev.caseType
+          if (caseType) {
+            const template = getWorkflowTemplate(caseType, workflowTemplates, c?.businessType)
+            const firstStep = template?.workflowSteps.filter(s => s.isActive).sort((a, b) => a.order - b.order)[0]
+            return { ...prev, customerId: e.target.value, customerName: c?.customerName ?? '', currentWorkflowStepId: firstStep?.id ?? prev.currentWorkflowStepId }
+          }
+          return { ...prev, customerId: e.target.value, customerName: c?.customerName ?? '' }
+        })
       } else if (k === 'amount') {
         setForm(prev => ({ ...prev, amount: Number(e.target.value) }))
       } else if (k === 'caseType') {
-        // Auto-set workflow step when case type selected
-        const template = getWorkflowTemplate(e.target.value, workflowTemplates)
+        const c = customers.find(x => x.id === form.customerId)
+        const template = getWorkflowTemplate(e.target.value, workflowTemplates, c?.businessType)
         const firstStep = template?.workflowSteps.filter(s => s.isActive).sort((a, b) => a.order - b.order)[0]
         setForm(prev => ({ ...prev, caseType: e.target.value, currentWorkflowStepId: firstStep?.id ?? '' }))
       } else {
@@ -162,6 +170,7 @@ export default function CasesPage() {
         />
       ) : (
         <div className="card overflow-hidden">
+          <div className="overflow-x-auto">
           <table className="min-w-full">
             <thead>
               <tr className="border-b border-gray-100 bg-stone-50">
@@ -180,7 +189,8 @@ export default function CasesPage() {
               {filtered.length === 0 ? (
                 <tr><td colSpan={9} className="px-5 py-12 text-center text-gray-400">No cases found.</td></tr>
               ) : filtered.map(c => {
-                const template = getWorkflowTemplate(c.caseType, workflowTemplates)
+                const cust = customers.find(cu => cu.id === c.customerId)
+                const template = getWorkflowTemplate(c.caseType, workflowTemplates, cust?.businessType)
                 const readiness = getCaseReadiness(c, template, caseFiles, followUps)
                 const missing = getMissingRequiredDocs(c.id, template, caseFiles)
                 return (
@@ -230,6 +240,7 @@ export default function CasesPage() {
               })}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 

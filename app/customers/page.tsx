@@ -4,14 +4,14 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { useStore } from '@/lib/store'
 import type { Customer } from '@/lib/types'
-import { INDUSTRIES } from '@/lib/types'
+import { INDUSTRIES, BUSINESS_TYPES } from '@/lib/types'
 import { formatDate } from '@/lib/utils'
 import PageHeader from '@/components/ui/PageHeader'
 import Modal from '@/components/ui/Modal'
 
 type FormData = Omit<Customer, 'id' | 'createdAt'>
 const empty: FormData = {
-  customerName: '', companyRegistrationNo: '', industry: '',
+  customerName: '', companyRegistrationNo: '', businessType: '', industry: '',
   mainPhone: '', mainEmail: '', notes: '',
 }
 
@@ -40,8 +40,11 @@ function CustomerForm({ initial, onSave, onCancel }: {
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="label">Company Reg. No.</label>
-          <input className="input" value={form.companyRegistrationNo} onChange={set('companyRegistrationNo')} placeholder="e.g. 199801012345" />
+          <label className="label">Business Type *</label>
+          <select className="input" value={form.businessType} onChange={set('businessType')}>
+            <option value="">— Select —</option>
+            {BUSINESS_TYPES.map(b => <option key={b} value={b}>{b}</option>)}
+          </select>
         </div>
         <div>
           <label className="label">Industry</label>
@@ -49,6 +52,10 @@ function CustomerForm({ initial, onSave, onCancel }: {
             <option value="">— Select —</option>
             {INDUSTRIES.map(i => <option key={i} value={i}>{i}</option>)}
           </select>
+        </div>
+        <div>
+          <label className="label">Company Reg. No.</label>
+          <input className="input" value={form.companyRegistrationNo} onChange={set('companyRegistrationNo')} placeholder="e.g. 199801012345" />
         </div>
         <div>
           <label className="label">Main Phone</label>
@@ -112,10 +119,12 @@ export default function CustomersPage() {
       </div>
 
       <div className="card overflow-hidden">
+        <div className="overflow-x-auto">
         <table className="min-w-full">
           <thead>
             <tr className="border-b border-gray-100 bg-stone-50">
               <th className="table-th">Customer Name</th>
+              <th className="table-th">Business Type</th>
               <th className="table-th">Reg. No.</th>
               <th className="table-th">Industry</th>
               <th className="table-th">Primary Contact</th>
@@ -127,7 +136,7 @@ export default function CustomersPage() {
           <tbody className="divide-y divide-gray-50">
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-5 py-12 text-center text-gray-400">
+                <td colSpan={8} className="px-5 py-12 text-center text-gray-400">
                   {search ? 'No customers match your search.' : 'No customers yet. Add your first customer to get started.'}
                 </td>
               </tr>
@@ -140,6 +149,11 @@ export default function CustomersPage() {
                     <Link href={`/customers/${c.id}`} className="font-semibold text-gray-900 hover:text-blue-600 whitespace-nowrap">
                       {c.customerName}
                     </Link>
+                  </td>
+                  <td className="table-td">
+                    {c.businessType
+                      ? <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${c.businessType === 'Sole Proprietor' ? 'bg-amber-100 text-amber-700' : c.businessType === 'Partnership' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>{c.businessType}</span>
+                      : <span className="text-gray-400">—</span>}
                   </td>
                   <td className="table-td text-gray-500 whitespace-nowrap">{c.companyRegistrationNo || '—'}</td>
                   <td className="table-td">
@@ -184,6 +198,7 @@ export default function CustomersPage() {
             })}
           </tbody>
         </table>
+        </div>
       </div>
 
       <Modal isOpen={modal === 'add'} onClose={closeModal} title="Add Customer">
@@ -193,7 +208,7 @@ export default function CustomersPage() {
       <Modal isOpen={modal === 'edit'} onClose={closeModal} title="Edit Customer">
         {selected && (
           <CustomerForm
-            initial={{ customerName: selected.customerName, companyRegistrationNo: selected.companyRegistrationNo, industry: selected.industry, mainPhone: selected.mainPhone, mainEmail: selected.mainEmail, notes: selected.notes }}
+            initial={{ customerName: selected.customerName, companyRegistrationNo: selected.companyRegistrationNo, businessType: selected.businessType ?? '', industry: selected.industry, mainPhone: selected.mainPhone, mainEmail: selected.mainEmail, notes: selected.notes }}
             onSave={d => { updateCustomer(selected.id, d); closeModal() }}
             onCancel={closeModal}
           />

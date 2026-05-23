@@ -1,9 +1,20 @@
 // ─── Customer ────────────────────────────────────────────────────────────────
 
+export const BUSINESS_TYPES = [
+  'Sole Proprietor',
+  'Partnership',
+  'Sdn. Bhd.',
+  'Bhd.',
+  'PLT (LLP)',
+  'Other',
+] as const
+export type BusinessType = (typeof BUSINESS_TYPES)[number]
+
 export type Customer = {
   id: string
   customerName: string
   companyRegistrationNo: string
+  businessType: string          // Sole Proprietor | Sdn. Bhd. | etc.
   industry: string
   mainPhone: string
   mainEmail: string
@@ -204,6 +215,15 @@ export const ACTIVITY_LOG_ACTION_TYPES = [
   'CASE_REOPENED',
   'RESULT_SET',
   'NOTE_ADDED',
+  'INQUIRY_CREATED',
+  'INQUIRY_STATUS_CHANGED',
+  'INQUIRY_NOTE_ADDED',
+  'INQUIRY_QUOTATION_ADDED',
+  'INQUIRY_QUOTATION_UPDATED',
+  'INQUIRY_DOCUMENT_UPLOADED',
+  'INQUIRY_CONVERTED',
+  'DOCUMENT_ASSIGNED',
+  'CASE_UPDATED',
 ] as const
 export type ActivityLogActionType = (typeof ACTIVITY_LOG_ACTION_TYPES)[number]
 
@@ -211,6 +231,7 @@ export type ActivityLog = {
   id: string
   caseId?: string
   caseTitle?: string
+  inquiryId?: string
   actionType?: ActivityLogActionType
   title: string
   description?: string
@@ -262,8 +283,92 @@ export type WorkflowStep = {
 export type WorkflowTemplate = {
   id: string
   caseType: string              // matches Case.caseType
+  businessType?: string         // if set, template only applies to customers of this business type
   description: string
   requiredDocuments: RequiredDocument[]
   workflowSteps: WorkflowStep[]
   isActive: boolean
+}
+
+// ─── Inquiry ──────────────────────────────────────────────────────────────────
+
+export const INQUIRY_STATUSES = [
+  'New',
+  'Gathering Info',
+  'Docs Requested',
+  'Quotation Requested',
+  'Quotation Received',
+  'Customer Reviewing',
+  'Qualified',
+  'Closed',
+  'Lost',
+] as const
+export type InquiryStatus = (typeof INQUIRY_STATUSES)[number]
+
+export const INQUIRY_TYPES = [
+  'Bond Request',
+  'Insurance Request',
+  'Renewal',
+  'Endorsement',
+  'Quotation Check',
+  'Market Checking',
+  'Other',
+]
+
+export const QUOTATION_STATUSES = [
+  'Pending',
+  'Quoted',
+  'Under Review',
+  'Rejected',
+  'No Response',
+] as const
+export type QuotationStatus = (typeof QUOTATION_STATUSES)[number]
+
+export type Inquiry = {
+  id: string
+  inquiryTitle: string
+  customerId: string
+  customerName: string
+  contactId?: string
+  contactName?: string
+  inquiryType: string
+  roughAmount: number
+  status: InquiryStatus
+  assignedPerson: string
+  notes: string
+  createdAt: string
+  updatedAt?: string
+  convertedToCase: boolean
+  convertedCaseId?: string
+}
+
+export type InquiryQuotation = {
+  id: string
+  inquiryId: string
+  providerName: string
+  quotationAmount: number
+  requestedDate: string
+  receivedDate?: string
+  status: QuotationStatus
+  notes: string
+}
+
+export type InquiryNote = {
+  id: string
+  inquiryId: string
+  content: string
+  createdAt: string
+  createdBy: string
+}
+
+export type InquiryDocument = {
+  id: string
+  inquiryId: string
+  fileName: string
+  fileSize: number
+  fileType: string
+  documentType: string
+  uploadedBy: string
+  uploadedAt: string
+  fileDataUrl?: string
 }

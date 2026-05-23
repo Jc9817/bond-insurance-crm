@@ -5,12 +5,14 @@ import type {
   Customer, Contact, Case, CaseNote, FollowUp, PicUser,
   User, CaseFile, ActivityLog, SettingsItem, SettingsCategory,
   WorkflowTemplate, RequiredDocument, WorkflowStep,
+  Inquiry, InquiryQuotation, InquiryNote, InquiryDocument,
 } from './types'
 import {
   mockCustomers, mockContacts, mockCases, mockCaseNotes, mockFollowUps, mockPics,
   mockUsers, mockCaseFiles, mockActivityLogs, mockWorkflowTemplates,
   mockSettingsCaseTypes, mockSettingsIndustries, mockSettingsContactTypes,
   mockSettingsFollowUpCategories, mockSettingsDocumentTypes,
+  mockInquiries, mockInquiryQuotations, mockInquiryNotes, mockInquiryDocuments,
 } from './mock-data'
 import { generateId, nowIso } from './utils'
 
@@ -28,6 +30,10 @@ type StoreCtx = {
   activityLogs: ActivityLog[]
   settingsData: SettingsData
   workflowTemplates: WorkflowTemplate[]
+  inquiries: Inquiry[]
+  inquiryQuotations: InquiryQuotation[]
+  inquiryNotes: InquiryNote[]
+  inquiryDocuments: InquiryDocument[]
 
   // Customers
   addCustomer: (c: Omit<Customer, 'id' | 'createdAt'>) => void
@@ -87,6 +93,18 @@ type StoreCtx = {
   addRequiredDocument: (templateId: string, doc: Omit<RequiredDocument, 'id' | 'caseTypeId'>) => void
   updateRequiredDocument: (templateId: string, docId: string, doc: Partial<RequiredDocument>) => void
   deleteRequiredDocument: (templateId: string, docId: string) => void
+
+  // Inquiries
+  addInquiry: (i: Omit<Inquiry, 'id' | 'createdAt' | 'convertedToCase'>) => string
+  updateInquiry: (id: string, i: Partial<Inquiry>) => void
+  deleteInquiry: (id: string) => void
+  addInquiryQuotation: (q: Omit<InquiryQuotation, 'id'>) => void
+  updateInquiryQuotation: (id: string, q: Partial<InquiryQuotation>) => void
+  deleteInquiryQuotation: (id: string) => void
+  addInquiryNote: (n: Omit<InquiryNote, 'id' | 'createdAt'>) => void
+  addInquiryDocument: (d: Omit<InquiryDocument, 'id' | 'uploadedAt'>) => void
+  deleteInquiryDocument: (id: string) => void
+  convertInquiryToCase: (inquiryId: string, caseData: Omit<Case, 'id' | 'createdAt'>) => string
 }
 
 const StoreContext = createContext<StoreCtx | null>(null)
@@ -102,6 +120,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [caseFiles, setCaseFiles] = useState<CaseFile[]>(mockCaseFiles)
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>(mockActivityLogs)
   const [workflowTemplates, setWorkflowTemplates] = useState<WorkflowTemplate[]>(mockWorkflowTemplates)
+  const [inquiries, setInquiries] = useState<Inquiry[]>(mockInquiries)
+  const [inquiryQuotations, setInquiryQuotations] = useState<InquiryQuotation[]>(mockInquiryQuotations)
+  const [inquiryNotes, setInquiryNotes] = useState<InquiryNote[]>(mockInquiryNotes)
+  const [inquiryDocuments, setInquiryDocuments] = useState<InquiryDocument[]>(mockInquiryDocuments)
   const [settingsData, setSettingsData] = useState<SettingsData>({
     caseTypes: mockSettingsCaseTypes,
     industries: mockSettingsIndustries,
@@ -280,10 +302,106 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         : t
     ))
 
+  // Inquiries
+  const addInquiry = (i: Omit<Inquiry, 'id' | 'createdAt' | 'convertedToCase'>): string => {
+    const id = generateId()
+    const now = nowIso()
+    setInquiries(prev => [{ ...i, id, createdAt: now, updatedAt: now, convertedToCase: false }, ...prev])
+    setActivityLogs(prev => [{
+      id: generateId(), inquiryId: id, actionType: 'INQUIRY_CREATED',
+      title: 'Inquiry created', description: `New inquiry: ${i.inquiryTitle}`,
+      changedBy: i.assignedPerson, timestamp: now,
+    } as ActivityLog, ...prev])
+    return id
+  }
+  const updateInquiry = (id: string, i: Partial<Inquiry>) =>
+    setInquiries(prev => prev.map(x => x.id === id ? { ...x, ...i, updatedAt: nowIso() } : x))
+  const deleteInquiry = (id: string) => {
+    setInquiries(prev => prev.filter(x => x.id !== id))
+    setInquiryQuotations(prev => prev.filter(x => x.inquiryId !== id))
+    setInquiryNotes(prev => prev.filter(x => x.inquiryId !== id))
+    setInquiryDocuments(prev => prev.filter(x => x.inquiryId !== id))
+  }
+
+  const addInquiryQuotation = (q: Omit<InquiryQuotation, 'id'>) => {
+    const id = generateId()
+    setInquiryQuotations(prev => [...prev, { ...q, id }])
+    setInquiries(prev => prev.map(x => x.id === q.inquiryId ? { ...x, updatedAt: nowIso() } : x))
+    setActivityLogs(prev => [{
+      id: generateId(), inquiryId: q.inquiryId, actionType: 'INQUIRY_QUOTATION_ADDED',
+      title: 'Quotation requested', description: `Quotation from ${q.providerName} requested`,
+      changedBy: '', timestamp: nowIso(),
+    } as ActivityLog, ...prev])
+  }
+  const updateInquiryQuotation = (id: string, q: Partial<InquiryQuotation>) => {
+    setInquiryQuotations(prev => prev.map(x => x.id === id ? { ...x, ...q } : x))
+    const quotation = inquiryQuotations.find(x => x.id === id)
+    if (quotation) {
+      setInquiries(prev => prev.map(x => x.id === quotation.inquiryId ? { ...x, updatedAt: nowIso() } : x))
+      if (q.status) {
+        setActivityLogs(prev => [{
+          id: generateId(), inquiryId: quotation.inquiryId, actionType: 'INQUIRY_QUOTATION_UPDATED',
+          title: 'Quotation updated', description: `${quotation.providerName} quotation status: ${q.status}`,
+          newValue: q.status, changedBy: '', timestamp: nowIso(),
+        } as ActivityLog, ...prev])
+      }
+    }
+  }
+  const deleteInquiryQuotation = (id: string) =>
+    setInquiryQuotations(prev => prev.filter(x => x.id !== id))
+
+  const addInquiryNote = (n: Omit<InquiryNote, 'id' | 'createdAt'>) => {
+    const now = nowIso()
+    setInquiryNotes(prev => [{ ...n, id: generateId(), createdAt: now }, ...prev])
+    setInquiries(prev => prev.map(x => x.id === n.inquiryId ? { ...x, updatedAt: now } : x))
+    setActivityLogs(prev => [{
+      id: generateId(), inquiryId: n.inquiryId, actionType: 'INQUIRY_NOTE_ADDED',
+      title: 'Note added', description: n.content.slice(0, 100),
+      changedBy: n.createdBy, timestamp: now,
+    } as ActivityLog, ...prev])
+  }
+
+  const addInquiryDocument = (d: Omit<InquiryDocument, 'id' | 'uploadedAt'>) => {
+    const now = nowIso()
+    setInquiryDocuments(prev => [...prev, { ...d, id: generateId(), uploadedAt: now }])
+    setInquiries(prev => prev.map(x => x.id === d.inquiryId ? { ...x, updatedAt: now } : x))
+    setActivityLogs(prev => [{
+      id: generateId(), inquiryId: d.inquiryId, actionType: 'INQUIRY_DOCUMENT_UPLOADED',
+      title: 'Document uploaded', description: d.fileName, newValue: d.documentType,
+      changedBy: d.uploadedBy, timestamp: now,
+    } as ActivityLog, ...prev])
+  }
+  const deleteInquiryDocument = (id: string) =>
+    setInquiryDocuments(prev => prev.filter(x => x.id !== id))
+
+  const convertInquiryToCase = (inquiryId: string, caseData: Omit<Case, 'id' | 'createdAt'>): string => {
+    const caseId = generateId()
+    const now = nowIso()
+    setCases(prev => [{ ...caseData, id: caseId, createdAt: now, updatedAt: now }, ...prev])
+    setInquiries(prev => prev.map(x =>
+      x.id === inquiryId ? { ...x, convertedToCase: true, convertedCaseId: caseId, updatedAt: now } : x
+    ))
+    setActivityLogs(prev => [
+      {
+        id: generateId(), inquiryId, caseId, actionType: 'INQUIRY_CONVERTED',
+        title: 'Inquiry converted to case', description: `Converted to case: ${caseData.caseTitle}`,
+        newValue: caseId, changedBy: caseData.personInCharge, timestamp: now,
+      } as ActivityLog,
+      {
+        id: generateId(), caseId, caseTitle: caseData.caseTitle, actionType: 'CASE_CREATED',
+        title: 'Case created from inquiry', description: `Created from inquiry. Ready for operations.`,
+        changedBy: caseData.personInCharge, timestamp: now,
+      } as ActivityLog,
+      ...prev,
+    ])
+    return caseId
+  }
+
   return (
     <StoreContext.Provider value={{
       customers, contacts, cases, caseNotes, followUps, pics,
       users, caseFiles, activityLogs, settingsData, workflowTemplates,
+      inquiries, inquiryQuotations, inquiryNotes, inquiryDocuments,
       addCustomer, updateCustomer, deleteCustomer,
       addContact, updateContact, deleteContact, setPrimaryContact,
       addCase, updateCase, deleteCase,
@@ -297,6 +415,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       addWorkflowTemplate, updateWorkflowTemplate, deleteWorkflowTemplate,
       addWorkflowStep, updateWorkflowStep, deleteWorkflowStep,
       addRequiredDocument, updateRequiredDocument, deleteRequiredDocument,
+      addInquiry, updateInquiry, deleteInquiry,
+      addInquiryQuotation, updateInquiryQuotation, deleteInquiryQuotation,
+      addInquiryNote, addInquiryDocument, deleteInquiryDocument,
+      convertInquiryToCase,
     }}>
       {children}
     </StoreContext.Provider>

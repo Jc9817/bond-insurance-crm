@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useStore } from '@/lib/store'
 import { useAuth } from '@/lib/auth'
-import { USER_ROLES, USER_STATUSES } from '@/lib/types'
+import { USER_ROLES, USER_STATUSES, BUSINESS_TYPES } from '@/lib/types'
 import type { SettingsCategory, User, UserRole, UserStatus, WorkflowTemplate, WorkflowStep, RequiredDocument } from '@/lib/types'
 import PageHeader from '@/components/ui/PageHeader'
 import Modal from '@/components/ui/Modal'
@@ -347,6 +347,7 @@ function WorkflowTemplateDetail({ template, onBack }: { template: WorkflowTempla
   const [editingName, setEditingName] = useState(false)
   const [nameVal, setNameVal] = useState(template.caseType)
   const [descVal, setDescVal] = useState(template.description)
+  const [bizTypeVal, setBizTypeVal] = useState(template.businessType ?? '')
 
   const activeSteps = [...template.workflowSteps].filter(s => s.isActive).sort((a, b) => a.order - b.order)
   const allSteps = [...template.workflowSteps].sort((a, b) => a.order - b.order)
@@ -355,7 +356,7 @@ function WorkflowTemplateDetail({ template, onBack }: { template: WorkflowTempla
 
   const saveTemplateName = () => {
     if (nameVal.trim()) {
-      updateWorkflowTemplate(template.id, { caseType: nameVal.trim(), description: descVal.trim() })
+      updateWorkflowTemplate(template.id, { caseType: nameVal.trim(), description: descVal.trim(), businessType: bizTypeVal || undefined })
     }
     setEditingName(false)
   }
@@ -381,6 +382,13 @@ function WorkflowTemplateDetail({ template, onBack }: { template: WorkflowTempla
                 <input className="input" value={nameVal} onChange={e => setNameVal(e.target.value)} autoFocus />
               </div>
               <div>
+                <label className="label">Business Type</label>
+                <select className="input" value={bizTypeVal} onChange={e => setBizTypeVal(e.target.value)}>
+                  <option value="">— All (no restriction) —</option>
+                  {BUSINESS_TYPES.map(b => <option key={b} value={b}>{b}</option>)}
+                </select>
+              </div>
+              <div>
                 <label className="label">Description</label>
                 <input className="input" value={descVal} onChange={e => setDescVal(e.target.value)} placeholder="Brief description of this template" />
               </div>
@@ -391,7 +399,14 @@ function WorkflowTemplateDetail({ template, onBack }: { template: WorkflowTempla
             </div>
           ) : (
             <div className="flex-1">
-              <p className="text-base font-semibold text-gray-800">{template.caseType}</p>
+              <div className="flex items-center gap-2 flex-wrap">
+                <p className="text-base font-semibold text-gray-800">{template.caseType}</p>
+                {template.businessType && (
+                  <span className={`text-xs font-medium rounded-full px-2.5 py-0.5 ${template.businessType === 'Sole Proprietor' ? 'bg-amber-100 text-amber-700' : template.businessType === 'Partnership' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                    {template.businessType}
+                  </span>
+                )}
+              </div>
               <p className="text-sm text-gray-500 mt-0.5">{template.description || 'No description'}</p>
             </div>
           )}
@@ -640,6 +655,7 @@ function WorkflowTemplatesTab() {
   const [addModal, setAddModal] = useState(false)
   const [newName, setNewName] = useState('')
   const [newDesc, setNewDesc] = useState('')
+  const [newBizType, setNewBizType] = useState('')
   const [addError, setAddError] = useState('')
   const [deleteId, setDeleteId] = useState<string | null>(null)
 
@@ -657,9 +673,10 @@ function WorkflowTemplatesTab() {
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault()
     if (!newName.trim()) { setAddError('Template name is required.'); return }
-    addWorkflowTemplate({ caseType: newName.trim(), description: newDesc.trim(), requiredDocuments: [], workflowSteps: [], isActive: true })
+    addWorkflowTemplate({ caseType: newName.trim(), description: newDesc.trim(), businessType: newBizType || undefined, requiredDocuments: [], workflowSteps: [], isActive: true })
     setNewName('')
     setNewDesc('')
+    setNewBizType('')
     setAddError('')
     setAddModal(false)
   }
@@ -679,8 +696,13 @@ function WorkflowTemplatesTab() {
           return (
             <div key={t.id} className={`bg-white rounded-2xl border p-5 flex items-center gap-5 hover:border-blue-200 transition-colors ${t.isActive ? 'border-gray-200' : 'border-gray-100 opacity-60'}`}>
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1">
+                <div className="flex items-center gap-2 mb-1 flex-wrap">
                   <p className="text-base font-semibold text-gray-800">{t.caseType}</p>
+                  {t.businessType && (
+                    <span className={`text-xs font-medium rounded-full px-2.5 py-0.5 ${t.businessType === 'Sole Proprietor' ? 'bg-amber-100 text-amber-700' : t.businessType === 'Partnership' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                      {t.businessType}
+                    </span>
+                  )}
                   {!t.isActive && <span className="text-xs text-gray-400 bg-gray-100 rounded-full px-2 py-0.5">Inactive</span>}
                 </div>
                 <p className="text-sm text-gray-500">{t.description || 'No description'}</p>
@@ -723,6 +745,14 @@ function WorkflowTemplatesTab() {
               <label className="label">Template Name *</label>
               <input className="input" value={newName} onChange={e => setNewName(e.target.value)} placeholder="e.g. Bond Request" autoFocus />
               <p className="text-xs text-gray-400 mt-1">This should match the Case Type name exactly.</p>
+            </div>
+            <div>
+              <label className="label">Business Type</label>
+              <select className="input" value={newBizType} onChange={e => setNewBizType(e.target.value)}>
+                <option value="">— All (no restriction) —</option>
+                {BUSINESS_TYPES.map(b => <option key={b} value={b}>{b}</option>)}
+              </select>
+              <p className="text-xs text-gray-400 mt-1">Limit this template to a specific business type, or leave blank to apply to all.</p>
             </div>
             <div>
               <label className="label">Description</label>

@@ -107,6 +107,9 @@ export default function CustomerDetailPage() {
       <div className="mb-7">
         <h1 className="text-3xl font-bold text-gray-900 tracking-tight">{customer.customerName}</h1>
         <div className="flex items-center gap-3 mt-2">
+          {customer.businessType && (
+            <span className={`rounded-full px-3 py-0.5 text-sm font-medium ${customer.businessType === 'Sole Proprietor' ? 'bg-amber-100 text-amber-700' : customer.businessType === 'Partnership' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>{customer.businessType}</span>
+          )}
           {customer.industry && (
             <span className="bg-gray-100 text-gray-600 rounded-full px-3 py-0.5 text-sm font-medium">{customer.industry}</span>
           )}
@@ -122,6 +125,7 @@ export default function CustomerDetailPage() {
         <div className="card-section">
           <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">Company Information</h2>
           <div className="space-y-3">
+            <InfoRow label="Business Type" value={customer.businessType} />
             <InfoRow label="Main Phone" value={customer.mainPhone} />
             <InfoRow label="Main Email" value={customer.mainEmail} isEmail />
             <InfoRow label="Industry" value={customer.industry} />
