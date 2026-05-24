@@ -255,12 +255,15 @@ export type SettingsCategory =
   | 'contactTypes'
   | 'followUpCategories'
   | 'documentTypes'
+  | 'inquiryStatuses'
+  | 'quotationStatuses'
 
 // ─── Workflow Templates ───────────────────────────────────────────────────────
 
 export type RequiredDocument = {
   id: string
   caseTypeId: string
+  workflowStepId?: string      // if set, this document only appears on that specific step's checklist
   name: string
   description: string
   required: boolean            // true = required, false = optional
@@ -351,6 +354,12 @@ export type InquiryQuotation = {
   receivedDate?: string
   status: QuotationStatus
   notes: string
+  // Email
+  emailSent?: boolean
+  emailSentAt?: string
+  emailTo?: string
+  emailSubject?: string
+  emailBody?: string
 }
 
 export type InquiryNote = {

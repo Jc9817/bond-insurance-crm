@@ -31,6 +31,41 @@ export function getRequiredDocs(template: WorkflowTemplate | null): RequiredDocu
   return getActiveDocs(template).filter(d => d.required)
 }
 
+/** Documents for a specific workflow step. Falls back to step-unassigned docs if stepId is null. */
+export function getDocsForStep(
+  template: WorkflowTemplate | null,
+  stepId: string | null
+): RequiredDocument[] {
+  if (!template) return []
+  const all = getActiveDocs(template)
+  if (!stepId) return all.filter(d => !d.workflowStepId)
+  return all.filter(d => d.workflowStepId === stepId || !d.workflowStepId)
+}
+
+/** Documents strictly assigned to this step only (not shared). */
+export function getStepOwnedDocs(
+  template: WorkflowTemplate | null,
+  stepId: string
+): RequiredDocument[] {
+  if (!template) return []
+  return getActiveDocs(template).filter(d => d.workflowStepId === stepId)
+}
+
+export function getStepDocumentCompleteness(
+  caseId: string,
+  template: WorkflowTemplate | null,
+  stepId: string | null,
+  caseFiles: CaseFile[]
+): number {
+  const docs = getDocsForStep(template, stepId)
+  const required = docs.filter(d => d.required)
+  if (required.length === 0) return 100
+  const uploaded = required.filter(doc =>
+    caseFiles.some(f => f.caseId === caseId && f.requiredDocumentId === doc.id)
+  ).length
+  return Math.round((uploaded / required.length) * 100)
+}
+
 export function getUploadedFileForDoc(
   docId: string,
   caseId: string,

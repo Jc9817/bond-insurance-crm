@@ -4,18 +4,20 @@ import { useRef, useState } from 'react'
 import { useStore } from '@/lib/store'
 import { useAuth } from '@/lib/auth'
 import type { WorkflowTemplate, CaseFile } from '@/lib/types'
-import { getActiveDocs, getUploadedFileForDoc, getUnassignedFiles } from '@/lib/workflow'
-import { formatFileSize } from '@/lib/utils'
+import { getActiveDocs, getUploadedFileForDoc, getUnassignedFiles, getDocsForStep } from '@/lib/workflow'
+import { formatFileSize, timeAgo } from '@/lib/utils'
 
 type Props = {
   caseId: string
   caseTitle?: string
   template: WorkflowTemplate | null
   caseFiles: CaseFile[]
+  filterStepId?: string | null    // if provided, shows only docs for that step
+  readOnly?: boolean              // hide upload/scan/delete actions
   onScanReady: (file: CaseFile) => void
 }
 
-export default function DocumentChecklist({ caseId, caseTitle, template, caseFiles, onScanReady }: Props) {
+export default function DocumentChecklist({ caseId, caseTitle, template, caseFiles, filterStepId, readOnly, onScanReady }: Props) {
   const { addCaseFile, deleteCaseFile, updateCaseFile, startAiScan, addActivityLog } = useStore()
   const { currentUser } = useAuth()
   const [uploadingDocId, setUploadingDocId] = useState<string | null>(null)
@@ -24,10 +26,13 @@ export default function DocumentChecklist({ caseId, caseTitle, template, caseFil
   const [draggedFileId, setDraggedFileId] = useState<string | null>(null)
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
 
-  const docs = getActiveDocs(template)
+  const docs = filterStepId !== undefined ? getDocsForStep(template, filterStepId) : getActiveDocs(template)
   const requiredDocs = docs.filter(d => d.required)
   const optionalDocs = docs.filter(d => !d.required)
   const unassignedFiles = getUnassignedFiles(caseId, template, caseFiles)
+
+  const uploadedRequiredCount = requiredDocs.filter(doc => getUploadedFileForDoc(doc.id, caseId, caseFiles)).length
+  const stepCompleteness = requiredDocs.length > 0 ? Math.round((uploadedRequiredCount / requiredDocs.length) * 100) : 100
 
   const readAsDataUrl = (file: File): Promise<string> =>
     new Promise((resolve, reject) => {
@@ -163,12 +168,25 @@ export default function DocumentChecklist({ caseId, caseTitle, template, caseFil
       {/* Required documents */}
       {requiredDocs.length > 0 && (
         <div>
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">Required Documents</p>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Required Documents</p>
+            <div className="flex items-center gap-2">
+              <div className="w-24 bg-gray-200 rounded-full h-1.5 overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all ${stepCompleteness >= 100 ? 'bg-green-500' : stepCompleteness >= 60 ? 'bg-amber-400' : 'bg-red-400'}`}
+                  style={{ width: `${stepCompleteness}%` }}
+                />
+              </div>
+              <span className={`text-xs font-bold ${stepCompleteness >= 100 ? 'text-green-600' : stepCompleteness >= 60 ? 'text-amber-600' : 'text-red-500'}`}>
+                {uploadedRequiredCount}/{requiredDocs.length}
+              </span>
+            </div>
+          </div>
           <div className="space-y-2">
             {requiredDocs.map(doc => {
               const uploaded = getUploadedFileForDoc(doc.id, caseId, caseFiles)
               const isUploading = uploadingDocId === doc.id
-              const isDropTarget = dragOverDocId === doc.id && !uploaded
+              const isDropTarget = dragOverDocId === doc.id && !uploaded && !readOnly
               return (
                 <DocRow
                   key={doc.id}
@@ -179,7 +197,8 @@ export default function DocumentChecklist({ caseId, caseTitle, template, caseFil
                   uploaded={uploaded}
                   isUploading={isUploading}
                   isDropTarget={isDropTarget}
-                  isDragging={!!draggedFileId}
+                  isDragging={!!draggedFileId && !readOnly}
+                  readOnly={readOnly}
                   deleteConfirmId={deleteConfirmId}
                   setDeleteConfirmId={setDeleteConfirmId}
                   fileInputRef={(el) => { fileInputRefs.current[doc.id] = el }}
@@ -202,9 +221,9 @@ export default function DocumentChecklist({ caseId, caseTitle, template, caseFil
                     }
                   }}
                   onReview={() => { if (uploaded) onScanReady(uploaded) }}
-                  onDragOver={(e) => { if (!uploaded) { e.preventDefault(); setDragOverDocId(doc.id) } }}
+                  onDragOver={(e) => { if (!uploaded && !readOnly) { e.preventDefault(); setDragOverDocId(doc.id) } }}
                   onDragLeave={() => setDragOverDocId(null)}
-                  onDrop={(e) => handleDocDrop(doc.id, doc.name, e)}
+                  onDrop={(e) => { if (!readOnly) handleDocDrop(doc.id, doc.name, e) }}
                 />
               )
             })}
@@ -220,7 +239,7 @@ export default function DocumentChecklist({ caseId, caseTitle, template, caseFil
             {optionalDocs.map(doc => {
               const uploaded = getUploadedFileForDoc(doc.id, caseId, caseFiles)
               const isUploading = uploadingDocId === doc.id
-              const isDropTarget = dragOverDocId === doc.id && !uploaded
+              const isDropTarget = dragOverDocId === doc.id && !uploaded && !readOnly
               return (
                 <DocRow
                   key={doc.id}
@@ -231,7 +250,8 @@ export default function DocumentChecklist({ caseId, caseTitle, template, caseFil
                   uploaded={uploaded}
                   isUploading={isUploading}
                   isDropTarget={isDropTarget}
-                  isDragging={!!draggedFileId}
+                  isDragging={!!draggedFileId && !readOnly}
+                  readOnly={readOnly}
                   deleteConfirmId={deleteConfirmId}
                   setDeleteConfirmId={setDeleteConfirmId}
                   fileInputRef={(el) => { fileInputRefs.current[doc.id] = el }}
@@ -254,9 +274,9 @@ export default function DocumentChecklist({ caseId, caseTitle, template, caseFil
                     }
                   }}
                   onReview={() => { if (uploaded) onScanReady(uploaded) }}
-                  onDragOver={(e) => { if (!uploaded) { e.preventDefault(); setDragOverDocId(doc.id) } }}
+                  onDragOver={(e) => { if (!uploaded && !readOnly) { e.preventDefault(); setDragOverDocId(doc.id) } }}
                   onDragLeave={() => setDragOverDocId(null)}
-                  onDrop={(e) => handleDocDrop(doc.id, doc.name, e)}
+                  onDrop={(e) => { if (!readOnly) handleDocDrop(doc.id, doc.name, e) }}
                 />
               )
             })}
@@ -264,8 +284,8 @@ export default function DocumentChecklist({ caseId, caseTitle, template, caseFil
         </div>
       )}
 
-      {/* Unassigned / additional files */}
-      <div className="pt-3 border-t border-gray-100">
+      {/* Unassigned / additional files — hidden in read-only mode */}
+      {!readOnly && <div className="pt-3 border-t border-gray-100">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Other Files</p>
@@ -322,7 +342,7 @@ export default function DocumentChecklist({ caseId, caseTitle, template, caseFil
             ))}
           </div>
         )}
-      </div>
+      </div>}
     </div>
   )
 }
@@ -338,6 +358,7 @@ type DocRowProps = {
   isUploading: boolean
   isDropTarget: boolean
   isDragging: boolean
+  readOnly?: boolean
   deleteConfirmId: string | null
   setDeleteConfirmId: (id: string | null) => void
   fileInputRef: (el: HTMLInputElement | null) => void
@@ -353,7 +374,7 @@ type DocRowProps = {
 
 function DocRow({
   docId, docName, description, required, uploaded, isUploading,
-  isDropTarget, isDragging,
+  isDropTarget, isDragging, readOnly,
   deleteConfirmId, setDeleteConfirmId,
   fileInputRef, onUploadClick, onFileChange, onDelete, onScan, onReview,
   onDragOver, onDragLeave, onDrop,
@@ -416,6 +437,7 @@ function DocRow({
           <div className="flex items-center gap-2 mt-1 flex-wrap">
             <span className="text-xs text-green-700 font-medium truncate max-w-[200px]">{uploaded.fileName}</span>
             <span className="text-xs text-gray-400">{formatFileSize(uploaded.fileSize)}</span>
+            <span className="text-xs text-gray-400">· {timeAgo(uploaded.uploadedAt)}</span>
             {uploaded.aiStatus === 'Approved' && (
               <span className="text-xs bg-green-100 text-green-700 rounded-full px-2 py-0.5 font-medium">AI Verified</span>
             )}
@@ -431,7 +453,7 @@ function DocRow({
 
       {/* Actions */}
       <div className="flex items-center gap-1.5 shrink-0">
-        {!uploaded && !isUploading && (
+        {!readOnly && !uploaded && !isUploading && (
           <>
             <button
               onClick={onUploadClick}
@@ -450,12 +472,12 @@ function DocRow({
         )}
         {uploaded && (
           <>
-            {uploaded.aiStatus === 'Not Scanned' && (
+            {!readOnly && uploaded.aiStatus === 'Not Scanned' && (
               <button onClick={onScan} className="btn-xs bg-white border border-gray-200 hover:bg-violet-50 text-violet-700">
                 AI Scan
               </button>
             )}
-            {uploaded.aiStatus === 'Processing' && (
+            {!readOnly && uploaded.aiStatus === 'Processing' && (
               <span className="btn-xs text-amber-600">Scanning…</span>
             )}
             {uploaded.aiStatus === 'Ready for Review' && (
@@ -464,13 +486,15 @@ function DocRow({
             {uploaded.aiStatus === 'Approved' && (
               <button onClick={onReview} className="btn-xs bg-green-50 text-green-700 hover:bg-green-100">View</button>
             )}
-            {deleteConfirmId === uploaded.id ? (
-              <>
-                <button onClick={onDelete} className="btn-xs bg-red-600 text-white">Confirm</button>
-                <button onClick={() => setDeleteConfirmId(null)} className="btn-xs bg-white border border-gray-200 text-gray-600">Cancel</button>
-              </>
-            ) : (
-              <button onClick={() => setDeleteConfirmId(uploaded.id)} className="btn-xs text-gray-300 hover:text-red-400">✕</button>
+            {!readOnly && (
+              deleteConfirmId === uploaded.id ? (
+                <>
+                  <button onClick={onDelete} className="btn-xs bg-red-600 text-white">Confirm</button>
+                  <button onClick={() => setDeleteConfirmId(null)} className="btn-xs bg-white border border-gray-200 text-gray-600">Cancel</button>
+                </>
+              ) : (
+                <button onClick={() => setDeleteConfirmId(uploaded.id)} className="btn-xs text-gray-300 hover:text-red-400">✕</button>
+              )
             )}
           </>
         )}

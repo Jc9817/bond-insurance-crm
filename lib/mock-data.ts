@@ -769,6 +769,26 @@ export const mockSettingsDocumentTypes: SettingsItem[] = [
   { id: 'sdt11', name: 'Other', isActive: true },
 ]
 
+export const mockSettingsInquiryStatuses: SettingsItem[] = [
+  { id: 'sis1', name: 'New', isActive: true },
+  { id: 'sis2', name: 'Gathering Info', isActive: true },
+  { id: 'sis3', name: 'Docs Requested', isActive: true },
+  { id: 'sis4', name: 'Quotation Requested', isActive: true },
+  { id: 'sis5', name: 'Quotation Received', isActive: true },
+  { id: 'sis6', name: 'Customer Reviewing', isActive: true },
+  { id: 'sis7', name: 'Qualified', isActive: true },
+  { id: 'sis8', name: 'Closed', isActive: true },
+  { id: 'sis9', name: 'Lost', isActive: true },
+]
+
+export const mockSettingsQuotationStatuses: SettingsItem[] = [
+  { id: 'sqs1', name: 'Pending', isActive: true },
+  { id: 'sqs2', name: 'Quoted', isActive: true },
+  { id: 'sqs3', name: 'Under Review', isActive: true },
+  { id: 'sqs4', name: 'Rejected', isActive: true },
+  { id: 'sqs5', name: 'No Response', isActive: true },
+]
+
 // ─── Workflow Templates ───────────────────────────────────────────────────────
 
 export const mockWorkflowTemplates: WorkflowTemplate[] = [

@@ -10,11 +10,12 @@ import Modal from '@/components/ui/Modal'
 
 // ─── Tab type ─────────────────────────────────────────────────────────────────
 
-type Tab = 'users' | 'caseTypes' | 'industries' | 'contactTypes' | 'followUpCategories' | 'documentTypes' | 'pic' | 'workflowTemplates'
+type Tab = 'users' | 'caseTypes' | 'industries' | 'contactTypes' | 'followUpCategories' | 'documentTypes' | 'pic' | 'workflowTemplates' | 'quotationWorkflow'
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'users', label: 'Users' },
   { key: 'workflowTemplates', label: 'Workflow Templates' },
+  { key: 'quotationWorkflow', label: 'Quotation Workflow' },
   { key: 'caseTypes', label: 'Case Types' },
   { key: 'industries', label: 'Industries' },
   { key: 'contactTypes', label: 'Contact Types' },
@@ -209,6 +210,7 @@ const emptyDoc = (): DocFormData => ({
   acceptedFileTypes: ['pdf', 'doc', 'docx', 'jpg', 'png'],
   isActive: true,
   aiPrompt: '',
+  workflowStepId: undefined,
 })
 
 function StepModal({ initial, onSave, onClose, title, maxOrder }: {
@@ -263,8 +265,12 @@ function StepModal({ initial, onSave, onClose, title, maxOrder }: {
   )
 }
 
-function DocModal({ initial, onSave, onClose, title }: {
-  initial: DocFormData; onSave: (d: DocFormData) => void; onClose: () => void; title: string
+function DocModal({ initial, steps, onSave, onClose, title }: {
+  initial: DocFormData
+  steps: WorkflowStep[]
+  onSave: (d: DocFormData) => void
+  onClose: () => void
+  title: string
 }) {
   const [form, setForm] = useState<DocFormData>(initial)
   const [fileTypesStr, setFileTypesStr] = useState(initial.acceptedFileTypes.join(', '))
@@ -288,6 +294,20 @@ function DocModal({ initial, onSave, onClose, title }: {
         <div>
           <label className="label">Description</label>
           <input className="input" value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} placeholder="Brief note on what to upload" />
+        </div>
+        <div>
+          <label className="label">Belongs to Step</label>
+          <select
+            className="input"
+            value={form.workflowStepId ?? ''}
+            onChange={e => setForm(p => ({ ...p, workflowStepId: e.target.value || undefined }))}
+          >
+            <option value="">— All steps (always shown) —</option>
+            {steps.filter(s => s.isActive).sort((a, b) => a.order - b.order).map(s => (
+              <option key={s.id} value={s.id}>{s.order}. {s.name}</option>
+            ))}
+          </select>
+          <p className="text-xs text-gray-400 mt-1">Assign to a step so this document only appears in that step's checklist.</p>
         </div>
         <div className="flex items-center gap-3">
           <input
@@ -518,6 +538,7 @@ function WorkflowTemplateDetail({ template, onBack }: { template: WorkflowTempla
                     key={doc.id}
                     doc={doc}
                     templateId={template.id}
+                    allSteps={allSteps}
                     onEdit={() => { setSelectedDoc(doc); setDocModal('edit') }}
                     deleteDocId={deleteDocId}
                     setDeleteDocId={setDeleteDocId}
@@ -538,6 +559,7 @@ function WorkflowTemplateDetail({ template, onBack }: { template: WorkflowTempla
                     key={doc.id}
                     doc={doc}
                     templateId={template.id}
+                    allSteps={allSteps}
                     onEdit={() => { setSelectedDoc(doc); setDocModal('edit') }}
                     deleteDocId={deleteDocId}
                     setDeleteDocId={setDeleteDocId}
@@ -580,6 +602,7 @@ function WorkflowTemplateDetail({ template, onBack }: { template: WorkflowTempla
         <DocModal
           title="Add Required Document"
           initial={emptyDoc()}
+          steps={allSteps}
           onSave={d => { addRequiredDocument(template.id, d); setDocModal(null) }}
           onClose={() => setDocModal(null)}
         />
@@ -587,7 +610,8 @@ function WorkflowTemplateDetail({ template, onBack }: { template: WorkflowTempla
       {docModal === 'edit' && selectedDoc && (
         <DocModal
           title="Edit Document"
-          initial={{ name: selectedDoc.name, description: selectedDoc.description, required: selectedDoc.required, acceptedFileTypes: selectedDoc.acceptedFileTypes, isActive: selectedDoc.isActive, aiPrompt: selectedDoc.aiPrompt ?? '' }}
+          initial={{ name: selectedDoc.name, description: selectedDoc.description, required: selectedDoc.required, acceptedFileTypes: selectedDoc.acceptedFileTypes, isActive: selectedDoc.isActive, aiPrompt: selectedDoc.aiPrompt ?? '', workflowStepId: selectedDoc.workflowStepId }}
+          steps={allSteps}
           onSave={d => { updateRequiredDocument(template.id, selectedDoc.id, d); setDocModal(null) }}
           onClose={() => setDocModal(null)}
         />
@@ -596,15 +620,17 @@ function WorkflowTemplateDetail({ template, onBack }: { template: WorkflowTempla
   )
 }
 
-function DocRow({ doc, templateId, onEdit, deleteDocId, setDeleteDocId, updateRequiredDocument, deleteRequiredDocument }: {
+function DocRow({ doc, templateId, allSteps, onEdit, deleteDocId, setDeleteDocId, updateRequiredDocument, deleteRequiredDocument }: {
   doc: RequiredDocument
   templateId: string
+  allSteps: WorkflowStep[]
   onEdit: () => void
   deleteDocId: string | null
   setDeleteDocId: (id: string | null) => void
   updateRequiredDocument: (templateId: string, docId: string, data: Partial<RequiredDocument>) => void
   deleteRequiredDocument: (templateId: string, docId: string) => void
 }) {
+  const assignedStep = doc.workflowStepId ? allSteps.find(s => s.id === doc.workflowStepId) : null
   return (
     <div className={`bg-white rounded-xl border p-4 flex items-start gap-4 ${doc.isActive ? 'border-gray-200' : 'border-gray-100 opacity-60'}`}>
       <div className={`w-5 h-5 rounded-full flex items-center justify-center text-xs shrink-0 mt-0.5 ${doc.required ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-500'}`}>
@@ -616,6 +642,11 @@ function DocRow({ doc, templateId, onEdit, deleteDocId, setDeleteDocId, updateRe
           <span className={`text-xs rounded-full px-2 py-0.5 font-medium ${doc.required ? 'bg-red-50 text-red-600' : 'bg-gray-100 text-gray-500'}`}>
             {doc.required ? 'Required' : 'Optional'}
           </span>
+          {assignedStep && (
+            <span className="text-xs bg-blue-50 text-blue-700 rounded-full px-2 py-0.5 font-medium">
+              Step: {assignedStep.name}
+            </span>
+          )}
           {!doc.isActive && <span className="text-xs text-gray-400 bg-gray-100 rounded-full px-2 py-0.5">Inactive</span>}
         </div>
         {doc.description && <p className="text-xs text-gray-500 mt-0.5">{doc.description}</p>}
@@ -893,6 +924,22 @@ export default function SettingsPage() {
         <div className="card-section">
           <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-5">Workflow Templates</h2>
           <WorkflowTemplatesTab />
+        </div>
+      )}
+
+      {/* ── Quotation Workflow tab ─────────────────────────────────────────── */}
+      {tab === 'quotationWorkflow' && (
+        <div className="card-section space-y-8">
+          <div>
+            <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1">Inquiry Statuses</h2>
+            <p className="text-sm text-gray-500 mb-5">Stages an inquiry moves through from first contact to close.</p>
+            <ListSection category="inquiryStatuses" />
+          </div>
+          <div className="border-t border-gray-100 pt-8">
+            <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1">Quotation Statuses</h2>
+            <p className="text-sm text-gray-500 mb-5">Statuses for individual insurer quotations within an inquiry.</p>
+            <ListSection category="quotationStatuses" />
+          </div>
         </div>
       )}
 

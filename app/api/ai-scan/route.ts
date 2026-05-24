@@ -1,3 +1,4 @@
+import Anthropic from '@anthropic-ai/sdk'
 import { NextRequest, NextResponse } from 'next/server'
 
 const SUPPORTED_MIME_TYPES = [
@@ -9,7 +10,6 @@ const SUPPORTED_MIME_TYPES = [
   'image/gif',
 ]
 
-// Format a raw number as an RM currency string
 function formatRM(value: unknown): string {
   if (value === null || value === undefined || value === '') return ''
   const num = Number(value)
@@ -17,8 +17,6 @@ function formatRM(value: unknown): string {
   return `RM ${num.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
-// Map a custom-schema response (any JSON shape) onto the 7 standard display fields.
-// Also preserves the full raw response for display in the review panel.
 function mapCustomResponse(data: Record<string, unknown>) {
   const cd = (data.cover_duration ?? {}) as Record<string, unknown>
 
@@ -31,32 +29,21 @@ function mapCustomResponse(data: Record<string, unknown>) {
   const caseType = String(
     data.caseType ?? data.case_type ?? data.bond_type ?? data.insurance_type ?? ''
   )
-
-  // amount: prefer pre-formatted string, then numeric contract_value
-  const amount = data.amount
-    ? String(data.amount)
-    : formatRM(data.contract_value)
-
-  // bondValue: prefer pre-formatted string, then numeric bond_value
-  const bondValue = data.bondValue
-    ? String(data.bondValue)
-    : formatRM(data.bond_value)
-
-  // expiryDate: prefer standard key, then work insurance end, then public liability end
+  const amount = data.amount ? String(data.amount) : formatRM(data.contract_value)
+  const bondValue = data.bondValue ? String(data.bondValue) : formatRM(data.bond_value)
   const expiryDate = String(
     data.expiryDate ?? data.expiry_date ??
     cd.work_insurance_end ?? cd.public_liability_end ?? ''
   )
-
   const notes = String(data.notes ?? '')
 
   return { customerName, projectName, caseType, amount, bondValue, expiryDate, notes, raw: data }
 }
 
 export async function POST(req: NextRequest) {
-  const apiKey = process.env.GOOGLE_AI_API_KEY
+  const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) {
-    return NextResponse.json({ error: 'GOOGLE_AI_API_KEY not configured' }, { status: 500 })
+    return NextResponse.json({ error: 'ANTHROPIC_API_KEY not configured' }, { status: 500 })
   }
 
   const { fileDataUrl, fileName, documentType, aiPrompt } = await req.json()
@@ -64,7 +51,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No file data provided' }, { status: 400 })
   }
 
-  // Parse data URL: "data:mime/type;base64,XXXXX"
   const commaIdx = fileDataUrl.indexOf(',')
   const header = fileDataUrl.slice(0, commaIdx)
   const base64Data = fileDataUrl.slice(commaIdx + 1)
@@ -72,25 +58,17 @@ export async function POST(req: NextRequest) {
 
   if (!SUPPORTED_MIME_TYPES.includes(mimeType)) {
     return NextResponse.json({
-      customerName: '',
-      projectName: '',
-      caseType: '',
-      amount: '',
-      bondValue: '',
-      expiryDate: '',
+      customerName: '', projectName: '', caseType: '', amount: '', bondValue: '', expiryDate: '',
       notes: `AI scan not supported for ${fileName.split('.').pop()?.toUpperCase()} files. Supported: PDF, JPG, PNG.`,
     })
   }
 
-  // When a custom aiPrompt is configured, use it as the complete prompt (it defines its own JSON schema).
-  // Otherwise build the standard 7-field extraction prompt.
   const useCustomPrompt = Boolean(aiPrompt?.trim())
 
   let prompt: string
   if (useCustomPrompt) {
     prompt = aiPrompt.trim()
   } else {
-    // Infer document-specific instructions from the document type name
     let docSpecificInstructions: string
     const docTypeHint = documentType ? documentType.toLowerCase() : ''
 
@@ -150,44 +128,48 @@ Return ONLY a valid JSON object with exactly these keys:
 Return only the JSON object, no markdown, no explanation.`
   }
 
-  const geminiResponse = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{
-          parts: [
-            { text: prompt },
-            { inlineData: { mimeType, data: base64Data } },
-          ],
-        }],
-        generationConfig: {
-          responseMimeType: 'application/json',
-          temperature: 0.1,
-        },
-      }),
-    }
-  )
+  const client = new Anthropic({ apiKey })
 
-  if (!geminiResponse.ok) {
-    const errText = await geminiResponse.text()
-    console.error('Gemini API error:', errText)
-    return NextResponse.json({ error: 'AI service error' }, { status: 502 })
-  }
+  // Build the content block — Claude handles both PDF documents and images
+  type DocumentSource = { type: 'base64'; media_type: 'application/pdf'; data: string }
+  type ImageSource = { type: 'base64'; media_type: 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif'; data: string }
 
-  const result = await geminiResponse.json()
-  const text: string = result.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}'
+  const contentBlock = mimeType === 'application/pdf'
+    ? {
+        type: 'document' as const,
+        source: { type: 'base64', media_type: 'application/pdf', data: base64Data } as DocumentSource,
+      }
+    : {
+        type: 'image' as const,
+        source: { type: 'base64', media_type: mimeType, data: base64Data } as ImageSource,
+      }
+
+  const response = await client.messages.create({
+    model: 'claude-opus-4-7',
+    max_tokens: 1024,
+    messages: [
+      {
+        role: 'user',
+        content: [
+          contentBlock,
+          { type: 'text', text: prompt },
+        ],
+      },
+    ],
+  })
+
+  const text = response.content[0].type === 'text' ? response.content[0].text : ''
+
+  // Strip markdown code fences if Claude wrapped the JSON
+  const jsonText = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim()
 
   try {
-    const extracted = JSON.parse(text)
+    const extracted = JSON.parse(jsonText)
 
     if (useCustomPrompt) {
-      // Custom schema: map intelligently to standard fields, preserve full raw response
       return NextResponse.json(mapCustomResponse(extracted))
     }
 
-    // Standard schema: fields come back in the expected shape
     return NextResponse.json({
       customerName: extracted.customerName ?? '',
       projectName: extracted.projectName ?? '',

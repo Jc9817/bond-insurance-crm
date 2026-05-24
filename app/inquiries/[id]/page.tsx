@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { useStore } from '@/lib/store'
 import { useAuth } from '@/lib/auth'
 import type { InquiryQuotation, InquiryDocument } from '@/lib/types'
-import { INQUIRY_STATUSES, INQUIRY_TYPES, QUOTATION_STATUSES } from '@/lib/types'
+import { INQUIRY_TYPES } from '@/lib/types'
 import { formatCurrency, formatDate, timeAgo } from '@/lib/utils'
 import StatusBadge from '@/components/ui/StatusBadge'
 import Modal from '@/components/ui/Modal'
@@ -53,8 +53,9 @@ function emptyQuotationForm(): QuotationFormData {
   }
 }
 
-function QuotationForm({ initial, onSave, onCancel }: {
+function QuotationForm({ initial, statuses, onSave, onCancel }: {
   initial: QuotationFormData
+  statuses: string[]
   onSave: (d: QuotationFormData) => void
   onCancel: () => void
 }) {
@@ -96,7 +97,7 @@ function QuotationForm({ initial, onSave, onCancel }: {
         <div>
           <label className="label">Status</label>
           <select className="input" value={form.status} onChange={set('status')}>
-            {QUOTATION_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+            {statuses.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
       </div>
@@ -170,6 +171,67 @@ function ConvertModal({ inquiry, pics, onConvert, onCancel }: {
   )
 }
 
+// ─── Email Compose Modal ──────────────────────────────────────────────────────
+
+function EmailModal({ quotation, inquiry, onSend, onCancel, sending }: {
+  quotation: InquiryQuotation
+  inquiry: { inquiryTitle: string; customerName: string; roughAmount: number; inquiryType: string }
+  onSend: (emailTo: string, emailSubject: string, emailBody: string) => void
+  onCancel: () => void
+  sending: boolean
+}) {
+  const [emailTo, setEmailTo] = useState('')
+  const defaultSubject = `Quotation Request — ${inquiry.inquiryTitle}`
+  const defaultBody = `Dear ${quotation.providerName},
+
+We would like to request a quotation for the following:
+
+Customer  : ${inquiry.customerName}
+Type      : ${inquiry.inquiryType}
+Est. Value: RM ${inquiry.roughAmount.toLocaleString('en-MY', { minimumFractionDigits: 2 })}
+
+Please provide your best quotation at your earliest convenience.
+
+Thank you.`
+  const [emailSubject, setEmailSubject] = useState(defaultSubject)
+  const [emailBody, setEmailBody] = useState(defaultBody)
+  const [error, setError] = useState('')
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!emailTo.trim()) { setError('Recipient email is required.'); return }
+    if (!emailSubject.trim()) { setError('Subject is required.'); return }
+    onSend(emailTo.trim(), emailSubject.trim(), emailBody.trim())
+  }
+
+  return (
+    <form onSubmit={submit} className="px-6 py-5 space-y-4">
+      {error && <p className="text-sm text-red-600 bg-red-50 rounded-xl p-3">{error}</p>}
+      <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-2.5">
+        <p className="text-xs text-blue-700 font-medium">Sending to: <span className="font-bold">{quotation.providerName}</span></p>
+      </div>
+      <div>
+        <label className="label">Recipient Email *</label>
+        <input className="input" type="email" value={emailTo} onChange={e => setEmailTo(e.target.value)} placeholder="underwriter@insurer.com" autoFocus />
+      </div>
+      <div>
+        <label className="label">Subject</label>
+        <input className="input" value={emailSubject} onChange={e => setEmailSubject(e.target.value)} />
+      </div>
+      <div>
+        <label className="label">Body</label>
+        <textarea className="input font-mono text-xs" rows={10} value={emailBody} onChange={e => setEmailBody(e.target.value)} />
+      </div>
+      <div className="flex gap-3 pt-1">
+        <button type="button" onClick={onCancel} className="btn-secondary flex-1">Cancel</button>
+        <button type="submit" disabled={sending} className="btn-primary flex-1 disabled:opacity-50">
+          {sending ? 'Sending…' : 'Send Email'}
+        </button>
+      </div>
+    </form>
+  )
+}
+
 // ─── Main Detail Page ─────────────────────────────────────────────────────────
 
 export default function InquiryDetailPage() {
@@ -178,12 +240,15 @@ export default function InquiryDetailPage() {
   const { currentUser } = useAuth()
   const {
     inquiries, inquiryQuotations, inquiryNotes, inquiryDocuments, activityLogs,
-    customers, contacts, pics,
+    customers, contacts, pics, settingsData,
     updateInquiry, deleteInquiry,
-    addInquiryQuotation, updateInquiryQuotation, deleteInquiryQuotation,
+    addInquiryQuotation, updateInquiryQuotation, deleteInquiryQuotation, sendQuotationEmail,
     addInquiryNote, addInquiryDocument, deleteInquiryDocument,
     convertInquiryToCase, cases,
   } = useStore()
+
+  const inquiryStatuses = settingsData.inquiryStatuses.filter(s => s.isActive).map(s => s.name)
+  const quotationStatuses = settingsData.quotationStatuses.filter(s => s.isActive).map(s => s.name)
 
   const [activeTab, setActiveTab] = useState<'quotations' | 'documents' | 'activity' | 'notes'>('quotations')
   const [quotationModal, setQuotationModal] = useState<'add' | 'edit' | null>(null)
@@ -193,6 +258,8 @@ export default function InquiryDetailPage() {
   const [convertModal, setConvertModal] = useState(false)
   const [noteText, setNoteText] = useState('')
   const [editingStatus, setEditingStatus] = useState(false)
+  const [emailModalQuotation, setEmailModalQuotation] = useState<InquiryQuotation | null>(null)
+  const [emailSending, setEmailSending] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const inquiry = inquiries.find(i => i.id === id)
@@ -299,7 +366,7 @@ export default function InquiryDetailPage() {
                     onBlur={() => setEditingStatus(false)}
                     autoFocus
                   >
-                    {INQUIRY_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                    {inquiryStatuses.map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                 ) : (
                   <button onClick={() => setEditingStatus(true)} className="group flex items-center gap-1">
@@ -440,10 +507,23 @@ export default function InquiryDetailPage() {
                     <div className="flex gap-4 mt-1 text-xs text-gray-400 flex-wrap">
                       <span>Requested: {formatDate(q.requestedDate)}</span>
                       {q.receivedDate && <span>Received: {formatDate(q.receivedDate)}</span>}
+                      {q.emailSent && q.emailSentAt && (
+                        <span className="text-blue-500">✉ Emailed {timeAgo(q.emailSentAt)}{q.emailTo ? ` → ${q.emailTo}` : ''}</span>
+                      )}
                     </div>
                     {q.notes && <p className="text-xs text-gray-500 mt-1.5 bg-gray-50 rounded-lg px-2.5 py-1.5">{q.notes}</p>}
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                    <button
+                      onClick={() => setEmailModalQuotation(q)}
+                      className="btn-xs bg-blue-50 hover:bg-blue-100 text-blue-700 flex items-center gap-1"
+                      title="Send quotation request email"
+                    >
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
+                      </svg>
+                      {q.emailSent ? 'Resend' : 'Email'}
+                    </button>
                     <button
                       onClick={() => { setSelectedQuotation(q); setQuotationModal('edit') }}
                       className="btn-xs bg-gray-100 hover:bg-gray-200 text-gray-700"
@@ -464,19 +544,15 @@ export default function InquiryDetailPage() {
             </div>
           )}
 
-          {/* Future email integration placeholder */}
-          <div className="mt-6 pt-5 border-t border-gray-100">
-            <div className="flex items-center gap-2 mb-2">
-              <svg className="w-4 h-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
-              </svg>
-              <p className="text-xs font-semibold text-gray-300 uppercase tracking-widest">Email Integration</p>
-              <span className="text-xs bg-gray-100 text-gray-400 rounded-full px-2 py-0.5">Coming soon</span>
+          {/* Email summary strip */}
+          {quotations.filter(q => q.emailSent).length > 0 && (
+            <div className="mt-5 pt-5 border-t border-gray-100">
+              <p className="text-xs text-gray-400">
+                <span className="font-medium text-blue-600">{quotations.filter(q => q.emailSent).length} email{quotations.filter(q => q.emailSent).length !== 1 ? 's' : ''} sent</span>
+                {' '}— click <span className="font-medium">Email</span> or <span className="font-medium">Resend</span> on any quotation above to compose.
+              </p>
             </div>
-            <p className="text-xs text-gray-400">
-              Future: Send quotation requests to insurers, track email replies, and auto-update quotation status from inbox.
-            </p>
-          </div>
+          )}
         </div>
       )}
 
@@ -617,6 +693,7 @@ export default function InquiryDetailPage() {
       <Modal isOpen={quotationModal === 'add'} onClose={() => setQuotationModal(null)} title="Add Quotation" maxWidth="sm">
         <QuotationForm
           initial={emptyQuotationForm()}
+          statuses={quotationStatuses}
           onSave={d => {
             addInquiryQuotation({
               inquiryId: id,
@@ -624,7 +701,7 @@ export default function InquiryDetailPage() {
               quotationAmount: d.quotationAmount,
               requestedDate: d.requestedDate,
               receivedDate: d.receivedDate || undefined,
-              status: d.status,
+              status: d.status as InquiryQuotation['status'],
               notes: d.notes,
             })
             setQuotationModal(null)
@@ -644,19 +721,42 @@ export default function InquiryDetailPage() {
               status: selectedQuotation.status,
               notes: selectedQuotation.notes,
             }}
+            statuses={quotationStatuses}
             onSave={d => {
               updateInquiryQuotation(selectedQuotation.id, {
                 providerName: d.providerName,
                 quotationAmount: d.quotationAmount,
                 requestedDate: d.requestedDate,
                 receivedDate: d.receivedDate || undefined,
-                status: d.status,
+                status: d.status as InquiryQuotation['status'],
                 notes: d.notes,
               })
               setQuotationModal(null)
               setSelectedQuotation(null)
             }}
             onCancel={() => { setQuotationModal(null); setSelectedQuotation(null) }}
+          />
+        )}
+      </Modal>
+
+      <Modal isOpen={emailModalQuotation !== null} onClose={() => setEmailModalQuotation(null)} title="Send Quotation Email" maxWidth="md">
+        {emailModalQuotation && (
+          <EmailModal
+            quotation={emailModalQuotation}
+            inquiry={{ inquiryTitle: inquiry.inquiryTitle, customerName: inquiry.customerName, roughAmount: inquiry.roughAmount, inquiryType: inquiry.inquiryType }}
+            sending={emailSending}
+            onSend={async (emailTo, emailSubject, emailBody) => {
+              setEmailSending(true)
+              try {
+                await sendQuotationEmail(emailModalQuotation.id, { emailTo, emailSubject, emailBody })
+                setEmailModalQuotation(null)
+              } catch {
+                alert('Failed to send email. Check the email provider configuration.')
+              } finally {
+                setEmailSending(false)
+              }
+            }}
+            onCancel={() => setEmailModalQuotation(null)}
           />
         )}
       </Modal>

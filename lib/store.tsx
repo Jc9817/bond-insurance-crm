@@ -12,6 +12,7 @@ import {
   mockUsers, mockCaseFiles, mockActivityLogs, mockWorkflowTemplates,
   mockSettingsCaseTypes, mockSettingsIndustries, mockSettingsContactTypes,
   mockSettingsFollowUpCategories, mockSettingsDocumentTypes,
+  mockSettingsInquiryStatuses, mockSettingsQuotationStatuses,
   mockInquiries, mockInquiryQuotations, mockInquiryNotes, mockInquiryDocuments,
 } from './mock-data'
 import { generateId, nowIso } from './utils'
@@ -101,6 +102,7 @@ type StoreCtx = {
   addInquiryQuotation: (q: Omit<InquiryQuotation, 'id'>) => void
   updateInquiryQuotation: (id: string, q: Partial<InquiryQuotation>) => void
   deleteInquiryQuotation: (id: string) => void
+  sendQuotationEmail: (quotationId: string, emailData: { emailTo: string; emailSubject: string; emailBody: string }) => Promise<void>
   addInquiryNote: (n: Omit<InquiryNote, 'id' | 'createdAt'>) => void
   addInquiryDocument: (d: Omit<InquiryDocument, 'id' | 'uploadedAt'>) => void
   deleteInquiryDocument: (id: string) => void
@@ -130,6 +132,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     contactTypes: mockSettingsContactTypes,
     followUpCategories: mockSettingsFollowUpCategories,
     documentTypes: mockSettingsDocumentTypes,
+    inquiryStatuses: mockSettingsInquiryStatuses,
+    quotationStatuses: mockSettingsQuotationStatuses,
   })
 
   // Customers
@@ -374,6 +378,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const deleteInquiryDocument = (id: string) =>
     setInquiryDocuments(prev => prev.filter(x => x.id !== id))
 
+  const sendQuotationEmail = async (
+    quotationId: string,
+    emailData: { emailTo: string; emailSubject: string; emailBody: string }
+  ) => {
+    const res = await fetch('/api/send-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ quotationId, ...emailData }),
+    })
+    if (!res.ok) throw new Error('Failed to send email')
+    const now = nowIso()
+    setInquiryQuotations(prev => prev.map(q =>
+      q.id === quotationId
+        ? { ...q, emailSent: true, emailSentAt: now, emailTo: emailData.emailTo, emailSubject: emailData.emailSubject, emailBody: emailData.emailBody }
+        : q
+    ))
+  }
+
   const convertInquiryToCase = (inquiryId: string, caseData: Omit<Case, 'id' | 'createdAt'>): string => {
     const caseId = generateId()
     const now = nowIso()
@@ -416,7 +438,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       addWorkflowStep, updateWorkflowStep, deleteWorkflowStep,
       addRequiredDocument, updateRequiredDocument, deleteRequiredDocument,
       addInquiry, updateInquiry, deleteInquiry,
-      addInquiryQuotation, updateInquiryQuotation, deleteInquiryQuotation,
+      addInquiryQuotation, updateInquiryQuotation, deleteInquiryQuotation, sendQuotationEmail,
       addInquiryNote, addInquiryDocument, deleteInquiryDocument,
       convertInquiryToCase,
     }}>

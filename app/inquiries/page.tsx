@@ -4,7 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { useStore } from '@/lib/store'
 import type { Inquiry } from '@/lib/types'
-import { INQUIRY_STATUSES, INQUIRY_TYPES } from '@/lib/types'
+import { INQUIRY_TYPES } from '@/lib/types'
 import { formatCurrency, timeAgo, formatDate, getDaysUntil } from '@/lib/utils'
 import PageHeader from '@/components/ui/PageHeader'
 import StatusBadge from '@/components/ui/StatusBadge'
@@ -12,7 +12,6 @@ import Modal from '@/components/ui/Modal'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const ACTIVE_STATUSES = INQUIRY_STATUSES.filter(s => s !== 'Closed' && s !== 'Lost')
 const BOARD_COLUMNS = ['New', 'Gathering Info', 'Docs Requested', 'Quotation Requested', 'Quotation Received', 'Customer Reviewing', 'Qualified'] as const
 
 function statusColor(s: string) {
@@ -40,11 +39,12 @@ type FormData = {
   notes: string
 }
 
-function InquiryForm({ initial, customers, contacts, pics, onSave, onCancel }: {
+function InquiryForm({ initial, customers, contacts, pics, statuses, onSave, onCancel }: {
   initial: FormData
   customers: { id: string; customerName: string }[]
   contacts: { id: string; customerId: string; contactName: string; role: string }[]
   pics: { name: string }[]
+  statuses: string[]
   onSave: (d: FormData) => void
   onCancel: () => void
 }) {
@@ -118,7 +118,7 @@ function InquiryForm({ initial, customers, contacts, pics, onSave, onCancel }: {
         <div>
           <label className="label">Status</label>
           <select className="input" value={form.status} onChange={set('status')}>
-            {INQUIRY_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+            {statuses.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
       </div>
@@ -137,7 +137,9 @@ function InquiryForm({ initial, customers, contacts, pics, onSave, onCancel }: {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function InquiriesPage() {
-  const { inquiries, inquiryQuotations, customers, contacts, pics, addInquiry, updateInquiry, deleteInquiry } = useStore()
+  const { inquiries, inquiryQuotations, customers, contacts, pics, settingsData, addInquiry, updateInquiry, deleteInquiry } = useStore()
+  const inquiryStatuses = settingsData.inquiryStatuses.filter(s => s.isActive).map(s => s.name)
+  const activeStatuses = inquiryStatuses.filter(s => s !== 'Closed' && s !== 'Lost')
 
   const [view, setView] = useState<'list' | 'board'>('list')
   const [search, setSearch] = useState('')
@@ -154,7 +156,7 @@ export default function InquiriesPage() {
 
   const filtered = inquiries.filter(i => {
     const matchStatus = statusFilter === 'Active'
-      ? ACTIVE_STATUSES.includes(i.status as typeof ACTIVE_STATUSES[number])
+      ? activeStatuses.includes(i.status)
       : statusFilter === 'All' || i.status === statusFilter
     const matchType = !typeFilter || i.inquiryType === typeFilter
     const matchSearch = !search || [i.inquiryTitle, i.customerName, i.assignedPerson, i.inquiryType].some(f =>
@@ -170,7 +172,7 @@ export default function InquiriesPage() {
   const getPendingCount = (id: string) => getQuotations(id).filter(q => q.status === 'Pending').length
 
   // KPI metrics
-  const active = inquiries.filter(i => ACTIVE_STATUSES.includes(i.status as typeof ACTIVE_STATUSES[number]))
+  const active = inquiries.filter(i => activeStatuses.includes(i.status))
   const pendingQuotations = inquiries.filter(i => i.status === 'Quotation Requested')
   const quotationsReceived = inquiries.filter(i => i.status === 'Quotation Received' || i.status === 'Customer Reviewing')
   const readyToConvert = inquiries.filter(i => i.status === 'Qualified' && !i.convertedToCase)
@@ -209,7 +211,7 @@ export default function InquiriesPage() {
         <select className="input w-44" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
           <option value="Active">Active</option>
           <option value="All">All Statuses</option>
-          {INQUIRY_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+          {inquiryStatuses.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
         <select className="input w-44" value={typeFilter} onChange={e => setTypeFilter(e.target.value)}>
           <option value="">All Types</option>
@@ -366,6 +368,7 @@ export default function InquiriesPage() {
           customers={customers}
           contacts={contacts}
           pics={pics}
+          statuses={inquiryStatuses}
           onSave={d => { addInquiry(d); closeModal() }}
           onCancel={closeModal}
         />
@@ -390,6 +393,7 @@ export default function InquiriesPage() {
             customers={customers}
             contacts={contacts}
             pics={pics}
+            statuses={inquiryStatuses}
             onSave={d => { updateInquiry(selected.id, d); closeModal() }}
             onCancel={closeModal}
           />
