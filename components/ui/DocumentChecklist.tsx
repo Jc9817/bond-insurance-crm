@@ -441,6 +441,9 @@ function DocRow({
             {uploaded.aiStatus === 'Approved' && (
               <span className="text-xs bg-green-100 text-green-700 rounded-full px-2 py-0.5 font-medium">AI Verified</span>
             )}
+            {uploaded.aiStatus === 'Rejected' && (
+              <span className="text-xs bg-red-100 text-red-600 rounded-full px-2 py-0.5 font-medium">Rejected</span>
+            )}
           </div>
         )}
         {isUploading && (
@@ -485,6 +488,9 @@ function DocRow({
             )}
             {uploaded.aiStatus === 'Approved' && (
               <button onClick={onReview} className="btn-xs bg-green-50 text-green-700 hover:bg-green-100">View</button>
+            )}
+            {uploaded.aiStatus === 'Rejected' && (
+              <button onClick={onReview} className="btn-xs bg-red-50 text-red-600 hover:bg-red-100">Review</button>
             )}
             {!readOnly && (
               deleteConfirmId === uploaded.id ? (

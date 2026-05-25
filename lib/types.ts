@@ -281,6 +281,8 @@ export type WorkflowStep = {
   requireDocumentsComplete: boolean
   defaultFollowUpSuggestion: string
   isActive: boolean
+  aiEmailEnabled?: boolean   // shows AI quotation email panel when this step is active
+  aiEmailPrompt?: string     // custom AI prompt for composing the quotation email
 }
 
 export type WorkflowTemplate = {

@@ -201,6 +201,8 @@ const emptyStep = (): StepFormData => ({
   requireDocumentsComplete: false,
   defaultFollowUpSuggestion: '',
   isActive: true,
+  aiEmailEnabled: false,
+  aiEmailPrompt: '',
 })
 
 const emptyDoc = (): DocFormData => ({
@@ -256,6 +258,27 @@ function StepModal({ initial, onSave, onClose, title, maxOrder }: {
           />
           <label htmlFor="reqDocs" className="text-sm text-gray-700">Require all documents complete before this step</label>
         </div>
+        <div className="flex items-center gap-3">
+          <input
+            type="checkbox"
+            id="aiEmail"
+            checked={form.aiEmailEnabled ?? false}
+            onChange={e => setForm(p => ({ ...p, aiEmailEnabled: e.target.checked }))}
+            className="w-4 h-4 rounded border-gray-300 text-blue-600"
+          />
+          <label htmlFor="aiEmail" className="text-sm text-gray-700">Enable AI quotation email panel for this step</label>
+        </div>
+        {form.aiEmailEnabled && (
+          <div>
+            <label className="label">AI Email Prompt (optional)</label>
+            <textarea
+              className="input min-h-[100px] text-xs font-mono resize-y"
+              value={form.aiEmailPrompt ?? ''}
+              onChange={e => setForm(p => ({ ...p, aiEmailPrompt: e.target.value }))}
+              placeholder="Leave blank to use default quotation email template. Or write custom instructions for the AI to follow when composing the email."
+            />
+          </div>
+        )}
         <div className="flex gap-3 pt-1">
           <button type="button" onClick={onClose} className="btn-secondary flex-1">Cancel</button>
           <button type="submit" className="btn-primary flex-1">Save Step</button>
@@ -357,6 +380,10 @@ function WorkflowTemplateDetail({ template, onBack }: { template: WorkflowTempla
   const [stepModal, setStepModal] = useState<'add' | 'edit' | null>(null)
   const [selectedStep, setSelectedStep] = useState<WorkflowStep | null>(null)
   const [deleteStepId, setDeleteStepId] = useState<string | null>(null)
+
+  // Drag-to-reorder state
+  const [dragIdx, setDragIdx] = useState<number | null>(null)
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null)
 
   // Doc modal state
   const [docModal, setDocModal] = useState<'add' | 'edit' | null>(null)
@@ -464,14 +491,38 @@ function WorkflowTemplateDetail({ template, onBack }: { template: WorkflowTempla
       {section === 'steps' && (
         <div>
           <div className="flex items-center justify-between mb-4">
-            <p className="text-sm text-gray-500">Steps that define the case lifecycle for this template.</p>
+            <p className="text-sm text-gray-500">Drag the handle to reorder steps.</p>
             <button onClick={() => { setSelectedStep(null); setStepModal('add') }} className="btn-primary text-xs px-4 py-2">
               + Add Step
             </button>
           </div>
           <div className="space-y-2">
             {allSteps.map((step, idx) => (
-              <div key={step.id} className={`bg-white rounded-xl border p-4 flex items-start gap-4 ${step.isActive ? 'border-gray-200' : 'border-gray-100 opacity-60'}`}>
+              <div
+                key={step.id}
+                draggable
+                onDragStart={() => setDragIdx(idx)}
+                onDragOver={e => { e.preventDefault(); setDragOverIdx(idx) }}
+                onDrop={() => {
+                  if (dragIdx === null || dragIdx === idx) { setDragIdx(null); setDragOverIdx(null); return }
+                  const reordered = [...allSteps]
+                  const [moved] = reordered.splice(dragIdx, 1)
+                  reordered.splice(idx, 0, moved)
+                  reordered.forEach((s, i) => updateWorkflowStep(template.id, s.id, { order: i + 1 }))
+                  setDragIdx(null)
+                  setDragOverIdx(null)
+                }}
+                onDragEnd={() => { setDragIdx(null); setDragOverIdx(null) }}
+                className={`bg-white rounded-xl border p-4 flex items-start gap-4 cursor-grab active:cursor-grabbing transition-all ${
+                  dragOverIdx === idx && dragIdx !== idx ? 'border-blue-400 shadow-md scale-[1.01]' :
+                  dragIdx === idx ? 'opacity-40' :
+                  step.isActive ? 'border-gray-200' : 'border-gray-100 opacity-60'
+                }`}
+              >
+                {/* Drag handle */}
+                <div className="flex flex-col items-center gap-0.5 shrink-0 mt-1 text-gray-300 hover:text-gray-500 cursor-grab">
+                  <span className="leading-none text-base select-none">⠿</span>
+                </div>
                 <div className="w-7 h-7 rounded-full bg-blue-100 text-blue-700 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
                   {step.order}
                 </div>
@@ -481,6 +532,14 @@ function WorkflowTemplateDetail({ template, onBack }: { template: WorkflowTempla
                     {!step.isActive && <span className="text-xs text-gray-400 bg-gray-100 rounded-full px-2 py-0.5">Inactive</span>}
                     {step.requireDocumentsComplete && (
                       <span className="text-xs text-amber-700 bg-amber-50 rounded-full px-2 py-0.5">Requires docs</span>
+                    )}
+                    {step.aiEmailEnabled && (
+                      <span className="text-xs text-blue-700 bg-blue-50 rounded-full px-2 py-0.5 flex items-center gap-1">
+                        <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                        </svg>
+                        AI Email
+                      </span>
                     )}
                   </div>
                   {step.description && <p className="text-xs text-gray-500 mt-0.5">{step.description}</p>}
@@ -590,7 +649,7 @@ function WorkflowTemplateDetail({ template, onBack }: { template: WorkflowTempla
       {stepModal === 'edit' && selectedStep && (
         <StepModal
           title="Edit Workflow Step"
-          initial={{ name: selectedStep.name, order: selectedStep.order, description: selectedStep.description, requireDocumentsComplete: selectedStep.requireDocumentsComplete, defaultFollowUpSuggestion: selectedStep.defaultFollowUpSuggestion, isActive: selectedStep.isActive }}
+          initial={{ name: selectedStep.name, order: selectedStep.order, description: selectedStep.description, requireDocumentsComplete: selectedStep.requireDocumentsComplete, defaultFollowUpSuggestion: selectedStep.defaultFollowUpSuggestion, isActive: selectedStep.isActive, aiEmailEnabled: selectedStep.aiEmailEnabled, aiEmailPrompt: selectedStep.aiEmailPrompt }}
           maxOrder={allSteps.length}
           onSave={d => { updateWorkflowStep(template.id, selectedStep.id, d); setStepModal(null) }}
           onClose={() => setStepModal(null)}

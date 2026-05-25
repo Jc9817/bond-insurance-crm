@@ -29,13 +29,30 @@ function mapCustomResponse(data: Record<string, unknown>) {
   const caseType = String(
     data.caseType ?? data.case_type ?? data.bond_type ?? data.insurance_type ?? ''
   )
-  const amount = data.amount ? String(data.amount) : formatRM(data.contract_value)
-  const bondValue = data.bondValue ? String(data.bondValue) : formatRM(data.bond_value)
+
+  // amount / bondValue may come as raw numbers (SST prompt) or pre-formatted RM strings
+  const amount = data.amount != null
+    ? (typeof data.amount === 'number' ? formatRM(data.amount) : String(data.amount))
+    : formatRM(data.contract_value)
+  const bondValue = data.bondValue != null
+    ? (typeof data.bondValue === 'number' ? formatRM(data.bondValue) : String(data.bondValue))
+    : formatRM(data.bond_value)
+
+  // expiryDate: SST prompt uses workEndDate; older prompts use expiryDate / expiry_date
   const expiryDate = String(
     data.expiryDate ?? data.expiry_date ??
+    data.workEndDate ?? data.work_end_date ??
     cd.work_insurance_end ?? cd.public_liability_end ?? ''
   )
-  const notes = String(data.notes ?? '')
+
+  // notes: SST prompt splits into sstNo / sebuthargaNo / issuingAgency
+  const noteParts = [
+    data.sstNo ? `SST: ${data.sstNo}` : '',
+    data.sebuthargaNo ? `Sebutharga: ${data.sebuthargaNo}` : '',
+    data.issuingAgency ? `Agency: ${data.issuingAgency}` : '',
+    data.notes ? String(data.notes) : '',
+  ].filter(Boolean)
+  const notes = noteParts.join(' | ')
 
   return { customerName, projectName, caseType, amount, bondValue, expiryDate, notes, raw: data }
 }

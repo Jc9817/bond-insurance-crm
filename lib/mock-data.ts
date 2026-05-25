@@ -818,16 +818,180 @@ export const mockWorkflowTemplates: WorkflowTemplate[] = [
         id: 'rd4', caseTypeId: 'wt1', name: 'Contract / Award Letter',
         description: 'Contract or letter of award from the project owner', required: true,
         acceptedFileTypes: ['PDF', 'DOCX'], isActive: true,
-        aiPrompt: `This is a Surat Setuju Terima (SST) / Letter of Award / Contract Acceptance from a Malaysian government agency or project owner.
+        aiPrompt: `This is a Surat Setuju Terima (SST) / Letter of Award / Contract Acceptance from a Malaysian government agency.
 
-Extract the following:
-- customerName: The CONTRACTOR's full company name and registration number (the party AWARDED the contract — look for "Syarikat", "Sdn. Bhd.", "Enterprise" — NOT the government agency)
-- projectName: The full description of works / Skop Kerja / Perihal Kerja as stated in the document
-- caseType: The type of bond or security deposit required (e.g. "Performance Bond", "Bon Pelaksanaan", "Wang Jaminan")
-- amount: The CONTRACT VALUE / Harga Kontrak / Harga Sebutharga (the total awarded contract sum in RM)
-- bondValue: The bond/deposit amount (look for "Bon Pelaksanaan", "deposit", "jaminan" — typically 5% of contract value)
-- expiryDate: Contract completion date / Tarikh Siap or end of Defect Liability Period (DLP)
-- notes: All reference numbers — SST no., Tender no. / No. Sebutharga, issuing government department or agency name`,
+Extract the following fields and return as a single JSON object:
+
+1. customerName
+   The CONTRACTOR's full company name AND registration number
+   Look for: company awarded the contract — "Enterprise", "Sdn. Bhd.", "Sdn Bhd", "Trading", "Resources"
+   NOT the government agency or university
+   Example: "MASAYU ENTERPRISE 198003027177 (000504744-H)"
+   Example: "TNO RESOURCES (003356082-V)"
+
+2. projectName
+   The full project/works description exactly as written in the document
+   Look for: "Kerja-Kerja", "Skop Kerja", "Perihal Kerja", or the bold heading after "Sebutharga Untuk"
+   Copy the full text — do not shorten or summarise
+
+3. caseType
+   The type of bond or security required
+   Look for: "Bon Pelaksanaan", "Wang Jaminan Perlaksanaan", "Jaminan Bank"
+   Return in English: "Performance Bond" or "Bank Guarantee" or "Cash Deposit"
+
+4. amount
+   The total awarded contract value
+   Look for: "Harga Kontrak", "Harga Sebutharga", "Harga Tender", "harga sebanyak Ringgit Malaysia"
+   Return as number only e.g. 267740
+
+5. bondValue
+   The performance bond / deposit amount
+   Look for: "Nilai Bon Pelaksanaan", "bon pelaksanaan...berjumlah", typically 5% of contract value
+   Return as number only e.g. 13387
+
+6. thirdPartyLiability
+   The public liability insurance value
+   Look for: "Polisi Insurans Tanggungan Awam", "Nilai Polisi" under Tanggungan Awam section
+   Return as number only e.g. 100000
+
+7. workStartDate
+   The date work is allowed to begin / site possession date
+   Look for: "Tarikh Mula Kerja", "Tarikh Milik Tapak", "tarikh mula kerja seperti yang disebutkan dalam Lampiran A"
+   Return as YYYY-MM-DD
+
+8. workEndDate
+   The contract completion date
+   Look for: "Tarikh Siap", "Tarikh Tamat Kerja", "Tarikh Siap untuk seluruh kerja-kerja", "Tarikh Siap Kerja"
+   Return as YYYY-MM-DD
+
+9. dlpEndDate
+   The end date of the Defect Liability Period (DLP / Tempoh Tanggungan Kecacatan)
+
+   STEP 1 — Look for an explicit date first:
+   Check "Polisi Insurans Tanggungan Awam" -> "Tempoh Perlindungan" end date
+   Check "Tempoh Sah Laku" under bond section for a stated end date
+   If an explicit end date is found, use it directly.
+
+   STEP 2 — If NO explicit end date is found, CALCULATE it:
+   Formula: workEndDate + 12 months (DLP) + 3 months + 14 days
+
+   Example calculation:
+   workEndDate  = 2026-08-25
+   + 12 months  = 2027-08-25
+   + 3 months   = 2027-11-25
+   + 14 days    = 2027-12-09
+   dlpEndDate   = "2027-12-09"
+
+   Return as YYYY-MM-DD
+
+10. workInsuranceValue
+    The Contractors All Risk (CAR) / Works Insurance / Polisi Insurans Kerja policy value
+    Look for: "Polisi Insurans Kerja", "Nilai Polisi" under Insurans Kerja section
+    Usually equals the contract value
+    Return as number only
+
+11. sebuthargaNo
+    The tender/quotation reference number
+    Look for: "No. Sebutharga", "No. Tender"
+    NOTE: Some JKR documents use "No. Kontrak" only — if there is no "No. Sebutharga" or
+    "No. Tender", return null. Do NOT put the contract number here — that goes into sstNo
+    Return as string e.g. "NETSS202600078" or null
+
+12. sstNo
+    The primary reference number for this contract/acceptance letter
+    Look for in this order of priority:
+    (a) "No. Surat Setuju Terima" e.g. "SST202600224"
+    (b) "No. Kontrak" e.g. "JKR/WPP/Q/10/2026"
+    (c) "Rujukan" / reference number at the top of the letter
+    Return whichever is found first, as a string
+
+13. issuingAgency
+    The name of the government agency or university issuing this contract
+    Look for: the organisation at the letterhead, the signing authority's department,
+    or the agency name in the body text
+    NOT the contractor
+    Return full name including abbreviation
+    e.g. "Universiti Kebangsaan Malaysia (UKM)"
+    e.g. "Jabatan Kerja Raya Wilayah Persekutuan Putrajaya (JKR WPP)"
+
+14. latePenaltyRate
+    The daily late completion penalty rate
+
+    TYPE A — Fixed table (Kenaan Gantirugi / Denda Kerana Tak Siap):
+    Find the penalty table and locate the row matching the contract amount
+    Return that daily rate as a number e.g. 150
+
+    TYPE B — LAD Formula (Liquidated & Ascertained Damages):
+    Look for: "Liquidated & Ascertained Damages (LAD)", "Kadar sehari"
+    If a daily rate is explicitly stated, return it e.g. 111.17
+    If only a formula is stated e.g. "6.40% x Harga Kontrak / 365":
+    Calculate: (percentage / 100) x amount / 365, round to 2 decimal places
+    e.g. (6.40 / 100) x 634000 / 365 = 111.17
+
+    Return as number only
+
+15. bondValidUntil
+    The expiry date of the performance bond (Tempoh Sah Laku Bon Pelaksanaan)
+
+    STEP 1 — Look for an explicit date first:
+    Check "Tempoh Sah Laku" under "Bon Pelaksanaan" section
+    If a specific end date is stated e.g. "18/05/2026 - 23/11/2028", use the end date directly
+
+    STEP 2 — If NO explicit end date is found, CALCULATE it:
+    For contracts with amount <= RM10,000,000: bondValidUntil = dlpEndDate + 12 months
+    For contracts with amount > RM10,000,000: bondValidUntil = dlpEndDate + 24 months
+
+    Example: dlpEndDate = 2027-12-09, amount = 634000 (<= RM10M)
+    bondValidUntil = 2027-12-09 + 12 months = "2028-12-09"
+
+    Return as YYYY-MM-DD
+
+16. dlpBreakdown
+    The DLP coverage duration components as stated in the document
+    Look for phrases describing the insurance coverage period such as:
+    - "12 bulan tempoh tanggungan kecacatan dan 3 bulan 14 hari"
+    - "Meliputi tempoh kerja, 12 bulan tempoh tanggungan kecacatan dan 3 bulan 14 hari"
+    - "tempoh kontrak, tempoh tanggungan kecacatan dan 3 bulan 14 hari"
+
+    Extract the DLP months and the additional buffer months/days.
+    Return as an object with these exact keys:
+    {
+      "dlpMonths": number,
+      "bufferMonths": number,
+      "bufferDays": number,
+      "label": string
+    }
+
+    Example: "12 bulan tempoh tanggungan kecacatan dan 3 bulan 14 hari"
+    Returns: { "dlpMonths": 12, "bufferMonths": 3, "bufferDays": 14, "label": "12MONTHS + 3MONTHS + 14DAYS" }
+
+    If the breakdown cannot be found in the document, return the default:
+    { "dlpMonths": 12, "bufferMonths": 3, "bufferDays": 14, "label": "12MONTHS + 3MONTHS + 14DAYS" }
+
+Return this exact JSON structure:
+{
+  "customerName": string | null,
+  "projectName": string | null,
+  "caseType": string | null,
+  "amount": number | null,
+  "bondValue": number | null,
+  "thirdPartyLiability": number | null,
+  "workStartDate": string | null,
+  "workEndDate": string | null,
+  "dlpEndDate": string | null,
+  "workInsuranceValue": number | null,
+  "sebuthargaNo": string | null,
+  "sstNo": string | null,
+  "issuingAgency": string | null,
+  "latePenaltyRate": number | null,
+  "bondValidUntil": string | null,
+  "dlpBreakdown": {
+    "dlpMonths": number,
+    "bufferMonths": number,
+    "bufferDays": number,
+    "label": string
+  }
+}`,
       },
       {
         id: 'rd5', caseTypeId: 'wt1', name: 'Application Form',
@@ -847,56 +1011,64 @@ Extract the following:
     ],
     workflowSteps: [
       {
-        id: 'ws1', caseTypeId: 'wt1', name: 'Collect Documents', order: 1,
+        id: 'ws0', caseTypeId: 'wt1', name: 'Send out for Quotation', order: 1,
+        description: 'Send quotation request to insurer(s) via AI-composed email',
+        requireDocumentsComplete: false,
+        defaultFollowUpSuggestion: 'Follow up with insurer on quotation request',
+        isActive: true,
+        aiEmailEnabled: true,
+      },
+      {
+        id: 'ws1', caseTypeId: 'wt1', name: 'Collect Documents', order: 2,
         description: 'Gather all required documents from the client',
         requireDocumentsComplete: false,
         defaultFollowUpSuggestion: 'Request outstanding documents from client',
         isActive: true,
       },
       {
-        id: 'ws2', caseTypeId: 'wt1', name: 'Review Documents', order: 2,
+        id: 'ws2', caseTypeId: 'wt1', name: 'Review Documents', order: 3,
         description: 'Review submitted documents for completeness and accuracy',
         requireDocumentsComplete: true,
         defaultFollowUpSuggestion: 'Review and verify client documents',
         isActive: true,
       },
       {
-        id: 'ws3', caseTypeId: 'wt1', name: 'Submit to Insurer', order: 3,
+        id: 'ws3', caseTypeId: 'wt1', name: 'Submit to Insurer', order: 4,
         description: 'Submit completed application and all documents to insurer',
         requireDocumentsComplete: true,
         defaultFollowUpSuggestion: 'Follow up with insurer on submission status',
         isActive: true,
       },
       {
-        id: 'ws4', caseTypeId: 'wt1', name: 'Receive Quotation', order: 4,
+        id: 'ws4', caseTypeId: 'wt1', name: 'Receive Quotation', order: 5,
         description: 'Receive and review bond quotation from insurer',
         requireDocumentsComplete: true,
         defaultFollowUpSuggestion: 'Chase insurer for quotation',
         isActive: true,
       },
       {
-        id: 'ws5', caseTypeId: 'wt1', name: 'Send to Customer', order: 5,
+        id: 'ws5', caseTypeId: 'wt1', name: 'Send to Customer', order: 6,
         description: 'Present quotation and terms to client for review',
         requireDocumentsComplete: true,
         defaultFollowUpSuggestion: 'Follow up with client on quotation decision',
         isActive: true,
       },
       {
-        id: 'ws6', caseTypeId: 'wt1', name: 'Confirm Acceptance', order: 6,
+        id: 'ws6', caseTypeId: 'wt1', name: 'Confirm Acceptance', order: 7,
         description: 'Client confirms acceptance and pays premium',
         requireDocumentsComplete: true,
         defaultFollowUpSuggestion: 'Confirm payment receipt from client',
         isActive: true,
       },
       {
-        id: 'ws7', caseTypeId: 'wt1', name: 'Issue Bond', order: 7,
+        id: 'ws7', caseTypeId: 'wt1', name: 'Issue Bond', order: 8,
         description: 'Insurer issues bond certificate and delivers to client',
         requireDocumentsComplete: true,
         defaultFollowUpSuggestion: 'Arrange bond certificate delivery to client',
         isActive: true,
       },
       {
-        id: 'ws8', caseTypeId: 'wt1', name: 'Close Case', order: 8,
+        id: 'ws8', caseTypeId: 'wt1', name: 'Close Case', order: 9,
         description: 'Case is complete. Bond issued and delivered to client.',
         requireDocumentsComplete: true,
         defaultFollowUpSuggestion: '',
@@ -928,42 +1100,50 @@ Extract the following:
     ],
     workflowSteps: [
       {
-        id: 'ws10', caseTypeId: 'wt2', name: 'Collect Requirements', order: 1,
+        id: 'ws09', caseTypeId: 'wt2', name: 'Send out for Quotation', order: 1,
+        description: 'Send quotation request to insurer(s) via AI-composed email',
+        requireDocumentsComplete: false,
+        defaultFollowUpSuggestion: 'Follow up with insurer on quotation request',
+        isActive: true,
+        aiEmailEnabled: true,
+      },
+      {
+        id: 'ws10', caseTypeId: 'wt2', name: 'Collect Requirements', order: 2,
         description: 'Understand client needs and collect required documents',
         requireDocumentsComplete: false,
         defaultFollowUpSuggestion: 'Contact client for insurance requirements',
         isActive: true,
       },
       {
-        id: 'ws11', caseTypeId: 'wt2', name: 'Get Quotation', order: 2,
+        id: 'ws11', caseTypeId: 'wt2', name: 'Get Quotation', order: 3,
         description: 'Obtain quotations from suitable insurers',
         requireDocumentsComplete: true,
         defaultFollowUpSuggestion: 'Request quotation from insurer',
         isActive: true,
       },
       {
-        id: 'ws12', caseTypeId: 'wt2', name: 'Present to Customer', order: 3,
+        id: 'ws12', caseTypeId: 'wt2', name: 'Present to Customer', order: 4,
         description: 'Present and explain quotation options to client',
         requireDocumentsComplete: true,
         defaultFollowUpSuggestion: 'Follow up with client on insurance proposal',
         isActive: true,
       },
       {
-        id: 'ws13', caseTypeId: 'wt2', name: 'Confirm Policy', order: 4,
+        id: 'ws13', caseTypeId: 'wt2', name: 'Confirm Policy', order: 5,
         description: 'Client confirms chosen policy and authorizes payment',
         requireDocumentsComplete: true,
         defaultFollowUpSuggestion: 'Confirm policy acceptance and collect payment',
         isActive: true,
       },
       {
-        id: 'ws14', caseTypeId: 'wt2', name: 'Issue Certificate', order: 5,
+        id: 'ws14', caseTypeId: 'wt2', name: 'Issue Certificate', order: 6,
         description: 'Insurer issues policy certificate to client',
         requireDocumentsComplete: true,
         defaultFollowUpSuggestion: 'Deliver policy documents to client',
         isActive: true,
       },
       {
-        id: 'ws15', caseTypeId: 'wt2', name: 'Close Case', order: 6,
+        id: 'ws15', caseTypeId: 'wt2', name: 'Close Case', order: 7,
         description: 'Policy issued. Case complete.',
         requireDocumentsComplete: true,
         defaultFollowUpSuggestion: '',
@@ -1000,42 +1180,50 @@ Extract the following:
     ],
     workflowSteps: [
       {
-        id: 'ws20', caseTypeId: 'wt3', name: 'Review Expiry', order: 1,
+        id: 'ws19', caseTypeId: 'wt3', name: 'Send out for Quotation', order: 1,
+        description: 'Send renewal quotation request to insurer(s) via AI-composed email',
+        requireDocumentsComplete: false,
+        defaultFollowUpSuggestion: 'Follow up with insurer on renewal quotation request',
+        isActive: true,
+        aiEmailEnabled: true,
+      },
+      {
+        id: 'ws20', caseTypeId: 'wt3', name: 'Review Expiry', order: 2,
         description: 'Review expiry date and initiate renewal process with client',
         requireDocumentsComplete: false,
         defaultFollowUpSuggestion: 'Notify client of upcoming renewal',
         isActive: true,
       },
       {
-        id: 'ws21', caseTypeId: 'wt3', name: 'Get Renewal Quote', order: 2,
+        id: 'ws21', caseTypeId: 'wt3', name: 'Get Renewal Quote', order: 3,
         description: 'Obtain renewal quotation from current or alternative insurer',
         requireDocumentsComplete: false,
         defaultFollowUpSuggestion: 'Request renewal quotation from insurer',
         isActive: true,
       },
       {
-        id: 'ws22', caseTypeId: 'wt3', name: 'Send to Customer', order: 3,
+        id: 'ws22', caseTypeId: 'wt3', name: 'Send to Customer', order: 4,
         description: 'Present renewal quotation to client for approval',
         requireDocumentsComplete: false,
         defaultFollowUpSuggestion: 'Follow up with client on renewal decision',
         isActive: true,
       },
       {
-        id: 'ws23', caseTypeId: 'wt3', name: 'Confirm Renewal', order: 4,
+        id: 'ws23', caseTypeId: 'wt3', name: 'Confirm Renewal', order: 5,
         description: 'Client approves renewal and authorizes payment',
         requireDocumentsComplete: true,
         defaultFollowUpSuggestion: 'Confirm renewal approval and collect payment',
         isActive: true,
       },
       {
-        id: 'ws24', caseTypeId: 'wt3', name: 'Process Renewal', order: 5,
+        id: 'ws24', caseTypeId: 'wt3', name: 'Process Renewal', order: 6,
         description: 'Submit renewal to insurer and obtain new certificate',
         requireDocumentsComplete: true,
         defaultFollowUpSuggestion: 'Deliver renewed policy documents to client',
         isActive: true,
       },
       {
-        id: 'ws25', caseTypeId: 'wt3', name: 'Close Case', order: 6,
+        id: 'ws25', caseTypeId: 'wt3', name: 'Close Case', order: 7,
         description: 'Renewal complete. New certificate issued to client.',
         requireDocumentsComplete: true,
         defaultFollowUpSuggestion: '',
@@ -1069,16 +1257,133 @@ Extract the following:
         id: 'rd43', caseTypeId: 'wt4', name: 'Contract / Award Letter',
         description: 'SST or letter of award from the project owner', required: true,
         acceptedFileTypes: ['PDF', 'DOCX'], isActive: true,
-        aiPrompt: `This is a Surat Setuju Terima (SST) / Letter of Award / Contract Acceptance from a Malaysian government agency or project owner.
+        aiPrompt: `This is a Surat Setuju Terima (SST) / Letter of Award / Contract Acceptance from a Malaysian government agency.
 
-Extract the following:
-- customerName: The CONTRACTOR's full company name and registration number (the party AWARDED the contract — NOT the government agency)
-- projectName: The full description of works / Skop Kerja / Perihal Kerja as stated in the document
-- caseType: The type of bond or security deposit required (e.g. "Performance Bond", "Bon Pelaksanaan", "Wang Jaminan")
-- amount: The CONTRACT VALUE / Harga Kontrak / Harga Sebutharga (the total awarded contract sum in RM)
-- bondValue: The bond/deposit amount (look for "Bon Pelaksanaan", "deposit", "jaminan" — typically 5% of contract value)
-- expiryDate: Contract completion date / Tarikh Siap or end of Defect Liability Period (DLP)
-- notes: All reference numbers — SST no., Tender no. / No. Sebutharga, issuing government department or agency name`,
+Extract the following fields and return as a single JSON object:
+
+1. customerName
+   The CONTRACTOR's full company name AND registration number
+   Look for: company awarded the contract — "Enterprise", "Sdn. Bhd.", "Sdn Bhd", "Trading", "Resources"
+   NOT the government agency or university
+   Example: "MASAYU ENTERPRISE 198003027177 (000504744-H)"
+   Example: "TNO RESOURCES (003356082-V)"
+
+2. projectName
+   The full project/works description exactly as written in the document
+   Look for: "Kerja-Kerja", "Skop Kerja", "Perihal Kerja", or the bold heading after "Sebutharga Untuk"
+   Copy the full text — do not shorten or summarise
+
+3. caseType
+   The type of bond or security required
+   Look for: "Bon Pelaksanaan", "Wang Jaminan Perlaksanaan", "Jaminan Bank"
+   Return in English: "Performance Bond" or "Bank Guarantee" or "Cash Deposit"
+
+4. amount
+   The total awarded contract value
+   Look for: "Harga Kontrak", "Harga Sebutharga", "Harga Tender", "harga sebanyak Ringgit Malaysia"
+   Return as number only e.g. 267740
+
+5. bondValue
+   The performance bond / deposit amount
+   Look for: "Nilai Bon Pelaksanaan", "bon pelaksanaan...berjumlah", typically 5% of contract value
+   Return as number only e.g. 13387
+
+6. thirdPartyLiability
+   The public liability insurance value
+   Look for: "Polisi Insurans Tanggungan Awam", "Nilai Polisi" under Tanggungan Awam section
+   Return as number only e.g. 100000
+
+7. workStartDate
+   The date work is allowed to begin / site possession date
+   Look for: "Tarikh Mula Kerja", "Tarikh Milik Tapak", "tarikh mula kerja seperti yang disebutkan dalam Lampiran A"
+   Return as YYYY-MM-DD
+
+8. workEndDate
+   The contract completion date
+   Look for: "Tarikh Siap", "Tarikh Tamat Kerja", "Tarikh Siap untuk seluruh kerja-kerja", "Tarikh Siap Kerja"
+   Return as YYYY-MM-DD
+
+9. dlpEndDate
+   The end date of the Defect Liability Period (DLP / Tempoh Tanggungan Kecacatan)
+
+   STEP 1 — Look for an explicit date first:
+   Check "Polisi Insurans Tanggungan Awam" -> "Tempoh Perlindungan" end date
+   Check "Tempoh Sah Laku" under bond section for a stated end date
+   If an explicit end date is found, use it directly.
+
+   STEP 2 — If NO explicit end date is found, CALCULATE it:
+   Formula: workEndDate + 12 months (DLP) + 3 months + 14 days
+
+   Return as YYYY-MM-DD
+
+10. workInsuranceValue
+    The Contractors All Risk (CAR) / Works Insurance / Polisi Insurans Kerja policy value
+    Look for: "Polisi Insurans Kerja", "Nilai Polisi" under Insurans Kerja section
+    Usually equals the contract value
+    Return as number only
+
+11. sebuthargaNo
+    The tender/quotation reference number
+    Look for: "No. Sebutharga", "No. Tender"
+    NOTE: Some JKR documents use "No. Kontrak" only — if there is no "No. Sebutharga" or
+    "No. Tender", return null. Do NOT put the contract number here — that goes into sstNo
+    Return as string e.g. "NETSS202600078" or null
+
+12. sstNo
+    The primary reference number for this contract/acceptance letter
+    Look for in this order of priority:
+    (a) "No. Surat Setuju Terima" e.g. "SST202600224"
+    (b) "No. Kontrak" e.g. "JKR/WPP/Q/10/2026"
+    (c) "Rujukan" / reference number at the top of the letter
+    Return whichever is found first, as a string
+
+13. issuingAgency
+    The name of the government agency or university issuing this contract
+    Return full name including abbreviation
+    e.g. "Universiti Kebangsaan Malaysia (UKM)"
+    e.g. "Jabatan Kerja Raya Wilayah Persekutuan Putrajaya (JKR WPP)"
+
+14. latePenaltyRate
+    The daily late completion penalty rate
+    TYPE A: Fixed table — find the row matching the contract amount, return the daily rate as a number
+    TYPE B: LAD Formula — if only formula stated e.g. "6.40% x Harga Kontrak / 365":
+    Calculate: (percentage / 100) x amount / 365, round to 2 decimal places
+    Return as number only
+
+15. bondValidUntil
+    The expiry date of the performance bond (Tempoh Sah Laku Bon Pelaksanaan)
+    STEP 1 — explicit date from "Tempoh Sah Laku" under "Bon Pelaksanaan"
+    STEP 2 — CALCULATE: amount <= RM10M: dlpEndDate + 12 months; amount > RM10M: dlpEndDate + 24 months
+    Return as YYYY-MM-DD
+
+16. dlpBreakdown
+    { "dlpMonths": number, "bufferMonths": number, "bufferDays": number, "label": string }
+    Default if not found: { "dlpMonths": 12, "bufferMonths": 3, "bufferDays": 14, "label": "12MONTHS + 3MONTHS + 14DAYS" }
+
+Return this exact JSON structure:
+{
+  "customerName": string | null,
+  "projectName": string | null,
+  "caseType": string | null,
+  "amount": number | null,
+  "bondValue": number | null,
+  "thirdPartyLiability": number | null,
+  "workStartDate": string | null,
+  "workEndDate": string | null,
+  "dlpEndDate": string | null,
+  "workInsuranceValue": number | null,
+  "sebuthargaNo": string | null,
+  "sstNo": string | null,
+  "issuingAgency": string | null,
+  "latePenaltyRate": number | null,
+  "bondValidUntil": string | null,
+  "dlpBreakdown": {
+    "dlpMonths": number,
+    "bufferMonths": number,
+    "bufferDays": number,
+    "label": string
+  }
+}`,
       },
       {
         id: 'rd44', caseTypeId: 'wt4', name: 'Bank Statement',
@@ -1098,35 +1403,43 @@ Extract the following:
     ],
     workflowSteps: [
       {
-        id: 'ws40', caseTypeId: 'wt4', name: 'Collect Documents', order: 1,
+        id: 'ws39', caseTypeId: 'wt4', name: 'Send out for Quotation', order: 1,
+        description: 'Send quotation request to insurer(s) via AI-composed email',
+        requireDocumentsComplete: false,
+        defaultFollowUpSuggestion: 'Follow up with insurer on quotation request',
+        isActive: true,
+        aiEmailEnabled: true,
+      },
+      {
+        id: 'ws40', caseTypeId: 'wt4', name: 'Collect Documents', order: 2,
         description: 'Gather all required documents from the proprietor',
         requireDocumentsComplete: false,
         defaultFollowUpSuggestion: 'Request outstanding documents from client',
         isActive: true,
       },
       {
-        id: 'ws41', caseTypeId: 'wt4', name: 'Submit to Insurer', order: 2,
+        id: 'ws41', caseTypeId: 'wt4', name: 'Submit to Insurer', order: 3,
         description: 'Submit complete application to selected insurer',
         requireDocumentsComplete: true,
         defaultFollowUpSuggestion: 'Follow up with insurer on application status',
         isActive: true,
       },
       {
-        id: 'ws42', caseTypeId: 'wt4', name: 'Send Quote to Client', order: 3,
+        id: 'ws42', caseTypeId: 'wt4', name: 'Send Quote to Client', order: 4,
         description: 'Present insurer quotation to client for confirmation',
         requireDocumentsComplete: false,
         defaultFollowUpSuggestion: 'Follow up with client on quotation approval',
         isActive: true,
       },
       {
-        id: 'ws43', caseTypeId: 'wt4', name: 'Confirm & Collect Payment', order: 4,
+        id: 'ws43', caseTypeId: 'wt4', name: 'Confirm & Collect Payment', order: 5,
         description: 'Client confirms and pays premium',
         requireDocumentsComplete: false,
         defaultFollowUpSuggestion: 'Collect premium payment from client',
         isActive: true,
       },
       {
-        id: 'ws44', caseTypeId: 'wt4', name: 'Issue Bond', order: 5,
+        id: 'ws44', caseTypeId: 'wt4', name: 'Issue Bond', order: 6,
         description: 'Insurer issues bond certificate and delivers to client',
         requireDocumentsComplete: true,
         defaultFollowUpSuggestion: 'Deliver bond certificate to client',

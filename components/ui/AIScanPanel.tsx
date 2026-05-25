@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useStore } from '@/lib/store'
 import { useAuth } from '@/lib/auth'
-import type { CaseFile } from '@/lib/types'
+import type { CaseFile, AiExtractedData } from '@/lib/types'
 import Modal from './Modal'
 
 type Props = {
@@ -11,15 +11,30 @@ type Props = {
   onClose: () => void
 }
 
+const SST_KEYS = new Set(['thirdPartyLiability', 'workStartDate', 'workEndDate', 'dlpEndDate', 'workInsuranceValue', 'sebuthargaNo', 'sstNo', 'issuingAgency', 'latePenaltyRate', 'bondValidUntil', 'dlpBreakdown'])
+
+const INPUT_CLS = 'w-full text-sm font-medium text-gray-800 bg-white border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400'
+
 export default function AIScanPanel({ file, onClose }: Props) {
   const { updateCaseFile, addActivityLog } = useStore()
   const { currentUser } = useAuth()
-  const data = file.aiExtractedData
   const [done, setDone] = useState(false)
   const [decision, setDecision] = useState<'approved' | 'rejected' | null>(null)
+  const [form, setForm] = useState<AiExtractedData>(() => ({
+    ...(file.aiExtractedData ?? {
+      customerName: '', projectName: '', caseType: '',
+      amount: '', bondValue: '', expiryDate: '', notes: '',
+    }),
+  }))
+
+  const setField = (key: keyof Omit<AiExtractedData, 'raw'>, value: string) =>
+    setForm(f => ({ ...f, [key]: value }))
+
+  const setRaw = (key: string, value: string) =>
+    setForm(f => ({ ...f, raw: { ...f.raw, [key]: value } }))
 
   const approve = () => {
-    updateCaseFile(file.id, { aiStatus: 'Approved' })
+    updateCaseFile(file.id, { aiStatus: 'Approved', aiExtractedData: form })
     addActivityLog({
       caseId: file.caseId,
       actionType: 'AI_EXTRACTION_APPROVED',
@@ -44,9 +59,17 @@ export default function AIScanPanel({ file, onClose }: Props) {
     setDone(true)
   }
 
+  const rescan = () => {
+    updateCaseFile(file.id, { aiStatus: 'Not Scanned' })
+    onClose()
+  }
+
+  const raw = (form.raw ?? {}) as Record<string, unknown>
+  const isSSTDoc = Object.keys(raw).some(k => SST_KEYS.has(k))
+
   return (
-    <Modal isOpen onClose={onClose} title="AI Scan — Extracted Information" maxWidth="md">
-      <div className="px-6 py-5">
+    <Modal isOpen onClose={onClose} title="AI Scan — Review & Edit" maxWidth="lg">
+      <div className="px-6 py-5 overflow-y-auto">
         {/* File info */}
         <div className="flex items-center gap-2 mb-5 pb-4 border-b border-gray-100">
           <span className="text-lg">📄</span>
@@ -56,93 +79,81 @@ export default function AIScanPanel({ file, onClose }: Props) {
           </div>
         </div>
 
-        {!done && data ? (
+        {!done ? (
           <>
             <p className="text-xs text-gray-400 mb-4">
-              The following information was extracted from this document. Please review carefully before approving.
+              Review and edit the extracted information before approving. Changes here will be saved to the case report.
             </p>
 
-            <div className="space-y-2 mb-6">
-              <div className="bg-gray-50 rounded-xl px-4 py-3">
-                <p className="text-xs text-gray-400 mb-0.5">Contractor / Client</p>
-                <p className="text-sm font-medium text-gray-800">{data.customerName || '—'}</p>
+            <div className="space-y-3 mb-6">
+              <EditField label="Contractor / Client">
+                <input className={INPUT_CLS} value={form.customerName} onChange={e => setField('customerName', e.target.value)} />
+              </EditField>
+              <EditField label="Project Title / Description of Works">
+                <textarea className={`${INPUT_CLS} resize-none`} rows={2} value={form.projectName} onChange={e => setField('projectName', e.target.value)} />
+              </EditField>
+              <EditField label="Bond / Insurance Type">
+                <input className={INPUT_CLS} value={form.caseType} onChange={e => setField('caseType', e.target.value)} />
+              </EditField>
+              <div className="grid grid-cols-2 gap-3">
+                <EditField label="Contract Value">
+                  <input className={INPUT_CLS} value={form.amount} onChange={e => setField('amount', e.target.value)} />
+                </EditField>
+                <EditField label="Bond Value">
+                  <input className={INPUT_CLS} value={form.bondValue} onChange={e => setField('bondValue', e.target.value)} />
+                </EditField>
               </div>
-              <div className="bg-gray-50 rounded-xl px-4 py-3">
-                <p className="text-xs text-gray-400 mb-0.5">Project Title / Description of Works</p>
-                <p className="text-sm font-medium text-gray-800 leading-snug">{data.projectName || '—'}</p>
-              </div>
-              <div className="bg-gray-50 rounded-xl px-4 py-3">
-                <p className="text-xs text-gray-400 mb-0.5">Bond / Insurance Type</p>
-                <p className="text-sm font-medium text-gray-800">{data.caseType || '—'}</p>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="bg-blue-50 rounded-xl px-4 py-3">
-                  <p className="text-xs text-blue-400 mb-0.5">Contract Value</p>
-                  <p className="text-sm font-bold text-blue-800">{data.amount || '—'}</p>
-                </div>
-                <div className="bg-violet-50 rounded-xl px-4 py-3">
-                  <p className="text-xs text-violet-400 mb-0.5">Bond Value</p>
-                  <p className="text-sm font-bold text-violet-800">{data.bondValue || '—'}</p>
-                </div>
-              </div>
-              <div className="bg-gray-50 rounded-xl px-4 py-3">
-                <p className="text-xs text-gray-400 mb-0.5">Bond / Policy Expiry</p>
-                <p className="text-sm font-medium text-gray-800">{data.expiryDate || '—'}</p>
-              </div>
-              {data.notes && (
-                <div className="bg-gray-50 rounded-xl px-4 py-3">
-                  <p className="text-xs text-gray-400 mb-0.5">Reference / Notes</p>
-                  <p className="text-sm font-medium text-gray-800">{data.notes}</p>
-                </div>
-              )}
+              <EditField label="Bond / Policy Expiry (YYYY-MM-DD)">
+                <input className={INPUT_CLS} value={form.expiryDate} onChange={e => setField('expiryDate', e.target.value)} />
+              </EditField>
+              <EditField label="Reference / Notes">
+                <input className={INPUT_CLS} value={form.notes} onChange={e => setField('notes', e.target.value)} />
+              </EditField>
+
+              {isSSTDoc && <SSTEditFields raw={raw} onChange={setRaw} />}
             </div>
 
-            {/* Extended fields from custom prompts */}
-            {data.raw && <ExtendedFields raw={data.raw} />}
-
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-5">
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4">
               <p className="text-xs text-amber-700">
                 <strong>Important:</strong> AI extraction may contain errors. Always verify extracted data against the original document before approving.
               </p>
             </div>
 
-            <div className="flex gap-3">
-              <button onClick={reject} className="btn-secondary flex-1">
-                Reject
-              </button>
-              <button onClick={approve} className="btn-primary flex-1">
-                Approve & Save
-              </button>
+            <div className="flex gap-3 mb-3">
+              <button onClick={reject} className="btn-secondary flex-1">Reject</button>
+              <button onClick={approve} className="btn-primary flex-1">Approve & Save</button>
             </div>
+            <p className="text-center text-xs text-gray-400">
+              Data looks wrong?{' '}
+              <button onClick={rescan} className="text-violet-600 hover:underline">
+                Re-scan with AI
+              </button>
+            </p>
           </>
-        ) : done ? (
+        ) : decision === 'approved' ? (
           <div className="text-center py-6">
-            {decision === 'approved' ? (
-              <>
-                <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                  <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                  </svg>
-                </div>
-                <p className="text-base font-semibold text-gray-800">Approved</p>
-                <p className="text-sm text-gray-400 mt-1">Extracted data has been saved to this file record.</p>
-              </>
-            ) : (
-              <>
-                <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                  <svg className="w-6 h-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </div>
-                <p className="text-base font-semibold text-gray-800">Rejected</p>
-                <p className="text-sm text-gray-400 mt-1">Extraction was rejected. You may re-scan this file later.</p>
-              </>
-            )}
+            <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+              <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <p className="text-base font-semibold text-gray-800">Approved</p>
+            <p className="text-sm text-gray-400 mt-1">Extracted data has been saved to this file record.</p>
             <button onClick={onClose} className="btn-primary mt-5 px-8">Close</button>
           </div>
         ) : (
-          <div className="text-center py-8">
-            <p className="text-sm text-gray-400">No extracted data available.</p>
+          <div className="text-center py-6">
+            <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-3">
+              <svg className="w-6 h-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </div>
+            <p className="text-base font-semibold text-gray-800">Rejected</p>
+            <p className="text-sm text-gray-400 mt-1">Extraction was rejected. You may re-scan this file.</p>
+            <div className="flex gap-3 mt-5 justify-center">
+              <button onClick={onClose} className="btn-secondary px-6">Close</button>
+              <button onClick={rescan} className="btn-primary px-6">Re-scan</button>
+            </div>
           </div>
         )}
       </div>
@@ -150,83 +161,81 @@ export default function AIScanPanel({ file, onClose }: Props) {
   )
 }
 
-// ─── Extended fields renderer for custom-prompt responses ────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const STANDARD_KEYS = new Set(['customerName', 'projectName', 'caseType', 'amount', 'bondValue', 'expiryDate', 'notes'])
-
-function formatRMDisplay(value: unknown): string {
-  if (value === null || value === undefined || value === '') return '—'
-  const num = Number(value)
-  if (isNaN(num)) return String(value)
-  return `RM ${num.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+function EditField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <label className="block text-xs text-gray-400 mb-0.5">{label}</label>
+      {children}
+    </div>
+  )
 }
 
-function formatLabel(key: string): string {
-  return key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
-}
+// ─── SST extended fields editor ───────────────────────────────────────────────
 
-function isMoneyKey(key: string): boolean {
-  return /value|compensation|liability|amount|sum|price|cost/i.test(key)
-}
+function SSTEditFields({ raw, onChange }: { raw: Record<string, unknown>; onChange: (key: string, value: string) => void }) {
+  const str = (v: unknown) => (v != null ? String(v) : '')
 
-function ExtendedFields({ raw }: { raw: Record<string, unknown> }) {
-  const extras = Object.entries(raw).filter(([k]) => !STANDARD_KEYS.has(k))
-  if (extras.length === 0) return null
+  const Chip = ({ label, fieldKey, accent = 'bg-gray-50' }: { label: string; fieldKey: string; accent?: string }) => (
+    <div className={`rounded-lg px-3 py-2.5 ${accent}`}>
+      <label className="block text-xs text-gray-400 mb-0.5">{label}</label>
+      <input
+        className="w-full text-sm font-semibold text-gray-800 bg-transparent border-0 p-0 focus:outline-none"
+        value={str(raw[fieldKey])}
+        onChange={e => onChange(fieldKey, e.target.value)}
+        placeholder="—"
+      />
+    </div>
+  )
+
+  const hasDate = raw.workStartDate != null || raw.workEndDate != null || raw.dlpEndDate != null || raw.bondValidUntil != null
+  const hasInsurance = raw.workInsuranceValue != null || raw.thirdPartyLiability != null
+  const hasRef = raw.sstNo != null || raw.sebuthargaNo != null || raw.issuingAgency != null
 
   return (
-    <div className="mb-4">
-      <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2">Additional Extracted Fields</p>
-      <div className="space-y-2">
-        {extras.map(([key, value]) => {
-          if (value === null || value === undefined) return null
+    <div className="space-y-3 pt-3 border-t border-gray-100">
+      <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest">SST Extended Fields</p>
 
-          // Nested object (e.g. cover_duration)
-          if (typeof value === 'object' && !Array.isArray(value)) {
-            const nested = value as Record<string, unknown>
-            return (
-              <div key={key} className="bg-gray-50 rounded-xl px-4 py-3">
-                <p className="text-xs text-gray-400 mb-1.5">{formatLabel(key)}</p>
-                <div className="space-y-1">
-                  {Object.entries(nested).map(([nk, nv]) => (
-                    <div key={nk} className="flex items-start gap-2">
-                      <span className="text-xs text-gray-400 shrink-0 w-40">{formatLabel(nk)}</span>
-                      <span className="text-xs font-medium text-gray-700">{nv !== null && nv !== undefined && nv !== '' ? String(nv) : '—'}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )
-          }
+      {hasDate && (
+        <div>
+          <p className="text-xs text-gray-400 mb-1.5">Key Dates</p>
+          <div className="grid grid-cols-2 gap-2">
+            {raw.workStartDate != null && <Chip label="Work Start Date" fieldKey="workStartDate" />}
+            {raw.workEndDate != null && <Chip label="Work End Date" fieldKey="workEndDate" accent="bg-amber-50" />}
+            {raw.dlpEndDate != null && <Chip label="DLP End Date" fieldKey="dlpEndDate" accent="bg-orange-50" />}
+            {raw.bondValidUntil != null && <Chip label="Bond Valid Until" fieldKey="bondValidUntil" accent="bg-violet-50" />}
+          </div>
+        </div>
+      )}
 
-          // Note/explanation string paired with a numeric field (e.g. workmen_compensation_note)
-          if (key.endsWith('_note') || key.endsWith('_reason')) {
-            return (
-              <div key={key} className="bg-blue-50 rounded-xl px-4 py-2.5">
-                <p className="text-xs text-blue-400 mb-0.5">{formatLabel(key)}</p>
-                <p className="text-xs text-blue-700">{String(value)}</p>
-              </div>
-            )
-          }
+      {hasInsurance && (
+        <div>
+          <p className="text-xs text-gray-400 mb-1.5">Insurance Values</p>
+          <div className="grid grid-cols-2 gap-2">
+            {raw.workInsuranceValue != null && <Chip label="Works Insurance (CAR)" fieldKey="workInsuranceValue" accent="bg-blue-50" />}
+            {raw.thirdPartyLiability != null && <Chip label="Third Party Liability" fieldKey="thirdPartyLiability" accent="bg-blue-50" />}
+          </div>
+        </div>
+      )}
 
-          // Numeric monetary value
-          if (typeof value === 'number' && isMoneyKey(key)) {
-            return (
-              <div key={key} className="bg-violet-50 rounded-xl px-4 py-3">
-                <p className="text-xs text-violet-400 mb-0.5">{formatLabel(key)}</p>
-                <p className="text-sm font-bold text-violet-800">{formatRMDisplay(value)}</p>
-              </div>
-            )
-          }
+      {hasRef && (
+        <div>
+          <p className="text-xs text-gray-400 mb-1.5">References</p>
+          <div className="space-y-1.5">
+            {raw.sstNo != null && <Chip label="SST / Contract No." fieldKey="sstNo" />}
+            {raw.sebuthargaNo != null && <Chip label="No. Sebutharga / Tender" fieldKey="sebuthargaNo" />}
+            {raw.issuingAgency != null && <Chip label="Issuing Agency" fieldKey="issuingAgency" />}
+          </div>
+        </div>
+      )}
 
-          // Plain value
-          return (
-            <div key={key} className="bg-gray-50 rounded-xl px-4 py-3">
-              <p className="text-xs text-gray-400 mb-0.5">{formatLabel(key)}</p>
-              <p className="text-sm font-medium text-gray-800">{String(value) || '—'}</p>
-            </div>
-          )
-        })}
-      </div>
+      {raw.latePenaltyRate != null && (
+        <div>
+          <p className="text-xs text-gray-400 mb-1.5">Penalty</p>
+          <Chip label="Daily Late Penalty (LAD) per day" fieldKey="latePenaltyRate" accent="bg-red-50" />
+        </div>
+      )}
     </div>
   )
 }

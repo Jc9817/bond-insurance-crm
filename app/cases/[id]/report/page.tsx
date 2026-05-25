@@ -8,6 +8,7 @@ import type { CaseFile, AiExtractedData } from '@/lib/types'
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const STANDARD_KEYS = new Set(['customerName', 'projectName', 'caseType', 'amount', 'bondValue', 'expiryDate', 'notes', 'raw'])
+const SST_KEYS = new Set(['thirdPartyLiability', 'workStartDate', 'workEndDate', 'dlpEndDate', 'workInsuranceValue', 'sebuthargaNo', 'sstNo', 'issuingAgency', 'latePenaltyRate', 'bondValidUntil', 'dlpBreakdown'])
 
 function formatLabel(key: string): string {
   return key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
@@ -46,8 +47,87 @@ function DetailRow({ label, value }: { label: string; value: React.ReactNode }) 
   )
 }
 
+function SSTDocSection({ file, data }: { file: CaseFile; data: AiExtractedData }) {
+  const r = (data.raw ?? {}) as Record<string, unknown>
+  const dlp = r.dlpBreakdown as Record<string, unknown> | null | undefined
+
+  const SubTitle = ({ children }: { children: React.ReactNode }) => (
+    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-5 mb-2 first:mt-0">{children}</p>
+  )
+
+  return (
+    <div className="mb-10 break-inside-avoid">
+      {/* Document header */}
+      <div className="flex items-center gap-3 mb-4">
+        <div className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
+        <div>
+          <p className="text-sm font-bold text-gray-800">{file.documentType}</p>
+          <p className="text-xs text-gray-400">{file.fileName} &nbsp;·&nbsp; Approved {formatDate(file.uploadedAt)}</p>
+        </div>
+      </div>
+
+      <div className="pl-5 border-l-2 border-green-200">
+        {/* Contractor & Project */}
+        <SubTitle>Contract Overview</SubTitle>
+        <div className="bg-gray-50 rounded-lg p-4 space-y-0">
+          {data.customerName && <DetailRow label="Contractor / Applicant" value={data.customerName} />}
+          {data.projectName && <DetailRow label="Description of Works" value={data.projectName} />}
+          {data.caseType && <DetailRow label="Bond / Security Type" value={data.caseType} />}
+          {r.issuingAgency != null && <DetailRow label="Issuing Agency" value={String(r.issuingAgency)} />}
+        </div>
+
+        {/* Financial summary */}
+        <SubTitle>Contract & Bond Amounts</SubTitle>
+        <div className="bg-gray-50 rounded-lg p-4 space-y-0">
+          {data.amount && <DetailRow label="Contract Value" value={<span className="font-bold">{data.amount}</span>} />}
+          {data.bondValue && <DetailRow label="Performance Bond Value" value={<span className="font-bold text-violet-700">{data.bondValue}</span>} />}
+          {r.workInsuranceValue != null && <DetailRow label="Works Insurance (CAR)" value={<span className="font-semibold">{formatRMNumber(r.workInsuranceValue)}</span>} />}
+          {r.thirdPartyLiability != null && <DetailRow label="Third Party Liability" value={<span className="font-semibold">{formatRMNumber(r.thirdPartyLiability)}</span>} />}
+          {r.latePenaltyRate != null && (
+            <DetailRow
+              label="Daily Penalty (LAD)"
+              value={<span className="text-red-700 font-semibold">RM {Number(r.latePenaltyRate).toLocaleString('en-MY', { minimumFractionDigits: 2 })} / day</span>}
+            />
+          )}
+        </div>
+
+        {/* Key Dates */}
+        <SubTitle>Key Dates</SubTitle>
+        <div className="bg-gray-50 rounded-lg p-4 space-y-0">
+          {r.workStartDate != null && <DetailRow label="Work Start Date" value={formatDate(String(r.workStartDate))} />}
+          {r.workEndDate != null && <DetailRow label="Contract Completion Date" value={<span className="font-semibold">{formatDate(String(r.workEndDate))}</span>} />}
+          {r.dlpEndDate != null && (
+            <DetailRow
+              label="DLP End Date"
+              value={
+                <span className="font-semibold">
+                  {formatDate(String(r.dlpEndDate))}
+                  {dlp && <span className="text-xs font-normal text-gray-400 ml-2">({String(dlp.label)})</span>}
+                </span>
+              }
+            />
+          )}
+          {r.bondValidUntil != null && <DetailRow label="Bond Valid Until" value={<span className="font-semibold text-violet-700">{formatDate(String(r.bondValidUntil))}</span>} />}
+        </div>
+
+        {/* Reference Numbers */}
+        <SubTitle>Reference Numbers</SubTitle>
+        <div className="bg-gray-50 rounded-lg p-4 space-y-0">
+          {r.sstNo != null && <DetailRow label="SST / Contract No." value={<span className="font-mono text-sm">{String(r.sstNo)}</span>} />}
+          {r.sebuthargaNo != null && <DetailRow label="No. Sebutharga / Tender" value={<span className="font-mono text-sm">{String(r.sebuthargaNo)}</span>} />}
+          {data.notes && r.sstNo == null && r.sebuthargaNo == null && <DetailRow label="Reference Numbers" value={data.notes} />}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function ExtractedDocSection({ file }: { file: CaseFile }) {
   const data = file.aiExtractedData as AiExtractedData
+  const isSSTDoc = data.raw && Object.keys(data.raw).some(k => SST_KEYS.has(k))
+
+  if (isSSTDoc) return <SSTDocSection file={file} data={data} />
+
   const extras = data.raw ? Object.entries(data.raw).filter(([k]) => !STANDARD_KEYS.has(k)) : []
 
   return (
@@ -156,7 +236,14 @@ export default function CaseReportPage() {
       <style>{`
         @media print {
           .no-print { display: none !important; }
-          body { background: white !important; }
+          html, body {
+            background: white !important;
+            overflow: visible !important;
+            height: auto !important;
+            min-height: auto !important;
+          }
+          ::-webkit-scrollbar { display: none !important; }
+          .min-h-screen { min-height: auto !important; }
           @page { margin: 18mm 15mm; size: A4; }
         }
       `}</style>

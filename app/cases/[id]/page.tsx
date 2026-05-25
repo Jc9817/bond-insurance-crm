@@ -17,6 +17,7 @@ import Modal from '@/components/ui/Modal'
 import DocumentChecklist from '@/components/ui/DocumentChecklist'
 import AIScanPanel from '@/components/ui/AIScanPanel'
 import StagePipeline from '@/components/ui/StagePipeline'
+import QuotationEmailPanel from '@/components/ui/QuotationEmailPanel'
 
 type StageState = 'done' | 'current' | 'future'
 
@@ -245,19 +246,54 @@ export default function CaseDetailPage() {
         {steps.length === 0 ? (
           <div className="text-sm text-gray-400 py-2">No workflow template for this case type. <Link href="/settings" className="text-blue-600 hover:underline">Configure in Settings →</Link></div>
         ) : (
-          <StagePipeline
-            steps={steps}
-            currentStepId={caseItem.currentWorkflowStepId ?? ''}
-            stepTimestamps={stepTimestamps}
-            result={caseItem.result}
-            selectedStepId={effectiveViewingStepId ?? undefined}
-            onStepSelect={(stepId) => { setViewingStepId(stepId); setActiveTab('checklist') }}
-            onStageClick={handleStageClick}
-            onResultClick={() => {
-              setClosingForm({ result: caseItem.result, closingRemarks: caseItem.closingRemarks, lossReason: caseItem.lossReason ?? '', finalAmount: caseItem.finalAmount ?? caseItem.amount, finalInsurer: caseItem.finalInsurer ?? '' })
-              setClosingModal(true)
-            }}
-          />
+          <>
+            <StagePipeline
+              steps={steps}
+              currentStepId={caseItem.currentWorkflowStepId ?? ''}
+              stepTimestamps={stepTimestamps}
+              result={caseItem.result}
+              selectedStepId={effectiveViewingStepId ?? undefined}
+              onStepSelect={(stepId) => { setViewingStepId(stepId); setActiveTab('checklist') }}
+              onStageClick={handleStageClick}
+              onResultClick={() => {
+                setClosingForm({ result: caseItem.result, closingRemarks: caseItem.closingRemarks, lossReason: caseItem.lossReason ?? '', finalAmount: caseItem.finalAmount ?? caseItem.amount, finalInsurer: caseItem.finalInsurer ?? '' })
+                setClosingModal(true)
+              }}
+            />
+            {/* Prev / Next step navigation */}
+            <div className="flex items-center gap-2 mt-3 justify-end">
+              <button
+                disabled={currentIdx <= 0}
+                onClick={() => {
+                  const prevStep = steps[currentIdx - 1]
+                  if (!prevStep) return
+                  setStepDate(new Date().toISOString().slice(0, 16))
+                  setStepModal({ step: prevStep, state: 'done' })
+                }}
+                className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                </svg>
+                Prev Step
+              </button>
+              <button
+                disabled={currentIdx >= steps.length - 1}
+                onClick={() => {
+                  const nextStep = steps[currentIdx + 1]
+                  if (!nextStep) return
+                  setStepDate(new Date().toISOString().slice(0, 16))
+                  setStepModal({ step: nextStep, state: 'future' })
+                }}
+                className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors font-medium"
+              >
+                Next Step
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            </div>
+          </>
         )}
       </div>
 
@@ -440,6 +476,17 @@ export default function CaseDetailPage() {
                 >
                   All
                 </button>
+              </div>
+            )}
+
+            {/* AI Quotation Email panel — shown when viewing step has aiEmailEnabled */}
+            {viewingStep?.aiEmailEnabled && (
+              <div className="mb-5">
+                <QuotationEmailPanel
+                  caseItem={caseItem}
+                  step={viewingStep}
+                  customerName={customer?.customerName ?? caseItem.customerName}
+                />
               </div>
             )}
 
