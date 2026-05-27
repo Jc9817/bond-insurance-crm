@@ -23,7 +23,30 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  await supabase.auth.getUser()
+  const { data: { user } } = await supabase.auth.getUser()
+  const { pathname } = request.nextUrl
+
+  // Report pages are public (for print/PDF)
+  if (pathname.endsWith('/report')) {
+    return supabaseResponse
+  }
+
+  // Login page: redirect to dashboard if already logged in
+  if (pathname === '/login') {
+    if (user) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/dashboard'
+      return NextResponse.redirect(url)
+    }
+    return supabaseResponse
+  }
+
+  // All other pages: require login
+  if (!user) {
+    const url = request.nextUrl.clone()
+    url.pathname = '/login'
+    return NextResponse.redirect(url)
+  }
 
   return supabaseResponse
 }

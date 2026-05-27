@@ -16,9 +16,8 @@ export default function LoginPage() {
     e.preventDefault()
     setError('')
     setLoading(true)
-    await new Promise(r => setTimeout(r, 400))
-    const ok = login(email, password)
-    if (ok) {
+    const errorMsg = await login(email, password)
+    if (!errorMsg) {
       router.push('/dashboard')
     } else {
       setError('Incorrect email or password. Please try again.')
@@ -55,7 +54,7 @@ export default function LoginPage() {
                 type="email"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                placeholder="you@bondinsurance.com"
+                placeholder="you@trident.com"
                 autoFocus
                 required
               />
@@ -79,20 +78,10 @@ export default function LoginPage() {
               {loading ? 'Signing in…' : 'Sign In'}
             </button>
           </form>
-
-          {/* Dev hint */}
-          <div className="mt-5 pt-4 border-t border-gray-100">
-            <p className="text-xs text-gray-400 font-medium mb-1.5">Demo accounts:</p>
-            <div className="space-y-1">
-              <p className="text-xs text-gray-400">ahmad@bondinsurance.com · Admin</p>
-              <p className="text-xs text-gray-400">nurul@bondinsurance.com · Staff</p>
-              <p className="text-xs text-gray-400 italic">Password: password123</p>
-            </div>
-          </div>
         </div>
 
         <p className="text-center text-xs text-gray-400 mt-5">
-          Bond Insurance Sdn Bhd · Internal Use Only
+          Trident · Internal Use Only
         </p>
       </div>
     </div>
