@@ -285,8 +285,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const sb = createClient()
     setLoading(true)
 
+    // Connection test — visible in browser DevTools console
+    const { error: pingError } = await sb.from('customers').select('id').limit(1)
+    if (pingError) {
+      console.error('[Supabase] Connection failed:', pingError.message, pingError.code)
+    } else {
+      console.log('[Supabase] Connected successfully')
+    }
+
     const [
-      { data: cust },
+      { data: cust, error: custErr },
       { data: cont },
       { data: caseRows },
       { data: noteRows },
@@ -317,6 +325,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       sb.from('inquiry_documents').select('*').order('uploaded_at', { ascending: false }),
     ])
 
+    if (custErr) console.error('[Supabase] customers load error:', custErr.message)
     if (cust) setCustomers(cust.map(fromCustomer))
     if (cont) setContacts(cont.map(fromContact))
     if (caseRows) setCases(caseRows.map(fromCase))
@@ -389,7 +398,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const addCustomer = (c: Omit<Customer, 'id' | 'createdAt'>) => {
     const row: Customer = { ...c, id: generateId(), createdAt: nowIso() }
     setCustomers(prev => [row, ...prev])
-    createClient().from('customers').insert(toCustomer(row)).then()
+    createClient().from('customers').insert(toCustomer(row))
+      .then(({ error }) => {
+        if (error) console.error('[Supabase] addCustomer failed:', error.message, error.code)
+        else console.log('[Supabase] addCustomer saved:', row.customerName)
+      })
   }
   const updateCustomer = (id: string, c: Partial<Customer>) => {
     setCustomers(prev => prev.map(x => x.id === id ? { ...x, ...c } : x))
