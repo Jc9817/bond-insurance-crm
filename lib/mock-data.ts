@@ -365,30 +365,21 @@ export const mockFollowUps: FollowUp[] = [
 export const mockUsers: User[] = [
   {
     id: 'usr1',
-    fullName: 'Ahmad Farid',
-    email: 'ahmad@bondinsurance.com',
-    password: 'password123',
+    fullName: 'Admin',
+    email: 'admin@trident.com',
+    password: 'Trident123',
     role: 'Admin',
     status: 'Active',
     createdAt: '2024-01-01T08:00:00Z',
   },
   {
     id: 'usr2',
-    fullName: 'Nurul Ain',
-    email: 'nurul@bondinsurance.com',
-    password: 'password123',
+    fullName: 'Staff',
+    email: 'staff@trident.com',
+    password: 'Trident123',
     role: 'Staff',
     status: 'Active',
     createdAt: '2024-01-15T08:00:00Z',
-  },
-  {
-    id: 'usr3',
-    fullName: 'David Lim',
-    email: 'david@bondinsurance.com',
-    password: 'password123',
-    role: 'Staff',
-    status: 'Active',
-    createdAt: '2024-02-01T08:00:00Z',
   },
 ]
 
