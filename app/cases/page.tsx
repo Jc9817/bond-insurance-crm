@@ -12,6 +12,7 @@ import PageHeader from '@/components/ui/PageHeader'
 import StatusBadge from '@/components/ui/StatusBadge'
 import Modal from '@/components/ui/Modal'
 import KanbanBoard from '@/components/ui/KanbanBoard'
+import SearchableSelect from '@/components/ui/SearchableSelect'
 
 type FormData = Omit<Case, 'id' | 'createdAt'>
 const emptyCase = (customers: { id: string; customerName: string }[]): FormData => ({
@@ -84,10 +85,13 @@ function CaseForm({ initial, customers, pics, onSave, onCancel }: {
       </div>
       <div>
         <label className="label">Main Contractor *</label>
-        <select className="input" value={form.customerId} onChange={set('customerId')}>
-          <option value="">— Select Main Contractor —</option>
-          {customers.map(c => <option key={c.id} value={c.id}>{c.customerName}</option>)}
-        </select>
+        <SearchableSelect
+          required
+          value={form.customerId}
+          options={customers.map(c => ({ value: c.id, label: c.customerName }))}
+          onChange={val => set('customerId')({ target: { value: val } } as React.ChangeEvent<HTMLSelectElement>)}
+          placeholder="— Search contractor —"
+        />
       </div>
       <div>
         <label className="label">Contractor <span className="text-gray-400 font-normal">(optional)</span></label>

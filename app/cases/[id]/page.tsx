@@ -20,6 +20,7 @@ import AIScanPanel from '@/components/ui/AIScanPanel'
 import StagePipeline from '@/components/ui/StagePipeline'
 import QuotationEmailPanel from '@/components/ui/QuotationEmailPanel'
 import QuotationDocumentPanel from '@/components/ui/QuotationDocumentPanel'
+import SearchableSelect from '@/components/ui/SearchableSelect'
 
 type StageState = 'done' | 'current' | 'future'
 
@@ -882,10 +883,13 @@ export default function CaseDetailPage() {
         >
           <div>
             <label className="label">Main Contractor *</label>
-            <select className="input" value={editInfoForm.customerId} onChange={e => setEditInfoForm(p => ({ ...p, customerId: e.target.value }))} required>
-              <option value="">— Select Main Contractor —</option>
-              {customers.map(c => <option key={c.id} value={c.id}>{c.customerName}</option>)}
-            </select>
+            <SearchableSelect
+              required
+              value={editInfoForm.customerId}
+              options={customers.map(c => ({ value: c.id, label: c.customerName }))}
+              onChange={val => setEditInfoForm(p => ({ ...p, customerId: val }))}
+              placeholder="— Search contractor —"
+            />
           </div>
           <div>
             <label className="label">Case Title *</label>
