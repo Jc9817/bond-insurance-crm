@@ -150,8 +150,16 @@ function CaseForm({ initial, customers, pics, onSave, onCancel }: {
       </div>
       <div>
         <label className="label">Contractor <span className="text-gray-400 font-normal">(optional)</span></label>
-        <input className="input" value={form.bondPrincipal || ''} onChange={set('bondPrincipal')} placeholder="Leave blank if Main Contractor is doing the work directly" />
-        <p className="text-xs text-gray-400 mt-1">Fill in only if a sub-contractor is executing the works under the Main Contractor's name or licence.</p>
+        <SearchableSelect
+          value={form.bondPrincipal || ''}
+          options={[
+            { value: '', label: '— Same as Main Contractor —' },
+            ...customers.map(c => ({ value: c.customerName, label: c.customerName })),
+          ]}
+          onChange={val => setForm(prev => ({ ...prev, bondPrincipal: val }))}
+          placeholder="— Same as Main Contractor —"
+        />
+        <p className="text-xs text-gray-400 mt-1">Select only if a sub-contractor is executing the works under the Main Contractor's name or licence.</p>
       </div>
 
       {/* ── Product selection ── */}

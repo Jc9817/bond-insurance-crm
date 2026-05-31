@@ -926,14 +926,17 @@ export default function CaseDetailPage() {
             <label className="label">
               Contractor <span className="text-gray-400 font-normal">(optional)</span>
             </label>
-            <input
-              className="input"
+            <SearchableSelect
               value={editInfoForm.bondPrincipal}
-              onChange={e => setEditInfoForm(p => ({ ...p, bondPrincipal: e.target.value }))}
-              placeholder="Leave blank if Main Contractor is doing the work directly"
+              options={[
+                { value: '', label: '— Same as Main Contractor —' },
+                ...customers.map(c => ({ value: c.customerName, label: c.customerName })),
+              ]}
+              onChange={val => setEditInfoForm(p => ({ ...p, bondPrincipal: val }))}
+              placeholder="— Same as Main Contractor —"
             />
             <p className="text-xs text-gray-400 mt-1">
-              Fill in only if a <strong>sub-contractor</strong> is executing the works under the Main Contractor's name or licence. If left blank, the Main Contractor is assumed to be the Contractor.
+              Select only if a <strong>sub-contractor</strong> is executing the works under the Main Contractor's name or licence. If left blank, the Main Contractor is assumed to be the Contractor.
             </p>
           </div>
           <div className="grid grid-cols-2 gap-4">
