@@ -13,6 +13,7 @@ import {
   mockSettingsCaseTypes, mockSettingsIndustries, mockSettingsContactTypes,
   mockSettingsFollowUpCategories, mockSettingsDocumentTypes,
   mockSettingsInquiryStatuses, mockSettingsQuotationStatuses,
+  mockSettingsInsurers,
 } from './mock-data'
 import { generateId, nowIso } from './utils'
 
@@ -45,9 +46,11 @@ type StoreCtx = {
   deleteContact: (id: string) => void
   setPrimaryContact: (customerId: string, contactId: string) => void
 
-  addCase: (c: Omit<Case, 'id' | 'createdAt'>) => void
+  addCase: (c: Omit<Case, 'id' | 'createdAt'>) => string
   updateCase: (id: string, c: Partial<Case>) => void
   deleteCase: (id: string) => void
+  archiveCase: (id: string) => void
+  restoreCase: (id: string) => void
 
   addCaseNote: (n: Omit<CaseNote, 'id' | 'createdAt'>) => void
 
@@ -62,7 +65,7 @@ type StoreCtx = {
   addUser: (u: Omit<User, 'id' | 'createdAt'>) => void
   updateUser: (id: string, u: Partial<Omit<User, 'id' | 'createdAt'>>) => void
 
-  addCaseFile: (f: Omit<CaseFile, 'id' | 'uploadedAt'>) => void
+  addCaseFile: (f: Omit<CaseFile, 'id' | 'uploadedAt'>) => string
   deleteCaseFile: (id: string) => void
   updateCaseFile: (id: string, f: Partial<CaseFile>) => void
   startAiScan: (id: string) => void
@@ -133,6 +136,12 @@ const fromCase = (r: Row): Case => ({
   lossReason: r.loss_reason ?? undefined, finalAmount: r.final_amount ?? undefined,
   finalInsurer: r.final_insurer ?? undefined, closedAt: r.closed_at ?? undefined,
   createdAt: r.created_at, updatedAt: r.updated_at ?? undefined,
+  bondPrincipal: r.bond_principal ?? undefined,
+  bondExpiryDate: r.bond_expiry_date ?? undefined,
+  waitingFor: r.waiting_for ?? undefined,
+  archivedAt: r.archived_at ?? undefined,
+  acceptanceDate: r.acceptance_date ?? undefined,
+  acceptedBy: r.accepted_by ?? undefined,
 })
 const toCase = (c: Case) => ({
   id: c.id, case_title: c.caseTitle, customer_id: c.customerId, customer_name: c.customerName,
@@ -141,6 +150,12 @@ const toCase = (c: Case) => ({
   result: c.result, closing_remarks: c.closingRemarks, loss_reason: c.lossReason ?? null,
   final_amount: c.finalAmount ?? null, final_insurer: c.finalInsurer ?? null,
   closed_at: c.closedAt ?? null, created_at: c.createdAt, updated_at: c.updatedAt ?? null,
+  bond_principal: c.bondPrincipal ?? null,
+  bond_expiry_date: c.bondExpiryDate ?? null,
+  waiting_for: c.waitingFor ?? null,
+  archived_at: c.archivedAt ?? null,
+  acceptance_date: c.acceptanceDate ?? null,
+  accepted_by: c.acceptedBy ?? null,
 })
 
 const fromCaseNote = (r: Row): CaseNote => ({
@@ -271,6 +286,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     documentTypes: mockSettingsDocumentTypes,
     inquiryStatuses: mockSettingsInquiryStatuses,
     quotationStatuses: mockSettingsQuotationStatuses,
+    insurers: mockSettingsInsurers,
   })
   const [loading, setLoading] = useState(true)
 
@@ -442,10 +458,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   // ─── Cases ────────────────────────────────────────────────────────────────
 
-  const addCase = (c: Omit<Case, 'id' | 'createdAt'>) => {
+  const addCase = (c: Omit<Case, 'id' | 'createdAt'>): string => {
     const row: Case = { ...c, id: generateId(), createdAt: nowIso(), updatedAt: nowIso() }
     setCases(prev => [row, ...prev])
     createClient().from('cases').insert(toCase(row)).then()
+    return row.id
   }
   const updateCase = (id: string, c: Partial<Case>) => {
     const updated = { ...c, updatedAt: nowIso() }
@@ -455,6 +472,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const deleteCase = (id: string) => {
     setCases(prev => prev.filter(x => x.id !== id))
     createClient().from('cases').delete().eq('id', id).then()
+  }
+  const archiveCase = (id: string) => {
+    const archivedAt = nowIso()
+    setCases(prev => prev.map(x => x.id === id ? { ...x, archivedAt } : x))
+    createClient().from('cases').update({ archived_at: archivedAt }).eq('id', id).then()
+  }
+  const restoreCase = (id: string) => {
+    setCases(prev => prev.map(x => x.id === id ? { ...x, archivedAt: undefined } : x))
+    createClient().from('cases').update({ archived_at: null }).eq('id', id).then()
   }
 
   // ─── Case Notes ───────────────────────────────────────────────────────────
@@ -509,10 +535,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   // ─── Case Files ───────────────────────────────────────────────────────────
 
-  const addCaseFile = (f: Omit<CaseFile, 'id' | 'uploadedAt'>) => {
+  const addCaseFile = (f: Omit<CaseFile, 'id' | 'uploadedAt'>): string => {
     const row: CaseFile = { ...f, id: generateId(), uploadedAt: nowIso() }
     setCaseFiles(prev => [...prev, row])
     createClient().from('case_files').insert(toCaseFile(row)).then()
+    return row.id
   }
   const deleteCaseFile = (id: string) => {
     setCaseFiles(prev => prev.filter(x => x.id !== id))
@@ -575,7 +602,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     caseTypes: mockSettingsCaseTypes, industries: mockSettingsIndustries,
     contactTypes: mockSettingsContactTypes, followUpCategories: mockSettingsFollowUpCategories,
     documentTypes: mockSettingsDocumentTypes, inquiryStatuses: mockSettingsInquiryStatuses,
-    quotationStatuses: mockSettingsQuotationStatuses,
+    quotationStatuses: mockSettingsQuotationStatuses, insurers: mockSettingsInsurers,
   })
   const addSettingsItem = (category: SettingsCategory, name: string) =>
     setSettingsState(prev => ({ ...prev, [category]: [...prev[category], { id: generateId(), name, isActive: true }] }))
@@ -793,7 +820,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       inquiries, inquiryQuotations, inquiryNotes, inquiryDocuments, loading,
       addCustomer, updateCustomer, deleteCustomer,
       addContact, updateContact, deleteContact, setPrimaryContact,
-      addCase, updateCase, deleteCase,
+      addCase, updateCase, deleteCase, archiveCase, restoreCase,
       addCaseNote,
       addFollowUp, updateFollowUp, deleteFollowUp, toggleFollowUp,
       addPic, deletePic,

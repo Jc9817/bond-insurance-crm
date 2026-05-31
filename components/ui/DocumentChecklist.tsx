@@ -1,11 +1,120 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import { useStore } from '@/lib/store'
 import { useAuth } from '@/lib/auth'
 import type { WorkflowTemplate, CaseFile } from '@/lib/types'
 import { getActiveDocs, getUploadedFileForDoc, getUnassignedFiles, getDocsForStep } from '@/lib/workflow'
 import { formatFileSize, timeAgo } from '@/lib/utils'
+
+function downloadFile(file: CaseFile) {
+  if (!file.fileDataUrl) return
+  const a = document.createElement('a')
+  a.href = file.fileDataUrl
+  a.download = file.fileName
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+}
+
+function FileViewerModal({ file, onClose }: { file: CaseFile; onClose: () => void }) {
+  const mime = file.fileDataUrl?.split(';')[0].split(':')[1] ?? ''
+  const isImage = mime.startsWith('image/')
+  const isPdf = mime === 'application/pdf'
+
+  // Browsers block data: URIs in iframes — convert to a blob URL instead
+  const [blobUrl, setBlobUrl] = useState<string | null>(null)
+  useEffect(() => {
+    if (!isPdf || !file.fileDataUrl) return
+    const [header, b64] = file.fileDataUrl.split(',')
+    const mimeType = header.match(/:(.*?);/)?.[1] ?? 'application/pdf'
+    const bytes = atob(b64)
+    const arr = new Uint8Array(bytes.length)
+    for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i)
+    const blob = new Blob([arr], { type: mimeType })
+    const url = URL.createObjectURL(blob)
+    setBlobUrl(url)
+    return () => URL.revokeObjectURL(url)
+  }, [isPdf, file.fileDataUrl])
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-100 shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-xs font-semibold bg-gray-100 text-gray-600 rounded px-1.5 py-0.5 shrink-0">{file.fileType}</span>
+            <p className="text-sm font-semibold text-gray-800 truncate">{file.fileName}</p>
+            <span className="text-xs text-gray-400 shrink-0">{formatFileSize(file.fileSize)}</span>
+          </div>
+          <div className="flex items-center gap-2 shrink-0 ml-4">
+            <button
+              onClick={() => downloadFile(file)}
+              className="flex items-center gap-1.5 text-xs font-medium bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg transition-colors"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              Download
+            </button>
+            <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors text-base leading-none">✕</button>
+          </div>
+        </div>
+        {/* Content */}
+        <div className="flex-1 overflow-auto min-h-0">
+          {!file.fileDataUrl ? (
+            <div className="flex flex-col items-center justify-center h-48 gap-2 text-gray-400">
+              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+              </svg>
+              <p className="text-sm">File data not available</p>
+            </div>
+          ) : isImage ? (
+            <div className="flex items-center justify-center p-6 bg-gray-50 min-h-[300px]">
+              <img src={file.fileDataUrl} alt={file.fileName} className="max-w-full max-h-[75vh] object-contain rounded-lg shadow-sm" />
+            </div>
+          ) : isPdf ? (
+            blobUrl ? (
+              <iframe src={blobUrl} className="w-full h-[75vh] border-0" title={file.fileName} />
+            ) : (
+              <div className="flex items-center justify-center h-48 gap-2 text-gray-400">
+                <span className="w-5 h-5 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" />
+                <span className="text-sm">Loading PDF…</span>
+              </div>
+            )
+          ) : (
+            <div className="flex flex-col items-center justify-center py-16 gap-4">
+              <div className="w-14 h-14 bg-gray-100 rounded-2xl flex items-center justify-center">
+                <svg className="w-7 h-7 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                </svg>
+              </div>
+              <div className="text-center">
+                <p className="text-sm font-medium text-gray-700 mb-1">In-browser preview not available for {file.fileType} files</p>
+                <p className="text-xs text-gray-400 mb-4">Download the file to open it in the appropriate application</p>
+                <button
+                  onClick={() => downloadFile(file)}
+                  className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-xl transition-colors"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  Download {file.fileName}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
 
 type Props = {
   caseId: string
@@ -24,6 +133,7 @@ export default function DocumentChecklist({ caseId, caseTitle, template, caseFil
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
   const [dragOverDocId, setDragOverDocId] = useState<string | null>(null)
   const [draggedFileId, setDraggedFileId] = useState<string | null>(null)
+  const [viewingFile, setViewingFile] = useState<CaseFile | null>(null)
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
 
   const docs = filterStepId !== undefined ? getDocsForStep(template, filterStepId) : getActiveDocs(template)
@@ -67,7 +177,8 @@ export default function DocumentChecklist({ caseId, caseTitle, template, caseFil
   const handleFileSelect = async (docId: string, file: File, docName: string, aiPrompt?: string) => {
     setUploadingDocId(docId)
     const fileDataUrl = await readAsDataUrl(file)
-    addCaseFile({
+    const existingFile = getUploadedFileForDoc(docId, caseId, caseFiles)
+    const newId = addCaseFile({
       caseId,
       fileName: file.name,
       fileSize: file.size,
@@ -81,13 +192,16 @@ export default function DocumentChecklist({ caseId, caseTitle, template, caseFil
       fileDataUrl,
       aiPrompt,
     })
+    if (existingFile) {
+      updateCaseFile(existingFile.id, { supersededBy: newId, requiredDocumentId: undefined })
+    }
     addActivityLog({
       caseId,
       caseTitle,
       actionType: 'DOCUMENT_UPLOADED',
-      title: 'Document uploaded',
+      title: existingFile ? 'Document replaced (v2+)' : 'Document uploaded',
       newValue: docName,
-      description: `${file.name} uploaded`,
+      description: `${file.name} uploaded${existingFile ? ` — replaced ${existingFile.fileName}` : ''}`,
       changedBy: currentUser?.fullName ?? 'Unknown',
     })
     setUploadingDocId(null)
@@ -154,6 +268,8 @@ export default function DocumentChecklist({ caseId, caseTitle, template, caseFil
                   onAssign={() => {}}
                   onDragStart={() => setDraggedFileId(f.id)}
                   onDelete={() => { deleteCaseFile(f.id); setDeleteConfirmId(null) }}
+                  onView={() => setViewingFile(f)}
+                  onDownload={() => downloadFile(f)}
                 />
               ))}
             </div>
@@ -185,6 +301,7 @@ export default function DocumentChecklist({ caseId, caseTitle, template, caseFil
           <div className="space-y-2">
             {requiredDocs.map(doc => {
               const uploaded = getUploadedFileForDoc(doc.id, caseId, caseFiles)
+              const previousVersions = caseFiles.filter(f => f.caseId === caseId && f.supersededBy != null && caseFiles.some(f2 => f2.requiredDocumentId === doc.id && f.supersededBy === f2.id || (uploaded && f.supersededBy === uploaded.id)))
               const isUploading = uploadingDocId === doc.id
               const isDropTarget = dragOverDocId === doc.id && !uploaded && !readOnly
               return (
@@ -195,6 +312,7 @@ export default function DocumentChecklist({ caseId, caseTitle, template, caseFil
                   description={doc.description}
                   required={doc.required}
                   uploaded={uploaded}
+                  previousVersions={previousVersions}
                   isUploading={isUploading}
                   isDropTarget={isDropTarget}
                   isDragging={!!draggedFileId && !readOnly}
@@ -221,6 +339,8 @@ export default function DocumentChecklist({ caseId, caseTitle, template, caseFil
                     }
                   }}
                   onReview={() => { if (uploaded) onScanReady(uploaded) }}
+                  onView={() => { if (uploaded) setViewingFile(uploaded) }}
+                  onDownload={() => { if (uploaded) downloadFile(uploaded) }}
                   onDragOver={(e) => { if (!uploaded && !readOnly) { e.preventDefault(); setDragOverDocId(doc.id) } }}
                   onDragLeave={() => setDragOverDocId(null)}
                   onDrop={(e) => { if (!readOnly) handleDocDrop(doc.id, doc.name, e) }}
@@ -274,6 +394,8 @@ export default function DocumentChecklist({ caseId, caseTitle, template, caseFil
                     }
                   }}
                   onReview={() => { if (uploaded) onScanReady(uploaded) }}
+                  onView={() => { if (uploaded) setViewingFile(uploaded) }}
+                  onDownload={() => { if (uploaded) downloadFile(uploaded) }}
                   onDragOver={(e) => { if (!uploaded && !readOnly) { e.preventDefault(); setDragOverDocId(doc.id) } }}
                   onDragLeave={() => setDragOverDocId(null)}
                   onDrop={(e) => { if (!readOnly) handleDocDrop(doc.id, doc.name, e) }}
@@ -283,6 +405,8 @@ export default function DocumentChecklist({ caseId, caseTitle, template, caseFil
           </div>
         </div>
       )}
+
+      {viewingFile && <FileViewerModal file={viewingFile} onClose={() => setViewingFile(null)} />}
 
       {/* Unassigned / additional files — hidden in read-only mode */}
       {!readOnly && <div className="pt-3 border-t border-gray-100">
@@ -338,6 +462,8 @@ export default function DocumentChecklist({ caseId, caseTitle, template, caseFil
                   addActivityLog({ caseId, caseTitle, actionType: 'DOCUMENT_DELETED', title: 'File deleted', description: `${f.fileName} removed`, changedBy: currentUser?.fullName ?? 'Unknown' })
                   setDeleteConfirmId(null)
                 }}
+                onView={() => setViewingFile(f)}
+                onDownload={() => downloadFile(f)}
               />
             ))}
           </div>
@@ -355,6 +481,7 @@ type DocRowProps = {
   description: string
   required: boolean
   uploaded: CaseFile | undefined
+  previousVersions?: CaseFile[]
   isUploading: boolean
   isDropTarget: boolean
   isDragging: boolean
@@ -367,16 +494,18 @@ type DocRowProps = {
   onDelete: () => void
   onScan: () => void
   onReview: () => void
+  onView: () => void
+  onDownload: () => void
   onDragOver: (e: React.DragEvent) => void
   onDragLeave: () => void
   onDrop: (e: React.DragEvent) => void
 }
 
 function DocRow({
-  docId, docName, description, required, uploaded, isUploading,
+  docId, docName, description, required, uploaded, previousVersions = [], isUploading,
   isDropTarget, isDragging, readOnly,
   deleteConfirmId, setDeleteConfirmId,
-  fileInputRef, onUploadClick, onFileChange, onDelete, onScan, onReview,
+  fileInputRef, onUploadClick, onFileChange, onDelete, onScan, onReview, onView, onDownload,
   onDragOver, onDragLeave, onDrop,
 }: DocRowProps) {
   const canDrop = !uploaded && isDragging
@@ -435,7 +564,12 @@ function DocRow({
         )}
         {uploaded && (
           <div className="flex items-center gap-2 mt-1 flex-wrap">
-            <span className="text-xs text-green-700 font-medium truncate max-w-[200px]">{uploaded.fileName}</span>
+            <button
+              onClick={onView}
+              className="text-xs text-green-700 font-medium truncate max-w-[200px] hover:underline text-left"
+            >
+              {uploaded.fileName}
+            </button>
             <span className="text-xs text-gray-400">{formatFileSize(uploaded.fileSize)}</span>
             <span className="text-xs text-gray-400">· {timeAgo(uploaded.uploadedAt)}</span>
             {uploaded.aiStatus === 'Approved' && (
@@ -475,6 +609,37 @@ function DocRow({
         )}
         {uploaded && (
           <>
+            <button
+              onClick={uploaded.fileDataUrl ? onView : undefined}
+              disabled={!uploaded.fileDataUrl}
+              title={uploaded.fileDataUrl ? 'View file' : 'File preview not available — re-upload to enable'}
+              className={`btn-xs flex items-center gap-1 ${
+                uploaded.fileDataUrl
+                  ? 'bg-white border border-gray-200 hover:bg-blue-50 text-gray-600 hover:text-blue-700'
+                  : 'bg-gray-50 border border-gray-100 text-gray-300 cursor-not-allowed'
+              }`}
+            >
+              <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+              </svg>
+              View
+            </button>
+            <button
+              onClick={uploaded.fileDataUrl ? onDownload : undefined}
+              disabled={!uploaded.fileDataUrl}
+              title={uploaded.fileDataUrl ? 'Download file' : 'File not available for download — re-upload to enable'}
+              className={`btn-xs flex items-center gap-1 ${
+                uploaded.fileDataUrl
+                  ? 'bg-white border border-gray-200 hover:bg-green-50 text-gray-600 hover:text-green-700'
+                  : 'bg-gray-50 border border-gray-100 text-gray-300 cursor-not-allowed'
+              }`}
+            >
+              <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              Download
+            </button>
             {!readOnly && uploaded.aiStatus === 'Not Scanned' && (
               <button onClick={onScan} className="btn-xs bg-white border border-gray-200 hover:bg-violet-50 text-violet-700">
                 AI Scan
@@ -484,13 +649,13 @@ function DocRow({
               <span className="btn-xs text-amber-600">Scanning…</span>
             )}
             {uploaded.aiStatus === 'Ready for Review' && (
-              <button onClick={onReview} className="btn-xs bg-blue-600 text-white hover:bg-blue-700">Review</button>
+              <button onClick={onReview} className="btn-xs bg-blue-600 text-white hover:bg-blue-700">AI Review</button>
             )}
             {uploaded.aiStatus === 'Approved' && (
-              <button onClick={onReview} className="btn-xs bg-green-50 text-green-700 hover:bg-green-100">View</button>
+              <button onClick={onReview} className="btn-xs bg-green-50 text-green-700 hover:bg-green-100">AI Results</button>
             )}
             {uploaded.aiStatus === 'Rejected' && (
-              <button onClick={onReview} className="btn-xs bg-red-50 text-red-600 hover:bg-red-100">Review</button>
+              <button onClick={onReview} className="btn-xs bg-red-50 text-red-600 hover:bg-red-100">AI Review</button>
             )}
             {!readOnly && (
               deleteConfirmId === uploaded.id ? (
@@ -505,6 +670,33 @@ function DocRow({
           </>
         )}
       </div>
+
+      {previousVersions.length > 0 && (
+        <details className="mt-2 col-span-full" style={{ gridColumn: '1 / -1' }}>
+          <summary className="text-xs text-gray-400 cursor-pointer hover:text-gray-600 select-none ml-8">
+            {previousVersions.length} previous version{previousVersions.length > 1 ? 's' : ''}
+          </summary>
+          <div className="mt-1 space-y-1 ml-8">
+            {previousVersions.map(pv => (
+              <div key={pv.id} className="flex items-center gap-2 text-xs text-gray-400 pl-2 border-l-2 border-gray-100">
+                <span className="truncate max-w-[200px]">{pv.fileName}</span>
+                <span>{timeAgo(pv.uploadedAt)}</span>
+                {pv.fileDataUrl && (
+                  <button
+                    onClick={() => downloadFile(pv)}
+                    className="text-gray-300 hover:text-blue-500 transition-colors"
+                    title="Download this version"
+                  >
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
     </div>
   )
 }
@@ -519,11 +711,13 @@ type UnassignedFileCardProps = {
   onAssign: (docId: string | null, docName: string) => void
   onDragStart: () => void
   onDelete: () => void
+  onView: () => void
+  onDownload: () => void
 }
 
 function UnassignedFileCard({
   file, docs, deleteConfirmId, setDeleteConfirmId,
-  onAssign, onDragStart, onDelete,
+  onAssign, onDragStart, onDelete, onView, onDownload,
 }: UnassignedFileCardProps) {
   const isOrphaned = !!file.requiredDocumentId
 
@@ -549,7 +743,9 @@ function UnassignedFileCard({
         )}
         <span className="text-xs font-medium text-gray-400 bg-white border border-gray-200 rounded px-1.5 py-0.5 shrink-0">{file.fileType}</span>
         <div className="min-w-0">
-          <span className="text-sm text-gray-800 truncate block">{file.fileName}</span>
+          <button onClick={onView} className="text-sm text-gray-800 truncate block hover:text-blue-600 hover:underline text-left">
+            {file.fileName}
+          </button>
           {isOrphaned && (
             <span className="text-xs text-amber-600">Unassigned — template changed</span>
           )}
@@ -557,6 +753,23 @@ function UnassignedFileCard({
         <span className="text-xs text-gray-400 shrink-0">{formatFileSize(file.fileSize)}</span>
       </div>
       <div className="flex gap-1.5 shrink-0 items-center">
+        {file.fileDataUrl && (
+          <>
+            <button onClick={onView} className="btn-xs bg-white border border-gray-200 hover:bg-blue-50 text-gray-600 hover:text-blue-700 flex items-center gap-1">
+              <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+              </svg>
+              View
+            </button>
+            <button onClick={onDownload} className="btn-xs bg-white border border-gray-200 hover:bg-green-50 text-gray-600 hover:text-green-700 flex items-center gap-1">
+              <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              Download
+            </button>
+          </>
+        )}
         {/* Assign-to dropdown */}
         {docs.length > 0 && (
           <select

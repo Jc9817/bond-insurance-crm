@@ -53,9 +53,10 @@ function emptyQuotationForm(): QuotationFormData {
   }
 }
 
-function QuotationForm({ initial, statuses, onSave, onCancel }: {
+function QuotationForm({ initial, statuses, insurers, onSave, onCancel }: {
   initial: QuotationFormData
   statuses: string[]
+  insurers: string[]
   onSave: (d: QuotationFormData) => void
   onCancel: () => void
 }) {
@@ -79,7 +80,14 @@ function QuotationForm({ initial, statuses, onSave, onCancel }: {
       {error && <p className="text-sm text-red-600 bg-red-50 rounded-xl p-3">{error}</p>}
       <div>
         <label className="label">Insurer / Provider *</label>
-        <input className="input" value={form.providerName} onChange={set('providerName')} placeholder="e.g. Allianz Malaysia" autoFocus />
+        <select className="input" value={form.providerName} onChange={set('providerName')}>
+          <option value="">— Select insurer —</option>
+          {insurers.map(i => <option key={i} value={i}>{i}</option>)}
+          <option value="__other__">Other</option>
+        </select>
+        {form.providerName === '__other__' && (
+          <input className="input mt-2" placeholder="Enter insurer name…" onChange={e => setForm(p => ({ ...p, providerName: e.target.value }))} autoFocus />
+        )}
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div>
@@ -118,13 +126,14 @@ function QuotationForm({ initial, statuses, onSave, onCancel }: {
 function ConvertModal({ inquiry, pics, onConvert, onCancel }: {
   inquiry: { id: string; inquiryTitle: string; customerId: string; customerName: string; assignedPerson: string; roughAmount: number; inquiryType: string }
   pics: { name: string }[]
-  onConvert: (title: string, personInCharge: string, amount: number, caseType: string) => void
+  onConvert: (title: string, personInCharge: string, amount: number, caseType: string, bondPrincipal: string) => void
   onCancel: () => void
 }) {
   const [caseTitle, setCaseTitle] = useState(inquiry.inquiryTitle)
   const [caseType, setCaseType] = useState(inquiry.inquiryType)
   const [personInCharge, setPersonInCharge] = useState(inquiry.assignedPerson)
   const [amount, setAmount] = useState(inquiry.roughAmount)
+  const [bondPrincipal, setBondPrincipal] = useState('')
 
   return (
     <div className="px-6 py-5 space-y-4">
@@ -136,6 +145,10 @@ function ConvertModal({ inquiry, pics, onConvert, onCancel }: {
       <div>
         <label className="label">Case Title</label>
         <input className="input" value={caseTitle} onChange={e => setCaseTitle(e.target.value)} />
+      </div>
+      <div>
+        <label className="label">Principal <span className="text-gray-400 font-normal">(name on the bond, if different from {inquiry.customerName})</span></label>
+        <input className="input" value={bondPrincipal} onChange={e => setBondPrincipal(e.target.value)} placeholder="e.g. JUTA-KASEH JV Sdn Bhd" />
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div>
@@ -160,11 +173,11 @@ function ConvertModal({ inquiry, pics, onConvert, onCancel }: {
       <div className="flex gap-3 pt-1">
         <button type="button" onClick={onCancel} className="btn-secondary flex-1">Cancel</button>
         <button
-          onClick={() => onConvert(caseTitle, personInCharge, amount, caseType)}
+          onClick={() => onConvert(caseTitle, personInCharge, amount, caseType, bondPrincipal)}
           disabled={!caseTitle.trim()}
           className="btn-primary flex-1 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          Convert to Case →
+          Start Bond Case →
         </button>
       </div>
     </div>
@@ -249,6 +262,7 @@ export default function InquiryDetailPage() {
 
   const inquiryStatuses = settingsData.inquiryStatuses.filter(s => s.isActive).map(s => s.name)
   const quotationStatuses = settingsData.quotationStatuses.filter(s => s.isActive).map(s => s.name)
+  const insurerNames = settingsData.insurers.filter(i => i.isActive).map(i => i.name)
 
   const [activeTab, setActiveTab] = useState<'quotations' | 'documents' | 'activity' | 'notes'>('quotations')
   const [quotationModal, setQuotationModal] = useState<'add' | 'edit' | null>(null)
@@ -308,11 +322,12 @@ export default function InquiryDetailPage() {
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
-  const handleConvert = (title: string, personInCharge: string, amount: number, caseType: string) => {
+  const handleConvert = (title: string, personInCharge: string, amount: number, caseType: string, bondPrincipal: string) => {
     const caseId = convertInquiryToCase(id, {
       caseTitle: title,
       customerId: inquiry.customerId,
       customerName: inquiry.customerName,
+      bondPrincipal: bondPrincipal || undefined,
       caseType,
       amount,
       personInCharge,
@@ -393,7 +408,7 @@ export default function InquiryDetailPage() {
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
                 </svg>
-                Convert to Case
+                Start Bond Case
               </button>
             ) : (
               convertedCase && (
@@ -694,6 +709,7 @@ export default function InquiryDetailPage() {
         <QuotationForm
           initial={emptyQuotationForm()}
           statuses={quotationStatuses}
+          insurers={insurerNames}
           onSave={d => {
             addInquiryQuotation({
               inquiryId: id,
@@ -722,6 +738,7 @@ export default function InquiryDetailPage() {
               notes: selectedQuotation.notes,
             }}
             statuses={quotationStatuses}
+            insurers={insurerNames}
             onSave={d => {
               updateInquiryQuotation(selectedQuotation.id, {
                 providerName: d.providerName,
@@ -761,7 +778,7 @@ export default function InquiryDetailPage() {
         )}
       </Modal>
 
-      <Modal isOpen={convertModal} onClose={() => setConvertModal(false)} title="Convert to Case" maxWidth="sm">
+      <Modal isOpen={convertModal} onClose={() => setConvertModal(false)} title="Start Bond Case" maxWidth="sm">
         <ConvertModal
           inquiry={inquiry}
           pics={pics}

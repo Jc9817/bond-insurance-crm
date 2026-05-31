@@ -98,6 +98,8 @@ export default function FollowUpsPage() {
   const [modal, setModal] = useState<'add' | 'edit' | null>(null)
   const [selected, setSelected] = useState<FollowUp | null>(null)
   const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [reminderSent, setReminderSent] = useState(false)
+  const [sendingReminders, setSendingReminders] = useState(false)
 
   const today = todayDate()
 
@@ -116,7 +118,29 @@ export default function FollowUpsPage() {
     return matchTab && matchPic && matchSearch
   })
 
-  const overdueCnt = followUps.filter(f => f.status === 'Open' && getDaysUntil(f.dueDate) !== null && getDaysUntil(f.dueDate)! < 0).length
+  const overdueItems = followUps.filter(f => f.status === 'Open' && getDaysUntil(f.dueDate) !== null && getDaysUntil(f.dueDate)! < 0)
+  const overdueCnt = overdueItems.length
+
+  const sendOverdueReminders = async () => {
+    setSendingReminders(true)
+    const picEmailMap: Record<string, string> = {}
+    pics.forEach(p => { if (p.email) picEmailMap[p.name] = p.email })
+    const items = overdueItems
+      .filter(f => picEmailMap[f.personInCharge])
+      .map(f => ({
+        title: f.title,
+        caseTitle: f.caseTitle,
+        customerName: f.customerName,
+        personInCharge: f.personInCharge,
+        dueDate: f.dueDate,
+        recipientEmail: picEmailMap[f.personInCharge],
+        recipientName: f.personInCharge,
+      }))
+    if (items.length === 0) { setSendingReminders(false); return }
+    await fetch('/api/notify-overdue', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items }) })
+    setReminderSent(true)
+    setSendingReminders(false)
+  }
   const todayCnt = followUps.filter(f => f.status === 'Open' && f.dueDate === today).length
 
   const closeModal = () => { setModal(null); setSelected(null) }
@@ -135,7 +159,18 @@ export default function FollowUpsPage() {
         title="Follow-Ups"
         subtitle={`${followUps.filter(f => f.status === 'Open').length} open · ${overdueCnt} overdue`}
         action={
-          <button className="btn-primary" onClick={() => setModal('add')}>+ Add Follow-Up</button>
+          <div className="flex items-center gap-2">
+            {overdueCnt > 0 && (
+              <button
+                onClick={sendOverdueReminders}
+                disabled={sendingReminders || reminderSent}
+                className="btn-secondary text-sm disabled:opacity-50"
+              >
+                {reminderSent ? '✓ Reminders Sent' : sendingReminders ? 'Sending…' : `Send Reminders (${overdueCnt})`}
+              </button>
+            )}
+            <button className="btn-primary" onClick={() => setModal('add')}>+ Add Follow-Up</button>
+          </div>
         }
       />
 

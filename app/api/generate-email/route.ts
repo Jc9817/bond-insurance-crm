@@ -8,21 +8,24 @@ export async function POST(req: NextRequest) {
   }
 
   const {
-    caseTitle, caseType, customerName, amount, personInCharge,
+    caseTitle, caseType, customerName, principalName, bondAmount, amount, personInCharge,
     insurerName, notes, aiEmailPrompt,
   } = await req.json()
+
+  const principal = principalName || customerName
+  const sumInsured = bondAmount || amount
 
   const systemContext = `You are an email drafting assistant for a Malaysian bond and insurance brokerage firm. Write professional, concise emails in a formal but friendly tone. Use Bahasa Malaysia terms where appropriate for local industry context (e.g. "Bon Pelaksanaan" for Performance Bond). Keep emails under 200 words.`
 
   const userPrompt = aiEmailPrompt?.trim()
-    ? `${aiEmailPrompt}\n\nCase details:\n- Case: ${caseTitle}\n- Customer: ${customerName}\n- Type: ${caseType}\n- Amount: ${amount}\n- PIC: ${personInCharge}\n- Insurer: ${insurerName || 'to be determined'}\n- Notes: ${notes || 'none'}`
+    ? `${aiEmailPrompt}\n\nBond details:\n- Principal: ${principal}\n- Bond type: ${caseType}\n- Sum insured: ${sumInsured}\n- Applicant/Customer: ${customerName}\n- PIC: ${personInCharge}\n- Insurer: ${insurerName || 'to be determined'}\n- Notes: ${notes || 'none'}`
     : `Draft a professional quotation request email to ${insurerName || 'the insurer'} on behalf of our client.
 
-Case details:
-- Case title: ${caseTitle}
-- Customer / Applicant: ${customerName}
-- Bond / Insurance type: ${caseType}
-- Estimated sum: ${amount}
+Bond details:
+- Principal (named on bond): ${principal}
+- Bond / policy type: ${caseType}
+- Sum insured: ${sumInsured}
+- Applicant / customer: ${customerName}
 - Person in charge: ${personInCharge}
 - Additional notes: ${notes || 'none'}
 

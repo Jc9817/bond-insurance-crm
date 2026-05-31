@@ -15,6 +15,8 @@ const styleMap: Record<string, string> = {
   // Result
   Won: 'bg-green-50 text-green-700',
   Lost: 'bg-red-50 text-red-600',
+  Cancelled: 'bg-gray-100 text-gray-500',
+  'On Hold': 'bg-amber-50 text-amber-700',
   // Inquiry statuses
   'Gathering Info': 'bg-sky-50 text-sky-700',
   'Docs Requested': 'bg-amber-50 text-amber-700',
@@ -29,11 +31,39 @@ const styleMap: Record<string, string> = {
   'No Response': 'bg-gray-100 text-gray-500',
 }
 
+const iconMap: Record<string, string> = {
+  New: '○',
+  'Waiting Documents': '⏳',
+  Submitted: '→',
+  Quoted: '💬',
+  'Sent to Customer': '✉',
+  Confirmed: '✓',
+  Closed: '■',
+  Open: '○',
+  Done: '✓',
+  Won: '★',
+  Lost: '✕',
+  Cancelled: '—',
+  'On Hold': '⏸',
+  'Gathering Info': '◎',
+  'Docs Requested': '⏳',
+  'Quotation Requested': '→',
+  'Quotation Received': '✓',
+  'Customer Reviewing': '◎',
+  Qualified: '★',
+  Pending: '○',
+  'Under Review': '◎',
+  Rejected: '✕',
+  'No Response': '—',
+}
+
 export default function StatusBadge({ status, size = 'sm' }: Props) {
   const style = styleMap[status] ?? 'bg-gray-100 text-gray-600'
-  const sz = size === 'md' ? 'px-3 py-1 text-sm' : 'px-2.5 py-0.5 text-xs'
+  const sz = size === 'md' ? 'px-3 py-1 text-sm gap-1.5' : 'px-2.5 py-0.5 text-xs gap-1'
+  const icon = iconMap[status]
   return (
     <span className={`inline-flex items-center rounded-full font-medium ${style} ${sz}`}>
+      {icon && <span className="opacity-70 leading-none">{icon}</span>}
       {status}
     </span>
   )

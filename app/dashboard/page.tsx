@@ -49,12 +49,41 @@ export default function HomePage() {
 
   const stuckCases = activeCases.filter(c => getStuckDays(c) > 14)
 
+  const bondsExpiring30 = activeCases.filter(c => {
+    if (!c.bondExpiryDate) return false
+    const days = Math.ceil((new Date(c.bondExpiryDate).getTime() - today.getTime()) / 86400000)
+    return days >= 0 && days <= 30
+  })
+  const bondsExpiring60 = activeCases.filter(c => {
+    if (!c.bondExpiryDate) return false
+    const days = Math.ceil((new Date(c.bondExpiryDate).getTime() - today.getTime()) / 86400000)
+    return days > 30 && days <= 60
+  })
+  const bondsExpired = activeCases.filter(c => {
+    if (!c.bondExpiryDate) return false
+    const days = Math.ceil((new Date(c.bondExpiryDate).getTime() - today.getTime()) / 86400000)
+    return days < 0
+  })
+
+  const getSLADaysOver = (c: typeof activeCases[0]) => {
+    const template = getWorkflowTemplate(c.caseType, workflowTemplates)
+    const currentStep = template?.workflowSteps.find(s => s.id === c.currentWorkflowStepId)
+    if (!currentStep?.slaDays) return 0
+    const stepLog = activityLogs
+      .filter(l => l.caseId === c.id && l.actionType === 'WORKFLOW_STEP_CHANGED' && l.newValue === currentStep.name)
+      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())[0]
+    const enteredAt = stepLog ? new Date(stepLog.timestamp).getTime() : new Date(c.createdAt).getTime()
+    const daysAt = Math.floor((Date.now() - enteredAt) / 86400000)
+    return daysAt > currentStep.slaDays ? daysAt - currentStep.slaDays : 0
+  }
+
   const needsAttentionCases = activeCases.filter(c => {
     const hasOD = overdueFollowUps.some(f => f.caseId === c.id)
     const template = getWorkflowTemplate(c.caseType, workflowTemplates)
     const hasMissingDocs = template ? getMissingRequiredDocs(c.id, template, caseFiles).length > 0 : false
     const isStuck = getStuckDays(c) > 14
-    return hasOD || hasMissingDocs || isStuck
+    const slaOver = getSLADaysOver(c) > 0
+    return hasOD || hasMissingDocs || isStuck || slaOver
   }).slice(0, 8)
 
   const recentActivity = activityLogs.slice(0, 10)
@@ -112,6 +141,38 @@ export default function HomePage() {
         <StatCard label="Stuck Cases" value={stuckCases.length} color={stuckCases.length > 0 ? 'amber' : 'default'} sub=">14 days" />
       </div>
 
+      {/* Bonds Expiring Soon */}
+      {(bondsExpired.length > 0 || bondsExpiring30.length > 0 || bondsExpiring60.length > 0) && (
+        <div className="card-section mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-base font-semibold text-gray-800">Bonds Expiring Soon</h2>
+            <div className="flex items-center gap-3">
+              {bondsExpired.length > 0 && <span className="text-xs font-semibold bg-red-100 text-red-700 rounded-full px-2.5 py-1">{bondsExpired.length} expired</span>}
+              {bondsExpiring30.length > 0 && <span className="text-xs font-semibold bg-amber-100 text-amber-700 rounded-full px-2.5 py-1">{bondsExpiring30.length} within 30d</span>}
+              {bondsExpiring60.length > 0 && <span className="text-xs font-semibold bg-yellow-100 text-yellow-700 rounded-full px-2.5 py-1">{bondsExpiring60.length} within 60d</span>}
+            </div>
+          </div>
+          <div className="space-y-2">
+            {[...bondsExpired, ...bondsExpiring30, ...bondsExpiring60].map(c => {
+              const days = Math.ceil((new Date(c.bondExpiryDate!).getTime() - today.getTime()) / 86400000)
+              const isExpired = days < 0
+              const isUrgent = !isExpired && days <= 30
+              return (
+                <Link key={c.id} href={`/cases/${c.id}`} className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl hover:bg-gray-50 transition-colors group">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-800 group-hover:text-blue-600 line-clamp-1">{c.caseTitle}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{c.customerName} · {c.personInCharge || '—'}</p>
+                  </div>
+                  <span className={`text-xs font-semibold shrink-0 rounded-full px-2.5 py-1 ${isExpired ? 'bg-red-100 text-red-700' : isUrgent ? 'bg-amber-100 text-amber-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                    {isExpired ? `Expired ${Math.abs(days)}d ago` : `${days}d left`}
+                  </span>
+                </Link>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Needs Attention + Today's Follow-Ups */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
         <div className="lg:col-span-2 card-section">
@@ -131,6 +192,7 @@ export default function HomePage() {
                 const missing = template ? getMissingRequiredDocs(c.id, template, caseFiles) : []
                 const hasOD = overdueFollowUps.some(f => f.caseId === c.id)
                 const isStuck = getStuckDays(c) > 14
+                const slaOver = getSLADaysOver(c)
                 const readiness = getCaseReadiness(c, template, caseFiles, followUps)
                 return (
                   <Link key={c.id} href={`/cases/${c.id}`} className="block group">
@@ -146,7 +208,10 @@ export default function HomePage() {
                           {hasOD && (
                             <span className="text-xs text-red-600 bg-red-50 rounded px-1.5 py-0.5 font-medium">Follow-up overdue</span>
                           )}
-                          {isStuck && !hasOD && (
+                          {slaOver > 0 && (
+                            <span className="text-xs text-orange-700 bg-orange-50 rounded px-1.5 py-0.5 font-medium">SLA +{slaOver}d over</span>
+                          )}
+                          {isStuck && !hasOD && !slaOver && (
                             <span className="text-xs text-gray-500 bg-gray-100 rounded px-1.5 py-0.5 font-medium">{getStuckDays(c)}d no update</span>
                           )}
                         </div>

@@ -10,13 +10,14 @@ import Modal from '@/components/ui/Modal'
 
 // ─── Tab type ─────────────────────────────────────────────────────────────────
 
-type Tab = 'users' | 'caseTypes' | 'industries' | 'contactTypes' | 'followUpCategories' | 'documentTypes' | 'pic' | 'workflowTemplates' | 'quotationWorkflow'
+type Tab = 'users' | 'caseTypes' | 'industries' | 'contactTypes' | 'followUpCategories' | 'documentTypes' | 'pic' | 'workflowTemplates' | 'quotationWorkflow' | 'insurers'
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'users', label: 'Users' },
   { key: 'workflowTemplates', label: 'Workflow Templates' },
   { key: 'quotationWorkflow', label: 'Quotation Workflow' },
   { key: 'caseTypes', label: 'Case Types' },
+  { key: 'insurers', label: 'Insurers' },
   { key: 'industries', label: 'Industries' },
   { key: 'contactTypes', label: 'Contact Types' },
   { key: 'followUpCategories', label: 'Follow-Up Categories' },
@@ -203,6 +204,7 @@ const emptyStep = (): StepFormData => ({
   isActive: true,
   aiEmailEnabled: false,
   aiEmailPrompt: '',
+  slaDays: undefined,
 })
 
 const emptyDoc = (): DocFormData => ({
@@ -247,6 +249,11 @@ function StepModal({ initial, onSave, onClose, title, maxOrder }: {
         <div>
           <label className="label">Default Follow-Up Suggestion</label>
           <input className="input" value={form.defaultFollowUpSuggestion} onChange={e => setForm(p => ({ ...p, defaultFollowUpSuggestion: e.target.value }))} placeholder="e.g. Follow up with insurer for approval" />
+        </div>
+        <div>
+          <label className="label">SLA (max days at this step)</label>
+          <input className="input" type="number" min={1} value={form.slaDays ?? ''} onChange={e => setForm(p => ({ ...p, slaDays: e.target.value ? Number(e.target.value) : undefined }))} placeholder="e.g. 7 — leave blank for no SLA" />
+          <p className="text-xs text-gray-400 mt-1">A warning will show on the case when this step exceeds the limit.</p>
         </div>
         <div className="flex items-center gap-3">
           <input
@@ -649,7 +656,7 @@ function WorkflowTemplateDetail({ template, onBack }: { template: WorkflowTempla
       {stepModal === 'edit' && selectedStep && (
         <StepModal
           title="Edit Workflow Step"
-          initial={{ name: selectedStep.name, order: selectedStep.order, description: selectedStep.description, requireDocumentsComplete: selectedStep.requireDocumentsComplete, defaultFollowUpSuggestion: selectedStep.defaultFollowUpSuggestion, isActive: selectedStep.isActive, aiEmailEnabled: selectedStep.aiEmailEnabled, aiEmailPrompt: selectedStep.aiEmailPrompt }}
+          initial={{ name: selectedStep.name, order: selectedStep.order, description: selectedStep.description, requireDocumentsComplete: selectedStep.requireDocumentsComplete, defaultFollowUpSuggestion: selectedStep.defaultFollowUpSuggestion, isActive: selectedStep.isActive, aiEmailEnabled: selectedStep.aiEmailEnabled, aiEmailPrompt: selectedStep.aiEmailPrompt, slaDays: selectedStep.slaDays }}
           maxOrder={allSteps.length}
           onSave={d => { updateWorkflowStep(template.id, selectedStep.id, d); setStepModal(null) }}
           onClose={() => setStepModal(null)}
@@ -1008,6 +1015,15 @@ export default function SettingsPage() {
           <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-5">Case Types</h2>
           <p className="text-sm text-gray-500 mb-5">These are the types available when creating a new case.</p>
           <ListSection category="caseTypes" />
+        </div>
+      )}
+
+      {/* ── Insurers tab ───────────────────────────────────────────────────── */}
+      {tab === 'insurers' && (
+        <div className="card-section">
+          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-5">Insurers / Providers</h2>
+          <p className="text-sm text-gray-500 mb-5">List of insurers and providers available as dropdowns when recording case results and quotations.</p>
+          <ListSection category="insurers" />
         </div>
       )}
 

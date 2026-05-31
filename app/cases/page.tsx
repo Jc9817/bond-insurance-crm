@@ -1,12 +1,13 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { useStore } from '@/lib/store'
 import type { Case, CaseStatus } from '@/lib/types'
-import { CASE_STATUSES, CASE_TYPES } from '@/lib/types'
-import { formatCurrency, timeAgo } from '@/lib/utils'
-import { getWorkflowTemplate, getCaseReadiness, getMissingRequiredDocs } from '@/lib/workflow'
+import { CASE_STATUSES, CASE_TYPES, WAITING_FOR_OPTIONS } from '@/lib/types'
+import { formatCurrency, timeAgo, formatDate } from '@/lib/utils'
+import { getWorkflowTemplate, getMissingRequiredDocs, getRequiredDocs } from '@/lib/workflow'
 import PageHeader from '@/components/ui/PageHeader'
 import StatusBadge from '@/components/ui/StatusBadge'
 import Modal from '@/components/ui/Modal'
@@ -17,6 +18,7 @@ const emptyCase = (customers: { id: string; customerName: string }[]): FormData 
   caseTitle: '',
   customerId: customers[0]?.id ?? '',
   customerName: customers[0]?.customerName ?? '',
+  bondPrincipal: '',
   caseType: '',
   amount: 0,
   personInCharge: '',
@@ -24,6 +26,8 @@ const emptyCase = (customers: { id: string; customerName: string }[]): FormData 
   currentWorkflowStepId: '',
   result: '',
   closingRemarks: '',
+  bondExpiryDate: '',
+  waitingFor: null,
 })
 
 function CaseForm({ initial, customers, pics, onSave, onCancel }: {
@@ -57,6 +61,8 @@ function CaseForm({ initial, customers, pics, onSave, onCancel }: {
         const template = getWorkflowTemplate(e.target.value, workflowTemplates, c?.businessType)
         const firstStep = template?.workflowSteps.filter(s => s.isActive).sort((a, b) => a.order - b.order)[0]
         setForm(prev => ({ ...prev, caseType: e.target.value, currentWorkflowStepId: firstStep?.id ?? '' }))
+      } else if (k === 'waitingFor') {
+        setForm(prev => ({ ...prev, waitingFor: (e.target.value || null) as FormData['waitingFor'] }))
       } else {
         setForm(prev => ({ ...prev, [k]: e.target.value }))
       }
@@ -83,6 +89,10 @@ function CaseForm({ initial, customers, pics, onSave, onCancel }: {
           {customers.map(c => <option key={c.id} value={c.id}>{c.customerName}</option>)}
         </select>
       </div>
+      <div>
+        <label className="label">Principal <span className="text-gray-400 font-normal">(name on the bond, if different from customer)</span></label>
+        <input className="input" value={form.bondPrincipal || ''} onChange={set('bondPrincipal')} placeholder="e.g. JUTA-KASEH JV Sdn Bhd" />
+      </div>
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="label">Case Type</label>
@@ -108,6 +118,17 @@ function CaseForm({ initial, customers, pics, onSave, onCancel }: {
             {CASE_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
+        <div>
+          <label className="label">Bond Expiry Date</label>
+          <input className="input" type="date" value={form.bondExpiryDate || ''} onChange={set('bondExpiryDate')} />
+        </div>
+        <div>
+          <label className="label">Waiting For</label>
+          <select className="input" value={form.waitingFor || ''} onChange={set('waitingFor')}>
+            <option value="">— Not waiting —</option>
+            {WAITING_FOR_OPTIONS.map(w => <option key={w} value={w}>{w}</option>)}
+          </select>
+        </div>
       </div>
       <div className="flex gap-3 pt-1">
         <button type="button" onClick={onCancel} className="btn-secondary flex-1">Cancel</button>
@@ -117,22 +138,39 @@ function CaseForm({ initial, customers, pics, onSave, onCancel }: {
   )
 }
 
+const WAITING_COLOR: Record<string, string> = {
+  Customer: 'bg-purple-50 text-purple-700',
+  Insurer: 'bg-blue-50 text-blue-700',
+  Internal: 'bg-amber-50 text-amber-700',
+}
+
 export default function CasesPage() {
-  const { cases, customers, pics, caseFiles, followUps, workflowTemplates, addCase, updateCase, deleteCase } = useStore()
+  const { cases, customers, pics, caseFiles, followUps, workflowTemplates, addCase, updateCase, deleteCase, archiveCase, restoreCase } = useStore()
+  const searchParams = useSearchParams()
   const [view, setView] = useState<'list' | 'board'>('list')
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('All')
+  const [principalFilter, setPrincipalFilter] = useState<string>('All')
+
+  useEffect(() => {
+    const p = searchParams.get('principal')
+    if (p) setPrincipalFilter(p)
+  }, [searchParams])
+  const [showArchived, setShowArchived] = useState(false)
   const [modal, setModal] = useState<'add' | 'edit' | null>(null)
   const [selected, setSelected] = useState<Case | null>(null)
-  const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<Case | null>(null)
 
   const filtered = cases.filter(c => {
+    if (showArchived ? !c.archivedAt : c.archivedAt) return false
     const matchStatus = statusFilter === 'All' || c.currentStatus === statusFilter
-    const matchSearch = search === '' || [c.caseTitle, c.customerName, c.caseType, c.personInCharge].some(f =>
+    const matchPrincipal = principalFilter === 'All' || c.bondPrincipal === principalFilter
+    const matchSearch = search === '' || [c.caseTitle, c.customerName, c.bondPrincipal, c.caseType, c.personInCharge].some(f =>
       f?.toLowerCase().includes(search.toLowerCase())
     )
-    return matchStatus && matchSearch
+    return matchStatus && matchPrincipal && matchSearch
   })
+  const archivedCount = cases.filter(c => !!c.archivedAt).length
 
   const closeModal = () => { setModal(null); setSelected(null) }
 
@@ -140,7 +178,7 @@ export default function CasesPage() {
     <div className="p-8 max-w-screen-xl mx-auto">
       <PageHeader
         title="Cases"
-        subtitle={`${cases.length} total cases`}
+        subtitle={principalFilter !== 'All' ? `Showing cases for principal: ${principalFilter}` : `${cases.length} total cases`}
         action={<button className="btn-primary" onClick={() => setModal('add')}>+ New Case</button>}
       />
 
@@ -151,12 +189,32 @@ export default function CasesPage() {
           <option value="All">All Statuses</option>
           {CASE_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
-        <div className="ml-auto flex rounded-xl border border-gray-200 overflow-hidden bg-white">
-          {(['list', 'board'] as const).map(v => (
-            <button key={v} onClick={() => setView(v)} className={`px-4 py-2 text-sm font-medium transition-colors capitalize ${view === v ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
-              {v === 'board' ? 'Board View' : 'List View'}
+        {principalFilter !== 'All' && (
+          <div className="flex items-center gap-1.5 bg-indigo-50 border border-indigo-200 text-indigo-700 text-sm font-medium rounded-xl px-3 py-2">
+            <span className="text-xs text-indigo-400 font-normal">Principal:</span>
+            {principalFilter}
+            <button
+              onClick={() => setPrincipalFilter('All')}
+              className="ml-1 text-indigo-400 hover:text-indigo-700 leading-none"
+              aria-label="Clear principal filter"
+            >
+              ✕
             </button>
-          ))}
+          </div>
+        )}
+        <button
+          onClick={() => setShowArchived(p => !p)}
+          className={`text-sm px-3 py-2 rounded-xl border transition-colors ${showArchived ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'}`}
+        >
+          {showArchived ? '← Active Cases' : `Archived${archivedCount > 0 ? ` (${archivedCount})` : ''}`}
+        </button>
+        <div className="ml-auto flex items-center gap-2">
+          <button onClick={() => setView('list')} className={`px-4 py-2 text-sm font-medium rounded-xl transition-colors ${view === 'list' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100 border border-gray-200 bg-white'}`}>
+            List View
+          </button>
+          <button onClick={() => setView('board')} className={`px-3 py-2 text-xs font-medium rounded-xl transition-colors ${view === 'board' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:bg-gray-50 border border-gray-200 bg-white'}`}>
+            Board
+          </button>
         </div>
       </div>
 
@@ -180,59 +238,75 @@ export default function CasesPage() {
                 <th className="table-th">Amount</th>
                 <th className="table-th">Person in Charge</th>
                 <th className="table-th">Status</th>
-                <th className="table-th">Readiness</th>
-                <th className="table-th">Added</th>
+                <th className="table-th">Waiting For</th>
+                <th className="table-th">Documents</th>
+                <th className="table-th">Bond Expiry</th>
+                <th className="table-th">Last Updated</th>
                 <th className="table-th">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {filtered.length === 0 ? (
-                <tr><td colSpan={9} className="px-5 py-12 text-center text-gray-400">No cases found.</td></tr>
+                <tr><td colSpan={11} className="px-5 py-12 text-center text-gray-400">No cases found.</td></tr>
               ) : filtered.map(c => {
                 const cust = customers.find(cu => cu.id === c.customerId)
                 const template = getWorkflowTemplate(c.caseType, workflowTemplates, cust?.businessType)
-                const readiness = getCaseReadiness(c, template, caseFiles, followUps)
+                const required = getRequiredDocs(template)
                 const missing = getMissingRequiredDocs(c.id, template, caseFiles)
+                const uploaded = required.length - missing.length
+                const expiryDays = c.bondExpiryDate ? Math.ceil((new Date(c.bondExpiryDate).getTime() - Date.now()) / 86400000) : null
+                const expiryUrgent = expiryDays !== null && expiryDays <= 30 && c.currentStatus !== 'Closed'
                 return (
                   <tr key={c.id} className="hover:bg-stone-50 transition-colors">
                     <td className="table-td">
-                      <Link href={`/cases/${c.id}`} className="font-semibold text-gray-900 hover:text-blue-600 line-clamp-1 max-w-[240px] block">
+                      <Link href={`/cases/${c.id}`} className="font-semibold text-gray-900 hover:text-blue-600 line-clamp-1 max-w-[220px] block">
                         {c.caseTitle}
                       </Link>
                     </td>
-                    <td className="table-td text-gray-500 whitespace-nowrap">{c.customerName}</td>
+                    <td className="table-td">
+                      <span className="text-gray-500 whitespace-nowrap">{c.customerName}</span>
+                      {c.bondPrincipal && c.bondPrincipal !== c.customerName && (
+                        <p className="text-xs text-indigo-600 whitespace-nowrap mt-0.5">Principal: {c.bondPrincipal}</p>
+                      )}
+                    </td>
                     <td className="table-td text-gray-500 whitespace-nowrap">{c.caseType || '—'}</td>
                     <td className="table-td font-semibold text-gray-800 whitespace-nowrap">{formatCurrency(c.amount)}</td>
                     <td className="table-td text-gray-500 whitespace-nowrap">{c.personInCharge || '—'}</td>
                     <td className="table-td"><StatusBadge status={c.currentStatus} /></td>
                     <td className="table-td whitespace-nowrap">
+                      {c.waitingFor ? (
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${WAITING_COLOR[c.waitingFor] ?? 'bg-gray-100 text-gray-600'}`}>
+                          {c.waitingFor}
+                        </span>
+                      ) : <span className="text-gray-300 text-xs">—</span>}
+                    </td>
+                    <td className="table-td whitespace-nowrap">
                       {template ? (
-                        <div className="flex items-center gap-2">
-                          <div className="w-16 bg-gray-100 rounded-full h-1.5 overflow-hidden">
-                            <div className={`h-full rounded-full ${readiness >= 70 ? 'bg-green-400' : readiness >= 40 ? 'bg-amber-400' : 'bg-red-400'}`} style={{ width: `${readiness}%` }} />
-                          </div>
-                          <span className="text-xs text-gray-600 font-medium">{readiness}%</span>
-                          {missing.length > 0 && (
-                            <span className="text-xs text-red-500 font-medium">{missing.length} missing</span>
-                          )}
-                        </div>
+                        <span className={`text-xs font-semibold ${missing.length > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                          {uploaded}/{required.length} docs
+                        </span>
                       ) : (
                         <span className="text-xs text-gray-300">—</span>
                       )}
                     </td>
-                    <td className="table-td text-gray-400 whitespace-nowrap text-xs">{timeAgo(c.createdAt)}</td>
+                    <td className="table-td whitespace-nowrap">
+                      {c.bondExpiryDate ? (
+                        <span className={`text-xs font-medium ${expiryUrgent ? 'text-red-600' : 'text-gray-600'}`}>
+                          {expiryUrgent && '⚠ '}{formatDate(c.bondExpiryDate)}
+                        </span>
+                      ) : <span className="text-gray-300 text-xs">—</span>}
+                    </td>
+                    <td className="table-td text-gray-400 whitespace-nowrap text-xs">
+                      {c.updatedAt ? timeAgo(c.updatedAt) : timeAgo(c.createdAt)}
+                    </td>
                     <td className="table-td whitespace-nowrap">
                       <div className="flex items-center gap-2">
                         <Link href={`/cases/${c.id}`} className="btn-xs bg-gray-100 hover:bg-gray-200 text-gray-700">View</Link>
                         <button onClick={() => { setSelected(c); setModal('edit') }} className="btn-xs bg-gray-100 hover:bg-gray-200 text-gray-700">Edit</button>
-                        {deleteId === c.id ? (
-                          <>
-                            <button onClick={() => { deleteCase(c.id); setDeleteId(null) }} className="btn-xs bg-red-600 text-white hover:bg-red-700">Confirm</button>
-                            <button onClick={() => setDeleteId(null)} className="btn-xs bg-gray-100 text-gray-600">Cancel</button>
-                          </>
-                        ) : (
-                          <button onClick={() => setDeleteId(c.id)} className="btn-xs bg-red-50 text-red-600 hover:bg-red-100">Delete</button>
-                        )}
+                        {c.archivedAt
+                          ? <button onClick={() => restoreCase(c.id)} className="btn-xs bg-green-50 text-green-700 hover:bg-green-100">Restore</button>
+                          : <button onClick={() => setDeleteTarget(c)} className="btn-xs bg-amber-50 text-amber-700 hover:bg-amber-100">Archive</button>
+                        }
                       </div>
                     </td>
                   </tr>
@@ -244,6 +318,7 @@ export default function CasesPage() {
         </div>
       )}
 
+      {/* Add / Edit modals */}
       <Modal isOpen={modal === 'add'} onClose={closeModal} title="New Case" maxWidth="lg">
         <CaseForm initial={emptyCase(customers)} customers={customers} pics={pics} onSave={d => { addCase(d); closeModal() }} onCancel={closeModal} />
       </Modal>
@@ -251,12 +326,43 @@ export default function CasesPage() {
       <Modal isOpen={modal === 'edit'} onClose={closeModal} title="Edit Case" maxWidth="lg">
         {selected && (
           <CaseForm
-            initial={{ caseTitle: selected.caseTitle, customerId: selected.customerId, customerName: selected.customerName, caseType: selected.caseType, amount: selected.amount, personInCharge: selected.personInCharge, currentStatus: selected.currentStatus, currentWorkflowStepId: selected.currentWorkflowStepId ?? '', result: selected.result, closingRemarks: selected.closingRemarks }}
+            initial={{ caseTitle: selected.caseTitle, customerId: selected.customerId, customerName: selected.customerName, bondPrincipal: selected.bondPrincipal ?? '', caseType: selected.caseType, amount: selected.amount, personInCharge: selected.personInCharge, currentStatus: selected.currentStatus, currentWorkflowStepId: selected.currentWorkflowStepId ?? '', result: selected.result, closingRemarks: selected.closingRemarks, bondExpiryDate: selected.bondExpiryDate ?? '', waitingFor: selected.waitingFor ?? null }}
             customers={customers}
             pics={pics}
             onSave={d => { updateCase(selected.id, d); closeModal() }}
             onCancel={closeModal}
           />
+        )}
+      </Modal>
+
+      {/* Archive confirmation modal */}
+      <Modal isOpen={!!deleteTarget} onClose={() => setDeleteTarget(null)} title="Archive Case" maxWidth="sm">
+        {deleteTarget && (
+          <div className="px-6 py-5">
+            <div className="bg-amber-50 rounded-xl p-4 mb-5">
+              <p className="text-sm font-semibold text-amber-800 mb-1">Archive this case?</p>
+              <p className="text-sm text-amber-700">
+                <span className="font-bold">{deleteTarget.caseTitle}</span> will be hidden from active views. You can restore it any time from the Archived filter.
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setDeleteTarget(null)} className="btn-secondary flex-1">Cancel</button>
+              <button
+                onClick={() => { archiveCase(deleteTarget.id); setDeleteTarget(null) }}
+                className="flex-1 bg-amber-600 hover:bg-amber-700 text-white text-sm font-semibold py-2.5 px-4 rounded-xl transition-colors"
+              >
+                Archive Case
+              </button>
+            </div>
+            <div className="mt-3 pt-3 border-t border-gray-100">
+              <button
+                onClick={() => { deleteCase(deleteTarget.id); setDeleteTarget(null) }}
+                className="w-full text-xs text-red-500 hover:text-red-700 transition-colors py-1"
+              >
+                Delete permanently instead
+              </button>
+            </div>
+          </div>
         )}
       </Modal>
     </div>

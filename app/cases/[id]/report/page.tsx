@@ -300,7 +300,7 @@ export default function CaseReportPage() {
               )}
               <DetailRow label="Case Type" value={caseItem.caseType} />
               <DetailRow label="Person in Charge" value={caseItem.personInCharge} />
-              {pic?.email && <DetailRow label="PIC Email" value={pic.email} />}
+              {pic?.email && <DetailRow label="Person in Charge Email" value={pic.email} />}
               <DetailRow label="Status" value={caseItem.currentStatus} />
               {caseItem.amount > 0 && (
                 <DetailRow label="Case Amount" value={<span className="font-semibold">{formatCurrency(caseItem.amount)}</span>} />

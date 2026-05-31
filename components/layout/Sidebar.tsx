@@ -1,8 +1,10 @@
 'use client'
 
+import { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth'
+import { useStore } from '@/lib/store'
 
 const nav = [
   {
@@ -62,6 +64,76 @@ const nav = [
   },
 ]
 
+function GlobalSearch() {
+  const { cases, customers, inquiries } = useStore()
+  const router = useRouter()
+  const [query, setQuery] = useState('')
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  const q = query.trim().toLowerCase()
+  const results = q.length < 2 ? [] : [
+    ...customers.filter(c => c.customerName.toLowerCase().includes(q) || c.companyRegistrationNo.toLowerCase().includes(q)).slice(0, 3).map(c => ({ type: 'Customer' as const, label: c.customerName, sub: c.businessType, href: `/customers/${c.id}` })),
+    ...cases.filter(c => c.caseTitle.toLowerCase().includes(q) || c.customerName.toLowerCase().includes(q) || (c.bondPrincipal ?? '').toLowerCase().includes(q) || c.caseType.toLowerCase().includes(q)).slice(0, 4).map(c => ({ type: 'Case' as const, label: c.caseTitle, sub: c.bondPrincipal && c.bondPrincipal !== c.customerName ? `${c.customerName} → ${c.bondPrincipal}` : c.customerName, href: `/cases/${c.id}` })),
+    ...inquiries.filter(i => i.inquiryTitle.toLowerCase().includes(q) || i.customerName.toLowerCase().includes(q)).slice(0, 2).map(i => ({ type: 'Inquiry' as const, label: i.inquiryTitle, sub: i.customerName, href: `/inquiries/${i.id}` })),
+  ]
+
+  const typeColor: Record<string, string> = { Customer: 'bg-blue-100 text-blue-700', Case: 'bg-violet-100 text-violet-700', Inquiry: 'bg-teal-100 text-teal-700' }
+
+  return (
+    <div ref={ref} className="relative px-3 pb-2">
+      <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5">
+        <svg className="w-3.5 h-3.5 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+        </svg>
+        <input
+          className="bg-transparent text-xs text-gray-700 placeholder-gray-400 outline-none w-full"
+          placeholder="Search…"
+          value={query}
+          onChange={e => { setQuery(e.target.value); setOpen(true) }}
+          onFocus={() => setOpen(true)}
+          onKeyDown={e => {
+            if (e.key === 'Escape') { setQuery(''); setOpen(false) }
+            if (e.key === 'Enter' && results[0]) { router.push(results[0].href); setQuery(''); setOpen(false) }
+          }}
+        />
+        {query && <button onClick={() => { setQuery(''); setOpen(false) }} className="text-gray-300 hover:text-gray-500 text-xs leading-none">✕</button>}
+      </div>
+      {open && results.length > 0 && (
+        <div className="absolute left-3 right-3 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-50 overflow-hidden">
+          {results.map((r, i) => (
+            <Link
+              key={i}
+              href={r.href}
+              onClick={() => { setQuery(''); setOpen(false) }}
+              className="flex items-start gap-2 px-3 py-2 hover:bg-gray-50 transition-colors"
+            >
+              <span className={`text-xs font-medium rounded px-1.5 py-0.5 shrink-0 mt-0.5 ${typeColor[r.type]}`}>{r.type}</span>
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-gray-800 truncate">{r.label}</p>
+                <p className="text-xs text-gray-400 truncate">{r.sub}</p>
+              </div>
+            </Link>
+          ))}
+        </div>
+      )}
+      {open && q.length >= 2 && results.length === 0 && (
+        <div className="absolute left-3 right-3 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-50 px-3 py-3">
+          <p className="text-xs text-gray-400">No results for &ldquo;{query}&rdquo;</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function Sidebar() {
   const pathname = usePathname()
   const router = useRouter()
@@ -89,8 +161,13 @@ export default function Sidebar() {
         <p className="text-gray-400 text-xs mt-0.5">Operations CRM</p>
       </div>
 
+      {/* Global Search */}
+      <div className="pt-3 pb-1">
+        <GlobalSearch />
+      </div>
+
       {/* Navigation */}
-      <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
+      <nav className="flex-1 px-3 py-2 space-y-0.5 overflow-y-auto">
         {nav.map(item => (
           <Link
             key={item.href}

@@ -71,12 +71,11 @@ export default function StagePipeline({
                 onStepSelect?.(step.id)
                 onStageClick(step, state)
               }}
-              style={isFirst ? firstChevronStyle : chevronStyle(isLast && !result)}
+              style={isFirst ? firstChevronStyle : chevronStyle(false)}
               className={`
                 relative flex flex-col items-center justify-center
                 px-5 py-3 min-w-[120px] border transition-all
                 ${isFirst ? 'rounded-l-lg' : '-ml-2'}
-                ${isLast && !result ? 'rounded-r-lg' : ''}
                 ${colors}
                 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-1
               `}

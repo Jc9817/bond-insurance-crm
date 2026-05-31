@@ -91,8 +91,12 @@ export default function CustomerDetailPage() {
   }
 
   const custContacts = contacts.filter(c => c.customerId === id)
-  const relatedCases = cases.filter(c => c.customerId === id)
+  const relatedCases = cases.filter(c => c.customerId === id && !c.archivedAt)
   const relatedFollowUps = followUps.filter(f => f.customerId === id && f.status === 'Open')
+
+  const activeCases = relatedCases.filter(c => c.currentStatus !== 'Closed')
+  const totalExposure = activeCases.reduce((sum, c) => sum + (c.amount || 0), 0)
+  const wonCases = relatedCases.filter(c => c.result === 'Won').length
 
   const closeModal = () => { setContactModal(null); setSelectedContact(null) }
 
@@ -118,6 +122,31 @@ export default function CustomerDetailPage() {
           )}
         </div>
       </div>
+
+      {/* Exposure summary */}
+      {relatedCases.length > 0 && (
+        <div className="flex items-center gap-4 mb-5 p-4 bg-blue-50 rounded-2xl border border-blue-100">
+          <div className="text-center px-4">
+            <p className="text-2xl font-bold text-blue-700">{formatCurrency(totalExposure)}</p>
+            <p className="text-xs text-blue-500 mt-0.5">Active Bond Exposure</p>
+          </div>
+          <div className="h-10 w-px bg-blue-200" />
+          <div className="text-center px-3">
+            <p className="text-xl font-bold text-gray-700">{activeCases.length}</p>
+            <p className="text-xs text-gray-500 mt-0.5">Active Cases</p>
+          </div>
+          <div className="h-10 w-px bg-blue-200" />
+          <div className="text-center px-3">
+            <p className="text-xl font-bold text-green-600">{wonCases}</p>
+            <p className="text-xs text-gray-500 mt-0.5">Won Cases</p>
+          </div>
+          <div className="h-10 w-px bg-blue-200" />
+          <div className="text-center px-3">
+            <p className="text-xl font-bold text-gray-700">{relatedCases.length}</p>
+            <p className="text-xs text-gray-500 mt-0.5">Total Cases</p>
+          </div>
+        </div>
+      )}
 
       {/* Customer info + contacts side by side */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">

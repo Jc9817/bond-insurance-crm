@@ -73,6 +73,9 @@ export const CASE_TYPES = [
   'Other',
 ]
 
+export const WAITING_FOR_OPTIONS = ['Customer', 'Insurer', 'Internal'] as const
+export type WaitingFor = (typeof WAITING_FOR_OPTIONS)[number]
+
 export type Case = {
   id: string
   caseTitle: string
@@ -91,6 +94,12 @@ export type Case = {
   finalAmount?: number
   finalInsurer?: string
   closedAt?: string
+  bondPrincipal?: string     // entity named on the bond (if different from customer)
+  bondExpiryDate?: string   // ISO date — when the bond expires
+  waitingFor?: WaitingFor | null  // who is currently blocking progress
+  archivedAt?: string       // set when case is archived (soft delete)
+  acceptanceDate?: string   // date customer confirmed / accepted the quotation
+  acceptedBy?: string       // name of contact who confirmed acceptance
 }
 
 export type CaseNote = {
@@ -195,6 +204,7 @@ export type CaseFile = {
   aiExtractedData: AiExtractedData | null
   fileDataUrl?: string
   aiPrompt?: string            // extraction instructions copied from RequiredDocument at upload time
+  supersededBy?: string        // id of the newer file that replaced this one
 }
 
 // ─── Activity Log ─────────────────────────────────────────────────────────────
@@ -257,6 +267,7 @@ export type SettingsCategory =
   | 'documentTypes'
   | 'inquiryStatuses'
   | 'quotationStatuses'
+  | 'insurers'
 
 // ─── Workflow Templates ───────────────────────────────────────────────────────
 
@@ -283,6 +294,7 @@ export type WorkflowStep = {
   isActive: boolean
   aiEmailEnabled?: boolean   // shows AI quotation email panel when this step is active
   aiEmailPrompt?: string     // custom AI prompt for composing the quotation email
+  slaDays?: number           // max days allowed at this step before an SLA warning is shown
 }
 
 export type WorkflowTemplate = {

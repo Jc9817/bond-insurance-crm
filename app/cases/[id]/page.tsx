@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { useStore } from '@/lib/store'
 import { useAuth } from '@/lib/auth'
 import type { CaseFile, WorkflowStep } from '@/lib/types'
+import { WAITING_FOR_OPTIONS } from '@/lib/types'
 import {
   getWorkflowTemplate, getActiveSteps, getCaseReadiness, getDocumentCompleteness,
   getMissingRequiredDocs, getCurrentStep, getNextStep, getUnassignedFiles,
@@ -18,6 +19,7 @@ import DocumentChecklist from '@/components/ui/DocumentChecklist'
 import AIScanPanel from '@/components/ui/AIScanPanel'
 import StagePipeline from '@/components/ui/StagePipeline'
 import QuotationEmailPanel from '@/components/ui/QuotationEmailPanel'
+import QuotationDocumentPanel from '@/components/ui/QuotationDocumentPanel'
 
 type StageState = 'done' | 'current' | 'future'
 
@@ -26,8 +28,8 @@ export default function CaseDetailPage() {
   const router = useRouter()
   const {
     cases, customers, contacts, caseNotes, followUps, pics, workflowTemplates,
-    activityLogs, updateCase, addCaseNote, addFollowUp, toggleFollowUp, deleteFollowUp,
-    addActivityLog, caseFiles,
+    activityLogs, updateCase, addCase, addCaseNote, addFollowUp, toggleFollowUp, deleteFollowUp,
+    addActivityLog, caseFiles, settingsData,
   } = useStore()
   const { currentUser } = useAuth()
 
@@ -41,10 +43,10 @@ export default function CaseDetailPage() {
   const [fuForm, setFuForm] = useState({ title: '', personInCharge: pics[0]?.name ?? '', dueDate: '' })
   const [scanFile, setScanFile] = useState<CaseFile | null>(null)
   const [editInfoModal, setEditInfoModal] = useState(false)
-  const [editInfoForm, setEditInfoForm] = useState({ caseTitle: '', caseType: '', amount: 0, personInCharge: '' })
+  const [editInfoForm, setEditInfoForm] = useState({ caseTitle: '', caseType: '', amount: 0, personInCharge: '', bondPrincipal: '', bondExpiryDate: '', waitingFor: '' })
   const [closingModal, setClosingModal] = useState(false)
   const [closingForm, setClosingForm] = useState({
-    result: '', closingRemarks: '', lossReason: '', finalAmount: 0, finalInsurer: '',
+    result: '', closingRemarks: '', lossReason: '', finalAmount: 0, finalInsurer: '', acceptanceDate: '', acceptedBy: '',
   })
 
   // Pipeline step modal
@@ -100,6 +102,17 @@ export default function CaseDetailPage() {
       if (!acc[log.newValue!]) acc[log.newValue!] = log.timestamp
       return acc
     }, {})
+
+  // SLA: days since current step started
+  const currentStepEnteredAt = currentStep
+    ? stepTimestamps[currentStep.name]
+      ? new Date(stepTimestamps[currentStep.name]).getTime()
+      : new Date(caseItem.createdAt).getTime()
+    : null
+  const daysAtCurrentStep = currentStepEnteredAt
+    ? Math.floor((Date.now() - currentStepEnteredAt) / 86400000)
+    : null
+  const slaBreached = currentStep?.slaDays != null && daysAtCurrentStep != null && daysAtCurrentStep > currentStep.slaDays && caseItem.currentStatus !== 'Closed'
 
   // ── handlers ───────────────────────────────────────────────────────────────
 
@@ -172,7 +185,9 @@ export default function CaseDetailPage() {
     updateCase(id, {
       result: closingForm.result, closingRemarks: closingForm.closingRemarks,
       lossReason: closingForm.lossReason, finalAmount: closingForm.finalAmount,
-      finalInsurer: closingForm.finalInsurer,
+      finalInsurer: closingForm.finalInsurer === '__other__' ? '' : closingForm.finalInsurer,
+      acceptanceDate: closingForm.acceptanceDate || undefined,
+      acceptedBy: closingForm.acceptedBy || undefined,
       ...(isClosing && !caseItem.closedAt ? { closedAt: new Date().toISOString() } : {}),
     })
     addActivityLog({
@@ -187,11 +202,11 @@ export default function CaseDetailPage() {
   }
 
   const TABS = [
-    { key: 'checklist' as const, label: `Documents${missingDocs.length > 0 ? ` (${missingDocs.length} missing)` : ''}` },
+    { key: 'checklist' as const, label: `Workflow${missingDocs.length > 0 ? ` (${missingDocs.length} missing)` : ''}` },
     { key: 'followups' as const, label: `Follow-Ups${openFollowUps.length > 0 ? ` (${openFollowUps.length})` : ''}` },
     { key: 'info' as const, label: 'Case Info' },
     { key: 'notes' as const, label: `Notes${notes.length > 0 ? ` (${notes.length})` : ''}` },
-    { key: 'activity' as const, label: 'Activity' },
+    { key: 'activity' as const, label: `Activity${caseLogs.length > 0 ? ` (${caseLogs.length})` : ''}` },
   ]
 
   const currentIdx = steps.findIndex(s => s.id === caseItem.currentWorkflowStepId)
@@ -212,6 +227,9 @@ export default function CaseDetailPage() {
               {customer
                 ? <Link href={`/customers/${customer.id}`} className="text-blue-600 hover:underline font-medium">{customer.customerName}</Link>
                 : <span className="font-medium text-gray-700">{caseItem.customerName}</span>}
+              {caseItem.bondPrincipal && caseItem.bondPrincipal !== caseItem.customerName && (
+                <><span className="text-gray-300">→</span><span className="font-medium text-indigo-700">Principal: {caseItem.bondPrincipal}</span></>
+              )}
               {caseItem.caseType && <><span>·</span><span>{caseItem.caseType}</span></>}
               {caseItem.personInCharge && <><span>·</span><span>{caseItem.personInCharge}</span></>}
               {caseItem.amount > 0 && <><span>·</span><span className="font-semibold text-gray-700">{formatCurrency(caseItem.amount)}</span></>}
@@ -219,6 +237,31 @@ export default function CaseDetailPage() {
             </div>
           </div>
           <div className="flex gap-2 shrink-0">
+            {(caseItem.result === 'Won' || caseItem.currentStatus === 'Closed') && (
+              <button
+                onClick={() => {
+                  const newId = addCase({
+                    caseTitle: `${caseItem.caseTitle} — Renewal`,
+                    customerId: caseItem.customerId,
+                    customerName: caseItem.customerName,
+                    bondPrincipal: caseItem.bondPrincipal,
+                    caseType: caseItem.caseType,
+                    amount: caseItem.finalAmount ?? caseItem.amount,
+                    personInCharge: caseItem.personInCharge,
+                    currentStatus: 'New',
+                    currentWorkflowStepId: '',
+                    result: '',
+                    closingRemarks: '',
+                    bondExpiryDate: undefined,
+                    waitingFor: null,
+                  })
+                  router.push(`/cases/${newId}`)
+                }}
+                className="btn-secondary text-sm text-indigo-600 border-indigo-200 hover:bg-indigo-50"
+              >
+                ↻ Renew
+              </button>
+            )}
             <button
               onClick={() => router.push(`/cases/${id}/report`)}
               className="btn-secondary text-sm flex items-center gap-1.5"
@@ -230,7 +273,7 @@ export default function CaseDetailPage() {
             </button>
             <button
               onClick={() => {
-                setEditInfoForm({ caseTitle: caseItem.caseTitle, caseType: caseItem.caseType, amount: caseItem.amount, personInCharge: caseItem.personInCharge })
+                setEditInfoForm({ caseTitle: caseItem.caseTitle, caseType: caseItem.caseType, amount: caseItem.amount, personInCharge: caseItem.personInCharge, bondPrincipal: caseItem.bondPrincipal ?? '', bondExpiryDate: caseItem.bondExpiryDate ?? '', waitingFor: caseItem.waitingFor ?? '' })
                 setEditInfoModal(true)
               }}
               className="btn-secondary text-sm"
@@ -240,6 +283,35 @@ export default function CaseDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* ── Priority alert (max 1 shown, highest priority wins) ─────────────── */}
+      {(() => {
+        const expiryDays = caseItem.bondExpiryDate
+          ? Math.ceil((new Date(caseItem.bondExpiryDate).getTime() - Date.now()) / 86400000)
+          : null
+        const warn = (color: string, msg: string, action?: React.ReactNode) => (
+          <div className={`px-8 py-3 flex items-center justify-between gap-4 ${color}`}>
+            <div className="flex items-center gap-2.5">
+              <svg className="w-4 h-4 text-white shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+              </svg>
+              <p className="text-sm font-semibold text-white">{msg}</p>
+            </div>
+            {action}
+          </div>
+        )
+        if (expiryDays !== null && expiryDays < 0 && caseItem.currentStatus !== 'Closed')
+          return warn('bg-red-600', `Bond expired ${Math.abs(expiryDays)} day${Math.abs(expiryDays) !== 1 ? 's' : ''} ago — expired ${formatDate(caseItem.bondExpiryDate!)}`)
+        if (slaBreached && currentStep)
+          return warn('bg-orange-500', `SLA exceeded — ${daysAtCurrentStep} days at "${currentStep.name}" (limit: ${currentStep.slaDays} days)`)
+        if (expiryDays !== null && expiryDays >= 0 && expiryDays <= 30 && caseItem.currentStatus !== 'Closed')
+          return warn('bg-amber-500', `Bond expiring in ${expiryDays} day${expiryDays !== 1 ? 's' : ''} — expires ${formatDate(caseItem.bondExpiryDate!)}`)
+        if (expiryDays !== null && expiryDays <= 90 && (caseItem.result === 'Won' || caseItem.currentStatus === 'Closed') && !caseFollowUps.some(f => f.title.toLowerCase().includes('renew') && f.status === 'Open'))
+          return warn('bg-indigo-600', expiryDays < 0 ? 'Bond has expired — time to renew.' : `Bond expires in ${expiryDays} days — schedule renewal now.`,
+            <button onClick={() => { setFuForm({ title: `Renew bond — ${caseItem.caseTitle}`, personInCharge: caseItem.personInCharge || (pics[0]?.name ?? ''), dueDate: caseItem.bondExpiryDate ? new Date(new Date(caseItem.bondExpiryDate).getTime() - 30 * 86400000).toISOString().split('T')[0] : '' }); setFollowUpModal(true) }} className="text-xs font-semibold bg-white text-indigo-700 px-3 py-1.5 rounded-lg hover:bg-indigo-50 shrink-0">+ Schedule Renewal</button>
+          )
+        return null
+      })()}
 
       {/* ── Stage Pipeline ───────────────────────────────────────────────────── */}
       <div className="bg-stone-50 border-b border-gray-200 px-8 py-4">
@@ -256,12 +328,59 @@ export default function CaseDetailPage() {
               onStepSelect={(stepId) => { setViewingStepId(stepId); setActiveTab('checklist') }}
               onStageClick={handleStageClick}
               onResultClick={() => {
-                setClosingForm({ result: caseItem.result, closingRemarks: caseItem.closingRemarks, lossReason: caseItem.lossReason ?? '', finalAmount: caseItem.finalAmount ?? caseItem.amount, finalInsurer: caseItem.finalInsurer ?? '' })
+                setClosingForm({ result: caseItem.result, closingRemarks: caseItem.closingRemarks, lossReason: caseItem.lossReason ?? '', finalAmount: caseItem.finalAmount ?? caseItem.amount, finalInsurer: caseItem.finalInsurer ?? '', acceptanceDate: caseItem.acceptanceDate ?? '', acceptedBy: caseItem.acceptedBy ?? '' })
                 setClosingModal(true)
               }}
             />
-            {/* Prev / Next step navigation */}
-            <div className="flex items-center gap-2 mt-3 justify-end">
+          </>
+        )}
+      </div>
+
+      {/* ── Step context bar ─────────────────────────────────────────────────── */}
+      {steps.length > 0 && (
+        <div className="px-8 py-3 border-b border-gray-200 bg-white">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+              <div className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${
+                viewingIdx < currentIdx ? 'bg-green-500 text-white' :
+                viewingIdx === currentIdx ? 'bg-blue-600 text-white' :
+                'bg-gray-200 text-gray-500'
+              }`}>
+                {viewingIdx < currentIdx ? '✓' : viewingIdx >= 0 ? viewingIdx + 1 : '?'}
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className={`text-sm font-semibold ${
+                    viewingIdx < currentIdx ? 'text-green-800' :
+                    viewingIdx === currentIdx ? 'text-gray-900' : 'text-gray-400'
+                  }`}>
+                    {viewingStep?.name ?? 'No step selected'}
+                  </span>
+                  <span className="text-xs text-gray-400 shrink-0">
+                    {viewingIdx >= 0 ? `Step ${viewingIdx + 1} of ${steps.length}` : ''}
+                  </span>
+                  {viewingIdx === currentIdx && <span className="shrink-0 text-xs bg-blue-100 text-blue-700 rounded-full px-2 py-0.5 font-medium">Active</span>}
+                  {viewingIdx < currentIdx && <span className="shrink-0 text-xs bg-green-100 text-green-700 rounded-full px-2 py-0.5 font-medium">Done</span>}
+                  {viewingIdx > currentIdx && <span className="shrink-0 text-xs bg-gray-100 text-gray-500 rounded-full px-2 py-0.5 font-medium">Upcoming</span>}
+                  {viewingStep && stepTimestamps[viewingStep.name] && (
+                    <button
+                      onClick={() => {
+                        const ts = stepTimestamps[viewingStep.name]
+                        setStepDate(ts ? new Date(ts).toISOString().slice(0, 16) : new Date().toISOString().slice(0, 16))
+                        setStepModal({ step: viewingStep, state: viewingIdx < currentIdx ? 'done' : viewingIdx === currentIdx ? 'current' : 'future', dateEditOnly: true })
+                      }}
+                      className="shrink-0 text-xs text-gray-400 hover:text-blue-600 transition-colors"
+                    >
+                      {formatDate(stepTimestamps[viewingStep.name].split('T')[0])}
+                    </button>
+                  )}
+                </div>
+                {viewingStep?.description && (
+                  <p className="text-xs text-gray-400 mt-0.5 truncate max-w-md">{viewingStep.description}</p>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
               <button
                 disabled={currentIdx <= 0}
                 onClick={() => {
@@ -270,136 +389,22 @@ export default function CaseDetailPage() {
                   setStepDate(new Date().toISOString().slice(0, 16))
                   setStepModal({ step: prevStep, state: 'done' })
                 }}
-                className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                className="text-xs px-2.5 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
               >
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-                </svg>
-                Prev Step
+                ← Back
               </button>
               <button
                 disabled={currentIdx >= steps.length - 1}
                 onClick={() => {
-                  const nextStep = steps[currentIdx + 1]
-                  if (!nextStep) return
+                  const nextStepNav = steps[currentIdx + 1]
+                  if (!nextStepNav) return
                   setStepDate(new Date().toISOString().slice(0, 16))
-                  setStepModal({ step: nextStep, state: 'future' })
+                  setStepModal({ step: nextStepNav, state: 'future' })
                 }}
-                className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors font-medium"
+                className="text-xs px-2.5 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors font-medium"
               >
-                Next Step
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                </svg>
+                Advance →
               </button>
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* ── Active step banner ───────────────────────────────────────────────── */}
-      {steps.length > 0 && (
-        <div className={`px-8 py-4 border-b ${
-          viewingStep
-            ? viewingIdx < currentIdx ? 'bg-green-50 border-green-100'
-            : viewingIdx === currentIdx ? 'bg-blue-50 border-blue-100'
-            : 'bg-gray-50 border-gray-100'
-            : 'bg-gray-50 border-gray-100'
-        }`}>
-          <div className="flex items-start justify-between gap-6 flex-wrap">
-            {/* Left: step identity + details */}
-            <div className="flex items-start gap-3 min-w-0 flex-1">
-              <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold shrink-0 mt-0.5 ${
-                viewingIdx < currentIdx ? 'bg-green-500 text-white' :
-                viewingIdx === currentIdx ? 'bg-blue-600 text-white' :
-                'bg-gray-200 text-gray-500'
-              }`}>
-                {viewingIdx < currentIdx ? '✓' : (viewingIdx >= 0 ? viewingIdx + 1 : '?')}
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2 flex-wrap mb-1">
-                  <p className={`text-base font-bold ${
-                    viewingIdx < currentIdx ? 'text-green-800' :
-                    viewingIdx === currentIdx ? 'text-blue-800' :
-                    'text-gray-600'
-                  }`}>
-                    {viewingStep?.name ?? 'No step selected'}
-                  </p>
-                  {viewingIdx === currentIdx && (
-                    <span className="text-xs bg-blue-600 text-white rounded-full px-2 py-0.5 font-medium">Current</span>
-                  )}
-                  {viewingIdx < currentIdx && (
-                    <span className="text-xs bg-green-500 text-white rounded-full px-2 py-0.5 font-medium">Completed</span>
-                  )}
-                  {viewingIdx > currentIdx && (
-                    <span className="text-xs bg-gray-200 text-gray-500 rounded-full px-2 py-0.5 font-medium">Upcoming</span>
-                  )}
-                </div>
-                {viewingStep?.description && (
-                  <p className="text-xs text-gray-500 mb-2">{viewingStep.description}</p>
-                )}
-                {viewingStep?.defaultFollowUpSuggestion && (
-                  <div className="inline-flex items-center gap-1.5 bg-blue-100/70 rounded-lg px-2.5 py-1 mb-2">
-                    <svg className="w-3 h-3 text-blue-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <span className="text-xs text-blue-700">Suggested: {viewingStep.defaultFollowUpSuggestion}</span>
-                  </div>
-                )}
-                {viewingStep?.requireDocumentsComplete && stepCompleteness < 100 && (
-                  <div className="inline-flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 rounded-lg px-2.5 py-1 mb-2">
-                    <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-                    </svg>
-                    Documents must be complete before advancing
-                  </div>
-                )}
-                {viewingStep && (
-                  <button
-                    onClick={() => {
-                      const ts = stepTimestamps[viewingStep.name]
-                      setStepDate(ts ? new Date(ts).toISOString().slice(0, 16) : new Date().toISOString().slice(0, 16))
-                      setStepModal({ step: viewingStep, state: viewingIdx < currentIdx ? 'done' : viewingIdx === currentIdx ? 'current' : 'future', dateEditOnly: true })
-                    }}
-                    className="flex items-center gap-1.5 group text-xs text-gray-500 hover:text-blue-600 transition-colors mt-1"
-                  >
-                    <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                    <span>
-                      {stepTimestamps[viewingStep.name]
-                        ? formatDate(stepTimestamps[viewingStep.name].split('T')[0])
-                        : '— date not set'}
-                    </span>
-                    <svg className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536M9 13l6.586-6.586a2 2 0 112.828 2.828L11.828 15.828A2 2 0 019 16.414V13z" />
-                    </svg>
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Right: document readiness + advance */}
-            <div className="flex flex-col items-end gap-3 shrink-0">
-              <div className="bg-white/70 rounded-xl px-4 py-3 border border-gray-100 min-w-[180px]">
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-xs text-gray-500 font-medium">Overall readiness</span>
-                  <span className={`text-sm font-bold ${overallReadiness >= 70 ? 'text-green-600' : overallReadiness >= 40 ? 'text-amber-600' : 'text-red-500'}`}>
-                    {overallReadiness}%
-                  </span>
-                </div>
-                <div className="bg-gray-100 rounded-full h-1.5 mb-2">
-                  <div
-                    className={`h-full rounded-full transition-all ${overallReadiness >= 70 ? 'bg-green-500' : overallReadiness >= 40 ? 'bg-amber-400' : 'bg-red-400'}`}
-                    style={{ width: `${overallReadiness}%` }}
-                  />
-                </div>
-                <p className={`text-xs font-medium ${missingDocs.length > 0 ? 'text-red-500' : 'text-green-600'}`}>
-                  {missingDocs.length > 0
-                    ? `${missingDocs.length} required doc${missingDocs.length > 1 ? 's' : ''} missing`
-                    : 'All required docs uploaded'}
-                </p>
-              </div>
             </div>
           </div>
         </div>
@@ -419,7 +424,7 @@ export default function CaseDetailPage() {
           setStepModal({ step: nextStep, state: 'future' })
         }}
         onSetResult={() => {
-          setClosingForm({ result: caseItem.result, closingRemarks: caseItem.closingRemarks, lossReason: caseItem.lossReason ?? '', finalAmount: caseItem.finalAmount ?? caseItem.amount, finalInsurer: caseItem.finalInsurer ?? '' })
+          setClosingForm({ result: caseItem.result, closingRemarks: caseItem.closingRemarks, lossReason: caseItem.lossReason ?? '', finalAmount: caseItem.finalAmount ?? caseItem.amount, finalInsurer: caseItem.finalInsurer ?? '', acceptanceDate: caseItem.acceptanceDate ?? '', acceptedBy: caseItem.acceptedBy ?? '' })
           setClosingModal(true)
         }}
         allDone={!nextStep && steps.length > 0 && missingDocs.length === 0}
@@ -479,38 +484,46 @@ export default function CaseDetailPage() {
               </div>
             )}
 
-            {/* AI Quotation Email panel — shown when viewing step has aiEmailEnabled */}
-            {viewingStep?.aiEmailEnabled && (
-              <div className="mb-5">
+            {viewingStep?.aiEmailEnabled ? (
+              /* ── Quotation step: documents + AI first, email second ── */
+              <div className="space-y-5">
+                <div className="card-section">
+                  <QuotationDocumentPanel
+                    caseId={id}
+                    caseTitle={caseItem.caseTitle}
+                    caseFiles={caseDocs}
+                  />
+                </div>
                 <QuotationEmailPanel
                   caseItem={caseItem}
                   step={viewingStep}
                   customerName={customer?.customerName ?? caseItem.customerName}
                 />
               </div>
-            )}
-
-            <div className="card-section">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest">
-                  {viewingStep ? `${viewingStep.name} — Checklist` : 'All Documents'}
-                </h2>
-                {unassignedDocs.length > 0 && (
-                  <span className="text-xs font-semibold rounded-full px-2.5 py-1 bg-amber-100 text-amber-700">
-                    {unassignedDocs.length} unassigned file{unassignedDocs.length > 1 ? 's' : ''}
-                  </span>
-                )}
+            ) : (
+              /* ── Regular step: required docs checklist ── */
+              <div className="card-section">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest">
+                    {viewingStep ? `${viewingStep.name} — Checklist` : 'All Documents'}
+                  </h2>
+                  {unassignedDocs.length > 0 && (
+                    <span className="text-xs font-semibold rounded-full px-2.5 py-1 bg-amber-100 text-amber-700">
+                      {unassignedDocs.length} unassigned file{unassignedDocs.length > 1 ? 's' : ''}
+                    </span>
+                  )}
+                </div>
+                <DocumentChecklist
+                  caseId={id}
+                  caseTitle={caseItem.caseTitle}
+                  template={template}
+                  caseFiles={caseDocs}
+                  filterStepId={effectiveViewingStepId}
+                  readOnly={viewingIdx !== currentIdx}
+                  onScanReady={file => setScanFile(file)}
+                />
               </div>
-              <DocumentChecklist
-                caseId={id}
-                caseTitle={caseItem.caseTitle}
-                template={template}
-                caseFiles={caseDocs}
-                filterStepId={effectiveViewingStepId}
-                readOnly={viewingIdx !== 0}
-                onScanReady={file => setScanFile(file)}
-              />
-            </div>
+            )}
           </div>
         )}
 
@@ -592,7 +605,7 @@ export default function CaseDetailPage() {
               <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Case Information</h2>
               <button
                 onClick={() => {
-                  setEditInfoForm({ caseTitle: caseItem.caseTitle, caseType: caseItem.caseType, amount: caseItem.amount, personInCharge: caseItem.personInCharge })
+                  setEditInfoForm({ caseTitle: caseItem.caseTitle, caseType: caseItem.caseType, amount: caseItem.amount, personInCharge: caseItem.personInCharge, bondPrincipal: caseItem.bondPrincipal ?? '', bondExpiryDate: caseItem.bondExpiryDate ?? '', waitingFor: caseItem.waitingFor ?? '' })
                   setEditInfoModal(true)
                 }}
                 className="btn-xs bg-gray-100 hover:bg-gray-200 text-gray-700"
@@ -606,13 +619,34 @@ export default function CaseDetailPage() {
                   ? <Link href={`/customers/${customer.id}`} className="text-sm font-semibold text-blue-600 hover:underline">{customer.customerName}</Link>
                   : <span className="text-sm font-semibold text-gray-800">{caseItem.customerName}</span>}
               </DetailRow>
+              <DetailRow label="Principal (name on bond)">
+                {caseItem.bondPrincipal
+                  ? <span className={`text-sm font-semibold ${caseItem.bondPrincipal !== caseItem.customerName ? 'text-indigo-700' : 'text-gray-800'}`}>{caseItem.bondPrincipal}</span>
+                  : <span className="text-sm text-gray-400">Same as customer</span>}
+              </DetailRow>
               <DetailRow label="Case Type"><span className="text-sm font-semibold text-gray-800">{caseItem.caseType || '—'}</span></DetailRow>
               <DetailRow label="Amount"><span className="text-lg font-bold text-gray-900">{formatCurrency(caseItem.amount)}</span></DetailRow>
               <DetailRow label="Person in Charge"><span className="text-sm font-semibold text-gray-800">{caseItem.personInCharge || '—'}</span></DetailRow>
               <DetailRow label="Created"><span className="text-sm text-gray-700">{formatDate(caseItem.createdAt.split('T')[0])}</span></DetailRow>
               <DetailRow label="Last Updated"><span className="text-sm text-gray-700">{caseItem.updatedAt ? timeAgo(caseItem.updatedAt) : '—'}</span></DetailRow>
+              <DetailRow label="Bond Expiry Date">
+                {caseItem.bondExpiryDate ? (() => {
+                  const days = Math.ceil((new Date(caseItem.bondExpiryDate).getTime() - Date.now()) / 86400000)
+                  const urgent = days <= 30 && caseItem.currentStatus !== 'Closed'
+                  return <span className={`text-sm font-semibold ${urgent ? 'text-red-600' : 'text-gray-800'}`}>{urgent && '⚠ '}{formatDate(caseItem.bondExpiryDate)}{days >= 0 ? ` (${days}d)` : ' (expired)'}</span>
+                })() : <span className="text-sm text-gray-400">—</span>}
+              </DetailRow>
+              <DetailRow label="Waiting For">
+                {caseItem.waitingFor ? (
+                  <span className={`text-sm font-semibold px-2.5 py-0.5 rounded-full ${caseItem.waitingFor === 'Customer' ? 'bg-purple-100 text-purple-700' : caseItem.waitingFor === 'Insurer' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>
+                    {caseItem.waitingFor}
+                  </span>
+                ) : <span className="text-sm text-gray-400">—</span>}
+              </DetailRow>
               {caseItem.result && <DetailRow label="Result"><StatusBadge status={caseItem.result} size="md" /></DetailRow>}
               {caseItem.finalInsurer && <DetailRow label="Insurer / Provider"><span className="text-sm font-semibold text-gray-800">{caseItem.finalInsurer}</span></DetailRow>}
+              {caseItem.acceptanceDate && <DetailRow label="Acceptance Date"><span className="text-sm font-semibold text-gray-800">{formatDate(caseItem.acceptanceDate)}</span></DetailRow>}
+              {caseItem.acceptedBy && <DetailRow label="Accepted By"><span className="text-sm font-semibold text-gray-800">{caseItem.acceptedBy}</span></DetailRow>}
               {caseItem.finalAmount && caseItem.finalAmount !== caseItem.amount && (
                 <DetailRow label="Final Amount"><span className="text-sm font-semibold text-gray-800">{formatCurrency(caseItem.finalAmount)}</span></DetailRow>
               )}
@@ -773,7 +807,14 @@ export default function CaseDetailPage() {
           </div>
           <div>
             <label className="label">Insurer / Provider</label>
-            <input className="input" value={closingForm.finalInsurer} onChange={e => setClosingForm(p => ({ ...p, finalInsurer: e.target.value }))} placeholder="e.g. Allianz, Etiqa, RHB Insurance" />
+            <select className="input" value={closingForm.finalInsurer} onChange={e => setClosingForm(p => ({ ...p, finalInsurer: e.target.value }))}>
+              <option value="">— Select insurer —</option>
+              {settingsData.insurers.filter(i => i.isActive).map(i => <option key={i.id} value={i.name}>{i.name}</option>)}
+              <option value="__other__">Other (type below)</option>
+            </select>
+            {closingForm.finalInsurer === '__other__' && (
+              <input className="input mt-2" placeholder="Enter insurer name…" onChange={e => setClosingForm(p => ({ ...p, finalInsurer: e.target.value }))} />
+            )}
           </div>
           <div>
             <label className="label">Final Amount (RM)</label>
@@ -783,6 +824,18 @@ export default function CaseDetailPage() {
             <div>
               <label className="label">Loss Reason</label>
               <input className="input" value={closingForm.lossReason} onChange={e => setClosingForm(p => ({ ...p, lossReason: e.target.value }))} placeholder="e.g. Price — competitor offered lower premium" />
+            </div>
+          )}
+          {(closingForm.result === 'Won' || closingForm.result === 'Confirmed') && (
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="label">Acceptance Date</label>
+                <input className="input" type="date" value={closingForm.acceptanceDate} onChange={e => setClosingForm(p => ({ ...p, acceptanceDate: e.target.value }))} />
+              </div>
+              <div>
+                <label className="label">Accepted By (contact name)</label>
+                <input className="input" value={closingForm.acceptedBy} onChange={e => setClosingForm(p => ({ ...p, acceptedBy: e.target.value }))} placeholder="e.g. Ahmad Razif" />
+              </div>
             </div>
           )}
           <div>
@@ -805,8 +858,11 @@ export default function CaseDetailPage() {
             if (editInfoForm.caseTitle !== caseItem.caseTitle) changes.push(`Title: "${caseItem.caseTitle}" → "${editInfoForm.caseTitle}"`)
             if (editInfoForm.caseType !== caseItem.caseType) changes.push(`Type: ${caseItem.caseType || '—'} → ${editInfoForm.caseType || '—'}`)
             if (editInfoForm.amount !== caseItem.amount) changes.push(`Amount: RM ${caseItem.amount.toLocaleString()} → RM ${editInfoForm.amount.toLocaleString()}`)
-            if (editInfoForm.personInCharge !== caseItem.personInCharge) changes.push(`PIC: ${caseItem.personInCharge || '—'} → ${editInfoForm.personInCharge || '—'}`)
-            updateCase(id, { caseTitle: editInfoForm.caseTitle, caseType: editInfoForm.caseType, amount: editInfoForm.amount, personInCharge: editInfoForm.personInCharge })
+            if (editInfoForm.personInCharge !== caseItem.personInCharge) changes.push(`Person in Charge: ${caseItem.personInCharge || '—'} → ${editInfoForm.personInCharge || '—'}`)
+            if (editInfoForm.bondPrincipal !== (caseItem.bondPrincipal ?? '')) changes.push(`Principal: ${caseItem.bondPrincipal || '—'} → ${editInfoForm.bondPrincipal || '—'}`)
+            if (editInfoForm.bondExpiryDate !== (caseItem.bondExpiryDate ?? '')) changes.push(`Bond Expiry: ${caseItem.bondExpiryDate || '—'} → ${editInfoForm.bondExpiryDate || '—'}`)
+            if (editInfoForm.waitingFor !== (caseItem.waitingFor ?? '')) changes.push(`Waiting For: ${caseItem.waitingFor || '—'} → ${editInfoForm.waitingFor || '—'}`)
+            updateCase(id, { caseTitle: editInfoForm.caseTitle, caseType: editInfoForm.caseType, amount: editInfoForm.amount, personInCharge: editInfoForm.personInCharge, bondPrincipal: editInfoForm.bondPrincipal || undefined, bondExpiryDate: editInfoForm.bondExpiryDate || undefined, waitingFor: (editInfoForm.waitingFor as typeof WAITING_FOR_OPTIONS[number]) || null })
             if (changes.length > 0) {
               addActivityLog({ caseId: id, caseTitle: editInfoForm.caseTitle, actionType: 'CASE_UPDATED', title: 'Case info updated', description: changes.join('; '), changedBy: currentUser?.fullName ?? 'Unknown' })
             }
@@ -817,6 +873,10 @@ export default function CaseDetailPage() {
           <div>
             <label className="label">Case Title *</label>
             <input className="input" value={editInfoForm.caseTitle} onChange={e => setEditInfoForm(p => ({ ...p, caseTitle: e.target.value }))} required />
+          </div>
+          <div>
+            <label className="label">Principal <span className="text-gray-400 font-normal">(name on the bond, if different from customer)</span></label>
+            <input className="input" value={editInfoForm.bondPrincipal} onChange={e => setEditInfoForm(p => ({ ...p, bondPrincipal: e.target.value }))} placeholder="e.g. JUTA-KASEH JV Sdn Bhd" />
           </div>
           <div>
             <label className="label">Case Type</label>
@@ -835,6 +895,19 @@ export default function CaseDetailPage() {
               <option value="">— Select —</option>
               {pics.map(p => <option key={p.name} value={p.name}>{p.name}</option>)}
             </select>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="label">Bond Expiry Date</label>
+              <input className="input" type="date" value={editInfoForm.bondExpiryDate} onChange={e => setEditInfoForm(p => ({ ...p, bondExpiryDate: e.target.value }))} />
+            </div>
+            <div>
+              <label className="label">Waiting For</label>
+              <select className="input" value={editInfoForm.waitingFor} onChange={e => setEditInfoForm(p => ({ ...p, waitingFor: e.target.value }))}>
+                <option value="">— Not waiting —</option>
+                {WAITING_FOR_OPTIONS.map(w => <option key={w} value={w}>{w}</option>)}
+              </select>
+            </div>
           </div>
           <div className="flex gap-3 pt-1">
             <button type="button" onClick={() => setEditInfoModal(false)} className="btn-secondary flex-1">Cancel</button>
@@ -881,7 +954,7 @@ function DetailRow({ label, children }: { label: string; children: React.ReactNo
   )
 }
 
-// ─── Next Best Action Card ────────────────────────────────────────────────────
+// ─── What To Do Now Card ──────────────────────────────────────────────────────
 
 import type { RequiredDocument, FollowUp, WorkflowStep as WStep } from '@/lib/types'
 import { getDaysUntil as daysUntil } from '@/lib/utils'
@@ -910,104 +983,57 @@ function NextBestAction({
   })
   const openFollowUps = followUps.filter(f => f.status === 'Open')
 
-  type Action = { id: string; priority: 'high' | 'medium' | 'low'; label: string; sub?: string; onClick: () => void }
-  const actions: Action[] = []
+  type Primary = { urgency: 'urgent' | 'warning' | 'ready' | 'normal'; badge: string; headline: string; detail: string; cta: string; onClick: () => void }
 
-  missingDocs.forEach(doc => {
-    actions.push({
-      id: `doc-${doc.id}`,
-      priority: 'high',
-      label: `Upload ${doc.name}`,
-      sub: doc.description || 'Required document missing',
-      onClick: onGoToDocs,
-    })
-  })
+  let primary: Primary | null = null
 
-  overdueFollowUps.forEach(f => {
+  if (overdueFollowUps.length > 0) {
+    const f = overdueFollowUps[0]
     const d = daysUntil(f.dueDate)
-    actions.push({
-      id: `fu-od-${f.id}`,
-      priority: 'high',
-      label: f.title,
-      sub: `Overdue by ${Math.abs(d!)} day${Math.abs(d!) !== 1 ? 's' : ''}`,
-      onClick: onGoToFollowUps,
-    })
-  })
-
-  dueSoonFollowUps.forEach(f => {
+    primary = { urgency: 'urgent', badge: 'Overdue', headline: f.title, detail: `${Math.abs(d!)} day${Math.abs(d!) !== 1 ? 's' : ''} past due — action needed immediately`, cta: 'View Follow-Ups', onClick: onGoToFollowUps }
+  } else if (missingDocs.length > 0) {
+    const names = missingDocs.slice(0, 2).map(d => d.name).join(', ') + (missingDocs.length > 2 ? ` + ${missingDocs.length - 2} more` : '')
+    primary = { urgency: 'urgent', badge: 'Documents Required', headline: missingDocs.length === 1 ? `Upload: ${missingDocs[0].name}` : `${missingDocs.length} required documents missing`, detail: names, cta: 'Go to Document Checklist', onClick: onGoToDocs }
+  } else if (currentStep?.aiEmailEnabled) {
+    primary = { urgency: 'normal', badge: 'Ready to Send', headline: 'Send quotation email to insurers', detail: 'All documents are uploaded. Compose and send the quotation request to receive quotes.', cta: 'Open Email Panel', onClick: onGoToDocs }
+  } else if (dueSoonFollowUps.length > 0) {
+    const f = dueSoonFollowUps[0]
     const d = daysUntil(f.dueDate)
-    actions.push({
-      id: `fu-soon-${f.id}`,
-      priority: 'medium',
-      label: f.title,
-      sub: d === 0 ? 'Due today' : `Due in ${d} day${d !== 1 ? 's' : ''}`,
-      onClick: onGoToFollowUps,
-    })
-  })
-
-  if (nextStep && missingDocs.length === 0) {
-    actions.push({
-      id: 'advance',
-      priority: 'low',
-      label: `Advance to: ${nextStep.name}`,
-      sub: nextStep.description || undefined,
-      onClick: onAdvance,
-    })
+    primary = { urgency: 'warning', badge: d === 0 ? 'Due Today' : 'Due Soon', headline: f.title, detail: d === 0 ? 'This follow-up is due today' : `Due in ${d} day${d !== 1 ? 's' : ''}`, cta: 'View Follow-Ups', onClick: onGoToFollowUps }
+  } else if (nextStep) {
+    primary = { urgency: 'ready', badge: 'Step Complete', headline: `Advance to: ${nextStep.name}`, detail: nextStep.description || 'All tasks for this step are complete. You can now move to the next stage.', cta: `Advance to ${nextStep.name}`, onClick: onAdvance }
+  } else if (allDone) {
+    primary = { urgency: 'ready', badge: 'All Done', headline: 'Record the final case result', detail: 'All workflow steps are complete. Close this case by recording the outcome.', cta: 'Record Case Result', onClick: onSetResult }
+  } else if (openFollowUps.length > 0) {
+    primary = { urgency: 'normal', badge: 'Follow-Up', headline: `${openFollowUps.length} open follow-up${openFollowUps.length !== 1 ? 's' : ''} pending`, detail: 'Review and action your outstanding follow-ups for this case.', cta: 'View Follow-Ups', onClick: onGoToFollowUps }
   }
 
-  if (allDone) {
-    actions.push({
-      id: 'close',
-      priority: 'low',
-      label: 'All steps complete — set final result',
-      sub: 'Close or mark the case outcome',
-      onClick: onSetResult,
-    })
-  }
+  if (!primary) return null
 
-  if (openFollowUps.length > 0 && overdueFollowUps.length === 0 && dueSoonFollowUps.length === 0) {
-    actions.push({
-      id: 'fu-open',
-      priority: 'low',
-      label: `${openFollowUps.length} open follow-up${openFollowUps.length > 1 ? 's' : ''} pending`,
-      sub: 'Review and action outstanding follow-ups',
-      onClick: onGoToFollowUps,
-    })
-  }
-
-  if (actions.length === 0) return null
-
-  const dotColor = (p: Action['priority']) =>
-    p === 'high' ? 'bg-red-500' : p === 'medium' ? 'bg-amber-400' : 'bg-blue-500'
-  const rowBg = (p: Action['priority']) =>
-    p === 'high' ? 'hover:bg-red-50' : p === 'medium' ? 'hover:bg-amber-50' : 'hover:bg-blue-50'
+  const styles = {
+    urgent: { card: 'bg-red-50 border-red-200', badge: 'bg-red-100 text-red-700', btn: 'bg-red-600 hover:bg-red-700 text-white' },
+    warning: { card: 'bg-amber-50 border-amber-200', badge: 'bg-amber-100 text-amber-700', btn: 'bg-amber-600 hover:bg-amber-700 text-white' },
+    ready: { card: 'bg-green-50 border-green-200', badge: 'bg-green-100 text-green-700', btn: 'bg-green-600 hover:bg-green-700 text-white' },
+    normal: { card: 'bg-blue-50 border-blue-200', badge: 'bg-blue-100 text-blue-700', btn: 'bg-blue-600 hover:bg-blue-700 text-white' },
+  }[primary.urgency]
 
   return (
-    <div className="mx-8 mb-4 border border-gray-200 rounded-2xl bg-white shadow-sm overflow-hidden">
-      <div className="flex items-center gap-2 px-4 py-2.5 bg-gray-50 border-b border-gray-100">
-        <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-        <span className="text-xs font-semibold text-gray-500 uppercase tracking-widest">Next Actions</span>
-        <span className="ml-auto text-xs text-gray-400">{actions.filter(a => a.priority === 'high').length > 0 ? `${actions.filter(a => a.priority === 'high').length} urgent` : `${actions.length} item${actions.length !== 1 ? 's' : ''}`}</span>
-      </div>
-      <div className="divide-y divide-gray-50">
-        {actions.map(action => (
-          <button
-            key={action.id}
-            onClick={action.onClick}
-            className={`w-full flex items-start gap-3 px-4 py-3 text-left transition-colors ${rowBg(action.priority)}`}
-          >
-            <span className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${dotColor(action.priority)}`} />
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-gray-800 leading-tight">{action.label}</p>
-              {action.sub && <p className="text-xs text-gray-400 mt-0.5">{action.sub}</p>}
-            </div>
-            <svg className="w-3.5 h-3.5 text-gray-300 shrink-0 mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-            </svg>
-          </button>
-        ))}
+    <div className="px-8 py-4">
+      <div className={`rounded-2xl border-2 ${styles.card} p-5`}>
+        <span className={`inline-block text-xs font-bold rounded-full px-2.5 py-0.5 mb-3 uppercase tracking-wide ${styles.badge}`}>
+          {primary.badge}
+        </span>
+        <h3 className="text-lg font-bold text-gray-900 leading-snug mb-1.5">{primary.headline}</h3>
+        <p className="text-sm text-gray-600 mb-4 leading-relaxed">{primary.detail}</p>
+        <button
+          onClick={primary.onClick}
+          className={`inline-flex items-center gap-2 text-sm font-semibold px-5 py-2.5 rounded-xl transition-colors ${styles.btn}`}
+        >
+          {primary.cta}
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
       </div>
     </div>
   )
