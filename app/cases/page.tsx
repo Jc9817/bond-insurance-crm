@@ -37,7 +37,7 @@ function CaseForm({ initial, customers, pics, onSave, onCancel }: {
   onSave: (d: FormData) => void
   onCancel: () => void
 }) {
-  const { workflowTemplates } = useStore()
+  const { workflowTemplates, settingsData } = useStore()
   const [form, setForm] = useState<FormData>(initial)
   const [error, setError] = useState('')
 
@@ -96,35 +96,28 @@ function CaseForm({ initial, customers, pics, onSave, onCancel }: {
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="label">Case Type</label>
+          <label className="label">Case Type *</label>
           <select className="input" value={form.caseType} onChange={set('caseType')}>
             <option value="">— Select Type —</option>
             {CASE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
         </div>
         <div>
-          <label className="label">Amount (RM)</label>
-          <input className="input" type="number" min={0} value={form.amount || ''} onChange={set('amount')} placeholder="0" />
-        </div>
-        <div>
-          <label className="label">Person in Charge</label>
+          <label className="label">Person in Charge <span className="text-gray-400 font-normal">(optional)</span></label>
           <select className="input" value={form.personInCharge} onChange={set('personInCharge')}>
             <option value="">— Select —</option>
             {pics.map(p => <option key={p.name} value={p.name}>{p.name}</option>)}
           </select>
         </div>
         <div>
-          <label className="label">Current Status</label>
-          <select className="input" value={form.currentStatus} onChange={set('currentStatus')}>
-            {CASE_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+          <label className="label">Target Insurer <span className="text-gray-400 font-normal">(optional)</span></label>
+          <select className="input" value={form.finalInsurer ?? ''} onChange={e => setForm(prev => ({ ...prev, finalInsurer: e.target.value || undefined }))}>
+            <option value="">— None —</option>
+            {settingsData.insurers.filter(i => i.isActive).map(i => <option key={i.id} value={i.name}>{i.name}</option>)}
           </select>
         </div>
         <div>
-          <label className="label">Bond Expiry Date</label>
-          <input className="input" type="date" value={form.bondExpiryDate || ''} onChange={set('bondExpiryDate')} />
-        </div>
-        <div>
-          <label className="label">Waiting For</label>
+          <label className="label">Waiting For <span className="text-gray-400 font-normal">(optional)</span></label>
           <select className="input" value={form.waitingFor || ''} onChange={set('waitingFor')}>
             <option value="">— Not waiting —</option>
             {WAITING_FOR_OPTIONS.map(w => <option key={w} value={w}>{w}</option>)}
