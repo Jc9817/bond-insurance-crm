@@ -74,51 +74,51 @@ export const mockContacts: Contact[] = [
   {
     id: 'con1', customerId: 'cust1', contactName: 'Razif Harun',
     role: 'Managing Director', phone: '012-3456789', email: 'razif@binaperkasa.com',
-    contactType: 'Director', isPrimary: true,
+    contactType: 'Director', isPrimary: true, notes: '',
   },
   {
     id: 'con2', customerId: 'cust1', contactName: 'Faridah Zain',
     role: 'Finance Manager', phone: '012-3456780', email: 'faridah@binaperkasa.com',
-    contactType: 'Finance', isPrimary: false,
+    contactType: 'Finance', isPrimary: false, notes: '',
   },
   // Maju Jaya (cust2)
   {
     id: 'con3', customerId: 'cust2', contactName: 'Lee Chee Keong',
     role: 'Owner', phone: '016-7891234', email: 'cheekeong@majujaya.com',
-    contactType: 'Owner', isPrimary: true,
+    contactType: 'Owner', isPrimary: true, notes: '',
   },
   {
     id: 'con4', customerId: 'cust2', contactName: 'Michelle Tan',
     role: 'Operations', phone: '016-7891235', email: 'michelle@majujaya.com',
-    contactType: 'Operations', isPrimary: false,
+    contactType: 'Operations', isPrimary: false, notes: '',
   },
   // Teknologi Canggih (cust3)
   {
     id: 'con5', customerId: 'cust3', contactName: 'Sarah Tan',
     role: 'Operations Manager', phone: '011-23456789', email: 'sarah@tekcanggih.com',
-    contactType: 'Manager', isPrimary: true,
+    contactType: 'Manager', isPrimary: true, notes: '',
   },
   {
     id: 'con6', customerId: 'cust3', contactName: 'James Ng',
     role: 'IT Director', phone: '011-23456780', email: 'james@tekcanggih.com',
-    contactType: 'Director', isPrimary: false,
+    contactType: 'Director', isPrimary: false, notes: '',
   },
   // Mutiara Permai (cust4)
   {
     id: 'con7', customerId: 'cust4', contactName: 'Hafizah Mohd',
     role: 'Director', phone: '019-9876543', email: 'hafizah@mutiarapermai.com',
-    contactType: 'Director', isPrimary: true,
+    contactType: 'Director', isPrimary: true, notes: '',
   },
   {
     id: 'con8', customerId: 'cust4', contactName: 'Azrul Nizam',
     role: 'Project Manager', phone: '019-9876544', email: 'azrul@mutiarapermai.com',
-    contactType: 'Manager', isPrimary: false,
+    contactType: 'Manager', isPrimary: false, notes: '',
   },
   // Prisma Logistics (cust5)
   {
     id: 'con9', customerId: 'cust5', contactName: 'Kevin Wong',
     role: 'Managing Director', phone: '017-5551234', email: 'kevin@prismalogistics.com',
-    contactType: 'Director', isPrimary: true,
+    contactType: 'Director', isPrimary: true, notes: '',
   },
 ]
 

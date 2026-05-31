@@ -12,7 +12,7 @@ import Modal from '@/components/ui/Modal'
 
 type ContactFormData = Omit<Contact, 'id' | 'customerId'>
 const emptyContact = (): ContactFormData => ({
-  contactName: '', role: '', phone: '', email: '', contactType: 'Owner', isPrimary: false,
+  contactName: '', role: '', phone: '', email: '', contactType: 'Owner', isPrimary: false, notes: '',
 })
 
 function ContactForm({ initial, onSave, onCancel }: {
@@ -59,6 +59,15 @@ function ContactForm({ initial, onSave, onCancel }: {
           <label className="label">Email</label>
           <input className="input" type="email" value={form.email} onChange={set('email')} placeholder="name@company.com" />
         </div>
+      </div>
+      <div>
+        <label className="label">Notes <span className="text-gray-400 font-normal">(optional)</span></label>
+        <textarea
+          className="input min-h-[80px] resize-y"
+          value={form.notes}
+          onChange={e => setForm(prev => ({ ...prev, notes: e.target.value }))}
+          placeholder="e.g. Best reached after 3pm. Handles all bond-related approvals."
+        />
       </div>
       <label className="flex items-center gap-2 cursor-pointer">
         <input type="checkbox" checked={form.isPrimary} onChange={set('isPrimary')} className="w-4 h-4 rounded accent-blue-600" />
@@ -234,6 +243,7 @@ export default function CustomerDetailPage() {
                       {c.phone && <p className="text-xs text-gray-500">{c.phone}</p>}
                       {c.email && <a href={`mailto:${c.email}`} className="text-xs text-blue-600 hover:underline">{c.email}</a>}
                     </div>
+                    {c.notes && <p className="text-xs text-gray-400 mt-1.5 italic max-w-sm">{c.notes}</p>}
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
@@ -300,7 +310,7 @@ export default function CustomerDetailPage() {
       <Modal isOpen={contactModal === 'edit'} onClose={closeModal} title="Edit Contact">
         {selectedContact && (
           <ContactForm
-            initial={{ contactName: selectedContact.contactName, role: selectedContact.role, phone: selectedContact.phone, email: selectedContact.email, contactType: selectedContact.contactType, isPrimary: selectedContact.isPrimary }}
+            initial={{ contactName: selectedContact.contactName, role: selectedContact.role, phone: selectedContact.phone, email: selectedContact.email, contactType: selectedContact.contactType, isPrimary: selectedContact.isPrimary, notes: selectedContact.notes ?? '' }}
             onSave={d => { updateContact(selectedContact.id, d); closeModal() }}
             onCancel={closeModal}
           />

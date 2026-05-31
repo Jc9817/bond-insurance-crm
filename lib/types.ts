@@ -46,6 +46,7 @@ export type Contact = {
   email: string
   contactType: ContactType
   isPrimary: boolean
+  notes: string
 }
 
 // ─── Request Types ────────────────────────────────────────────────────────────

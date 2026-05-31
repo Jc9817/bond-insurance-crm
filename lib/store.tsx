@@ -132,11 +132,12 @@ const toCustomer = (c: Customer) => ({
 const fromContact = (r: Row): Contact => ({
   id: r.id, customerId: r.customer_id, contactName: r.contact_name, role: r.role ?? '',
   phone: r.phone ?? '', email: r.email ?? '', contactType: r.contact_type ?? 'Other',
-  isPrimary: r.is_primary ?? false,
+  isPrimary: r.is_primary ?? false, notes: r.notes ?? '',
 })
 const toContact = (c: Contact) => ({
   id: c.id, customer_id: c.customerId, contact_name: c.contactName, role: c.role,
   phone: c.phone, email: c.email, contact_type: c.contactType, is_primary: c.isPrimary,
+  notes: c.notes ?? '',
 })
 
 const fromCase = (r: Row): Case => ({
