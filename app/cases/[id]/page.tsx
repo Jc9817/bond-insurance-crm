@@ -43,7 +43,7 @@ export default function CaseDetailPage() {
   const [fuForm, setFuForm] = useState({ title: '', personInCharge: pics[0]?.name ?? '', dueDate: '' })
   const [scanFile, setScanFile] = useState<CaseFile | null>(null)
   const [editInfoModal, setEditInfoModal] = useState(false)
-  const [editInfoForm, setEditInfoForm] = useState({ caseTitle: '', caseType: '', amount: 0, personInCharge: '', bondPrincipal: '', bondExpiryDate: '', waitingFor: '' })
+  const [editInfoForm, setEditInfoForm] = useState({ caseTitle: '', caseType: '', amount: 0, personInCharge: '', bondPrincipal: '', bondExpiryDate: '', waitingFor: '', targetInsurer: '' })
   const [closingModal, setClosingModal] = useState(false)
   const [closingForm, setClosingForm] = useState({
     result: '', closingRemarks: '', lossReason: '', finalAmount: 0, finalInsurer: '', acceptanceDate: '', acceptedBy: '',
@@ -273,7 +273,7 @@ export default function CaseDetailPage() {
             </button>
             <button
               onClick={() => {
-                setEditInfoForm({ caseTitle: caseItem.caseTitle, caseType: caseItem.caseType, amount: caseItem.amount, personInCharge: caseItem.personInCharge, bondPrincipal: caseItem.bondPrincipal ?? '', bondExpiryDate: caseItem.bondExpiryDate ?? '', waitingFor: caseItem.waitingFor ?? '' })
+                setEditInfoForm({ caseTitle: caseItem.caseTitle, caseType: caseItem.caseType, amount: caseItem.amount, personInCharge: caseItem.personInCharge, bondPrincipal: caseItem.bondPrincipal ?? '', bondExpiryDate: caseItem.bondExpiryDate ?? '', waitingFor: caseItem.waitingFor ?? '', targetInsurer: caseItem.finalInsurer ?? '' })
                 setEditInfoModal(true)
               }}
               className="btn-secondary text-sm"
@@ -605,7 +605,7 @@ export default function CaseDetailPage() {
               <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Case Information</h2>
               <button
                 onClick={() => {
-                  setEditInfoForm({ caseTitle: caseItem.caseTitle, caseType: caseItem.caseType, amount: caseItem.amount, personInCharge: caseItem.personInCharge, bondPrincipal: caseItem.bondPrincipal ?? '', bondExpiryDate: caseItem.bondExpiryDate ?? '', waitingFor: caseItem.waitingFor ?? '' })
+                  setEditInfoForm({ caseTitle: caseItem.caseTitle, caseType: caseItem.caseType, amount: caseItem.amount, personInCharge: caseItem.personInCharge, bondPrincipal: caseItem.bondPrincipal ?? '', bondExpiryDate: caseItem.bondExpiryDate ?? '', waitingFor: caseItem.waitingFor ?? '', targetInsurer: caseItem.finalInsurer ?? '' })
                   setEditInfoModal(true)
                 }}
                 className="btn-xs bg-gray-100 hover:bg-gray-200 text-gray-700"
@@ -643,8 +643,12 @@ export default function CaseDetailPage() {
                   </span>
                 ) : <span className="text-sm text-gray-400">—</span>}
               </DetailRow>
+              <DetailRow label="Target Insurer">
+                {caseItem.finalInsurer
+                  ? <span className="text-sm font-semibold text-blue-700">{caseItem.finalInsurer}</span>
+                  : <span className="text-sm text-gray-400">— not set</span>}
+              </DetailRow>
               {caseItem.result && <DetailRow label="Result"><StatusBadge status={caseItem.result} size="md" /></DetailRow>}
-              {caseItem.finalInsurer && <DetailRow label="Insurer / Provider"><span className="text-sm font-semibold text-gray-800">{caseItem.finalInsurer}</span></DetailRow>}
               {caseItem.acceptanceDate && <DetailRow label="Acceptance Date"><span className="text-sm font-semibold text-gray-800">{formatDate(caseItem.acceptanceDate)}</span></DetailRow>}
               {caseItem.acceptedBy && <DetailRow label="Accepted By"><span className="text-sm font-semibold text-gray-800">{caseItem.acceptedBy}</span></DetailRow>}
               {caseItem.finalAmount && caseItem.finalAmount !== caseItem.amount && (
@@ -862,7 +866,8 @@ export default function CaseDetailPage() {
             if (editInfoForm.bondPrincipal !== (caseItem.bondPrincipal ?? '')) changes.push(`Principal: ${caseItem.bondPrincipal || '—'} → ${editInfoForm.bondPrincipal || '—'}`)
             if (editInfoForm.bondExpiryDate !== (caseItem.bondExpiryDate ?? '')) changes.push(`Bond Expiry: ${caseItem.bondExpiryDate || '—'} → ${editInfoForm.bondExpiryDate || '—'}`)
             if (editInfoForm.waitingFor !== (caseItem.waitingFor ?? '')) changes.push(`Waiting For: ${caseItem.waitingFor || '—'} → ${editInfoForm.waitingFor || '—'}`)
-            updateCase(id, { caseTitle: editInfoForm.caseTitle, caseType: editInfoForm.caseType, amount: editInfoForm.amount, personInCharge: editInfoForm.personInCharge, bondPrincipal: editInfoForm.bondPrincipal || undefined, bondExpiryDate: editInfoForm.bondExpiryDate || undefined, waitingFor: (editInfoForm.waitingFor as typeof WAITING_FOR_OPTIONS[number]) || null })
+            if (editInfoForm.targetInsurer !== (caseItem.finalInsurer ?? '')) changes.push(`Target Insurer: ${caseItem.finalInsurer || '—'} → ${editInfoForm.targetInsurer || '—'}`)
+            updateCase(id, { caseTitle: editInfoForm.caseTitle, caseType: editInfoForm.caseType, amount: editInfoForm.amount, personInCharge: editInfoForm.personInCharge, bondPrincipal: editInfoForm.bondPrincipal || undefined, bondExpiryDate: editInfoForm.bondExpiryDate || undefined, waitingFor: (editInfoForm.waitingFor as typeof WAITING_FOR_OPTIONS[number]) || null, finalInsurer: editInfoForm.targetInsurer || undefined })
             if (changes.length > 0) {
               addActivityLog({ caseId: id, caseTitle: editInfoForm.caseTitle, actionType: 'CASE_UPDATED', title: 'Case info updated', description: changes.join('; '), changedBy: currentUser?.fullName ?? 'Unknown' })
             }
@@ -908,6 +913,13 @@ export default function CaseDetailPage() {
                 {WAITING_FOR_OPTIONS.map(w => <option key={w} value={w}>{w}</option>)}
               </select>
             </div>
+          </div>
+          <div>
+            <label className="label">Target Insurer <span className="text-gray-400 font-normal">(insurer this case is submitted to)</span></label>
+            <select className="input" value={editInfoForm.targetInsurer} onChange={e => setEditInfoForm(p => ({ ...p, targetInsurer: e.target.value }))}>
+              <option value="">— None —</option>
+              {settingsData.insurers.filter(i => i.isActive).map(i => <option key={i.id} value={i.name}>{i.name}</option>)}
+            </select>
           </div>
           <div className="flex gap-3 pt-1">
             <button type="button" onClick={() => setEditInfoModal(false)} className="btn-secondary flex-1">Cancel</button>

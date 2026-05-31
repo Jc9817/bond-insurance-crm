@@ -2,15 +2,15 @@
 
 import { useState } from 'react'
 import { useStore } from '@/lib/store'
-import { CASE_STATUSES, CASE_TYPES } from '@/lib/types'
-import { getDaysUntil, formatCurrency } from '@/lib/utils'
+import { CASE_STATUSES, CASE_TYPES, type Case } from '@/lib/types'
+import { getDaysUntil, formatCurrency, formatDate } from '@/lib/utils'
 import { getWorkflowTemplate, getMissingRequiredDocs, getStuckDays, getCaseReadiness } from '@/lib/workflow'
 import StatCard from '@/components/ui/StatCard'
 import StatusBadge from '@/components/ui/StatusBadge'
 import PageHeader from '@/components/ui/PageHeader'
 import Link from 'next/link'
 
-type ReportTab = 'strategic' | 'operational'
+type ReportTab = 'strategic' | 'operational' | 'insurer'
 
 export default function ReportsPage() {
   const { cases, followUps, customers, caseFiles, workflowTemplates } = useStore()
@@ -144,6 +144,41 @@ export default function ReportsPage() {
     c.currentStatus === 'Submitted'
   )
 
+  // Insurer view — group all non-closed cases that have a target insurer set
+  const insurerGroups = activeCases
+    .filter(c => c.finalInsurer)
+    .reduce<Record<string, Case[]>>((acc, c) => {
+      const key = c.finalInsurer!
+      if (!acc[key]) acc[key] = []
+      acc[key].push(c)
+      return acc
+    }, {})
+  const insurerNames = Object.keys(insurerGroups).sort()
+  const unassignedSubmitted = activeCases.filter(c => c.currentStatus === 'Submitted' && !c.finalInsurer)
+
+  const copyInsurerSummary = (insurerName: string, caseList: Case[]) => {
+    const today = new Date().toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' })
+    const rows = caseList.map((c, i) => {
+      const daysSince = Math.floor((Date.now() - new Date(c.updatedAt ?? c.createdAt).getTime()) / 86400000)
+      return `${i + 1}. ${c.customerName}${c.bondPrincipal && c.bondPrincipal !== c.customerName ? ` (Principal: ${c.bondPrincipal})` : ''}\n   Type: ${c.caseType} | Amount: ${formatCurrency(c.amount)} | Status: ${c.currentStatus} | Pending: ${daysSince}d`
+    })
+    const total = caseList.reduce((s, c) => s + c.amount, 0)
+    const text = [
+      `Bond Insurance — Pending Submission Summary`,
+      `Date: ${today}`,
+      `Insurer: ${insurerName}`,
+      ``,
+      ...rows,
+      ``,
+      `Total: ${caseList.length} case${caseList.length !== 1 ? 's' : ''} | ${formatCurrency(total)}`,
+      ``,
+      `Kindly advise on the status of the above applications at your earliest convenience.`,
+      ``,
+      `Thank you.`,
+    ].join('\n')
+    navigator.clipboard.writeText(text)
+  }
+
   return (
     <div className="p-8 max-w-screen-xl mx-auto">
       <PageHeader title="Reports" subtitle="Business performance and operational overview" />
@@ -153,6 +188,7 @@ export default function ReportsPage() {
         {([
           { key: 'strategic' as const, label: 'Strategic View' },
           { key: 'operational' as const, label: 'Operational View' },
+          { key: 'insurer' as const, label: `Insurer Summary${insurerNames.length > 0 ? ` (${insurerNames.length})` : ''}` },
         ]).map(t => (
           <button
             key={t.key}
@@ -505,6 +541,173 @@ export default function ReportsPage() {
             </div>
           )}
         </div>
+      )}
+
+      {/* ══════════ INSURER SUMMARY ══════════ */}
+      {tab === 'insurer' && (
+        <div className="space-y-6">
+          {/* Overview KPIs */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <StatCard label="Insurers Active" value={insurerNames.length} color="blue" />
+            <StatCard label="Cases Assigned" value={activeCases.filter(c => c.finalInsurer).length} />
+            <StatCard label="Unassigned Submitted" value={unassignedSubmitted.length} color={unassignedSubmitted.length > 0 ? 'amber' : 'default'} />
+            <StatCard label="Total Pending Value" value={`RM ${(activeCases.filter(c => c.finalInsurer).reduce((s, c) => s + c.amount, 0) / 1000).toFixed(0)}k`} />
+          </div>
+
+          {insurerNames.length === 0 && unassignedSubmitted.length === 0 && (
+            <div className="card-section text-center py-12">
+              <p className="text-gray-400 text-sm">No cases have been assigned to an insurer yet.</p>
+              <p className="text-gray-400 text-xs mt-1">Open a case → Case Info → Edit → set the Target Insurer.</p>
+            </div>
+          )}
+
+          {/* Insurer cards */}
+          {insurerNames.map(insurerName => {
+            const caseList = insurerGroups[insurerName]
+            const totalVal = caseList.reduce((s, c) => s + c.amount, 0)
+            const avgDays = Math.round(caseList.reduce((s, c) => s + Math.floor((Date.now() - new Date(c.updatedAt ?? c.createdAt).getTime()) / 86400000), 0) / caseList.length)
+            const byStatus: Record<string, number> = {}
+            caseList.forEach(c => { byStatus[c.currentStatus] = (byStatus[c.currentStatus] ?? 0) + 1 })
+            return (
+              <InsurerCard
+                key={insurerName}
+                name={insurerName}
+                cases={caseList}
+                totalValue={totalVal}
+                avgDays={avgDays}
+                byStatus={byStatus}
+                onCopy={() => copyInsurerSummary(insurerName, caseList)}
+              />
+            )
+          })}
+
+          {/* Unassigned submitted cases */}
+          {unassignedSubmitted.length > 0 && (
+            <div className="card-section border-l-4 border-amber-400">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h2 className="text-base font-semibold text-gray-800">Submitted — No Insurer Set</h2>
+                  <p className="text-xs text-gray-400 mt-0.5">{unassignedSubmitted.length} case{unassignedSubmitted.length !== 1 ? 's' : ''} in Submitted status without a target insurer</p>
+                </div>
+                <span className="text-xl font-bold text-amber-600">{unassignedSubmitted.length}</span>
+              </div>
+              <div className="space-y-2">
+                {unassignedSubmitted.map(c => (
+                  <Link key={c.id} href={`/cases/${c.id}`} className="flex items-center justify-between group py-2 border-t border-gray-50">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-800 group-hover:text-blue-600 truncate">{c.caseTitle}</p>
+                      <p className="text-xs text-gray-400">{c.customerName} · {c.personInCharge}</p>
+                    </div>
+                    <span className="text-sm font-semibold text-gray-700 shrink-0 ml-3">{formatCurrency(c.amount)}</span>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+type InsurerCardProps = {
+  name: string
+  cases: Case[]
+  totalValue: number
+  avgDays: number
+  byStatus: Record<string, number>
+  onCopy: () => void
+}
+
+function InsurerCard({ name, cases, totalValue, avgDays, byStatus, onCopy }: InsurerCardProps) {
+  const [expanded, setExpanded] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = () => {
+    onCopy()
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <div className="card-section">
+      {/* Header row */}
+      <div className="flex items-start justify-between gap-4 mb-4">
+        <div className="min-w-0">
+          <h2 className="text-base font-semibold text-gray-800">{name}</h2>
+          <div className="flex flex-wrap gap-1.5 mt-1.5">
+            {Object.entries(byStatus).map(([status, count]) => (
+              <span key={status} className="text-xs bg-blue-50 text-blue-700 rounded-full px-2 py-0.5 font-medium">{status}: {count}</span>
+            ))}
+          </div>
+        </div>
+        <div className="flex gap-2 shrink-0">
+          <button
+            onClick={handleCopy}
+            className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors ${copied ? 'bg-green-50 border-green-200 text-green-700' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+          >
+            {copied ? (
+              <>
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                Copied!
+              </>
+            ) : (
+              <>
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                Copy Summary
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* Metrics row */}
+      <div className="grid grid-cols-3 gap-4 py-3 border-y border-gray-100 mb-4">
+        <div>
+          <p className="text-xs text-gray-400 uppercase tracking-wide">Cases</p>
+          <p className="text-xl font-bold text-gray-900 mt-0.5">{cases.length}</p>
+        </div>
+        <div>
+          <p className="text-xs text-gray-400 uppercase tracking-wide">Total Value</p>
+          <p className="text-xl font-bold text-gray-900 mt-0.5">{formatCurrency(totalValue)}</p>
+        </div>
+        <div>
+          <p className="text-xs text-gray-400 uppercase tracking-wide">Avg. Pending</p>
+          <p className="text-xl font-bold text-gray-900 mt-0.5">{avgDays}d</p>
+        </div>
+      </div>
+
+      {/* Case list */}
+      <div className="space-y-0">
+        {(expanded ? cases : cases.slice(0, 5)).map((c, i) => {
+          const daysPending = Math.floor((Date.now() - new Date(c.updatedAt ?? c.createdAt).getTime()) / 86400000)
+          return (
+            <div key={c.id} className="flex items-center gap-3 py-2.5 border-b border-gray-50 last:border-0">
+              <span className="text-xs text-gray-300 w-4 shrink-0 font-medium">{i + 1}</span>
+              <div className="min-w-0 flex-1">
+                <Link href={`/cases/${c.id}`} className="text-sm font-medium text-gray-800 hover:text-blue-600 truncate block">
+                  {c.caseTitle}
+                </Link>
+                <p className="text-xs text-gray-400 truncate">
+                  {c.customerName}{c.bondPrincipal && c.bondPrincipal !== c.customerName ? ` → ${c.bondPrincipal}` : ''} · {c.caseType} · {c.personInCharge}
+                </p>
+              </div>
+              <div className="shrink-0 text-right">
+                <p className="text-sm font-semibold text-gray-700">{formatCurrency(c.amount)}</p>
+                <div className="flex items-center gap-1.5 justify-end mt-0.5">
+                  <StatusBadge status={c.currentStatus} size="sm" />
+                  <span className={`text-xs font-medium ${daysPending > 14 ? 'text-red-500' : daysPending > 7 ? 'text-amber-500' : 'text-gray-400'}`}>{daysPending}d</span>
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {cases.length > 5 && (
+        <button onClick={() => setExpanded(p => !p)} className="mt-3 text-xs text-blue-600 hover:underline">
+          {expanded ? 'Show less' : `Show all ${cases.length} cases`}
+        </button>
       )}
     </div>
   )

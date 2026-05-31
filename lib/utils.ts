@@ -1,7 +1,12 @@
 export function formatDate(dateStr: string): string {
   if (!dateStr) return '—'
-  const [y, m, d] = dateStr.split('-')
-  return `${d}/${m}/${y}`
+  const isTimestamp = dateStr.includes('T') || dateStr.includes(' ')
+  const d = new Date(dateStr.length === 10 ? dateStr + 'T00:00:00' : dateStr)
+  if (isNaN(d.getTime())) return dateStr
+  const datePart = d.toLocaleDateString('en-MY', { day: 'numeric', month: 'long', year: 'numeric' })
+  if (!isTimestamp) return datePart
+  const timePart = d.toLocaleTimeString('en-MY', { hour: 'numeric', minute: '2-digit', hour12: true })
+  return `${datePart}, ${timePart}`
 }
 
 export function formatCurrency(amount: number): string {

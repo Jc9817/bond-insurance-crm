@@ -36,7 +36,8 @@ function mapCustomResponse(data: Record<string, unknown>) {
     : formatRM(data.contract_value)
   const bondValue = data.bondValue != null
     ? (typeof data.bondValue === 'number' ? formatRM(data.bondValue) : String(data.bondValue))
-    : formatRM(data.bond_value)
+    : data.bond_value != null ? formatRM(data.bond_value)
+    : data.bonPelaksanaan != null ? formatRM(data.bonPelaksanaan) : ''
 
   // expiryDate: SST prompt uses workEndDate; older prompts use expiryDate / expiry_date
   const expiryDate = String(
@@ -54,7 +55,20 @@ function mapCustomResponse(data: Record<string, unknown>) {
   ].filter(Boolean)
   const notes = noteParts.join(' | ')
 
-  return { customerName, projectName, caseType, amount, bondValue, expiryDate, notes, raw: data }
+  // Pre-format monetary and date fields that appear in the extended SST panel,
+  // so they display as "RM x,xxx.xx" instead of raw numbers.
+  const MONETARY_RAW_KEYS = [
+    'thirdPartyLiability', 'workInsuranceValue', 'bonPelaksanaan',
+    'third_party_liability', 'work_insurance_value', 'bon_pelaksanaan',
+  ]
+  const formattedRaw = { ...data }
+  for (const key of MONETARY_RAW_KEYS) {
+    if (typeof formattedRaw[key] === 'number') {
+      formattedRaw[key] = formatRM(formattedRaw[key] as number)
+    }
+  }
+
+  return { customerName, projectName, caseType, amount, bondValue, expiryDate, notes, raw: formattedRaw }
 }
 
 export async function POST(req: NextRequest) {
@@ -162,7 +176,7 @@ Return only the JSON object, no markdown, no explanation.`
       }
 
   const response = await client.messages.create({
-    model: 'claude-opus-4-7',
+    model: 'claude-sonnet-4-6',
     max_tokens: 1024,
     messages: [
       {

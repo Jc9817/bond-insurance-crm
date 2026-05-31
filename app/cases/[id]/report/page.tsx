@@ -8,7 +8,7 @@ import type { CaseFile, AiExtractedData } from '@/lib/types'
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const STANDARD_KEYS = new Set(['customerName', 'projectName', 'caseType', 'amount', 'bondValue', 'expiryDate', 'notes', 'raw'])
-const SST_KEYS = new Set(['thirdPartyLiability', 'workStartDate', 'workEndDate', 'dlpEndDate', 'workInsuranceValue', 'sebuthargaNo', 'sstNo', 'issuingAgency', 'latePenaltyRate', 'bondValidUntil', 'dlpBreakdown'])
+const SST_KEYS = new Set(['thirdPartyLiability', 'workStartDate', 'workEndDate', 'dlpEndDate', 'workInsuranceValue', 'sebuthargaNo', 'sstNo', 'issuingAgency', 'latePenaltyRate', 'bondValidUntil', 'dlpBreakdown', 'bonPelaksanaan'])
 
 function formatLabel(key: string): string {
   return key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
@@ -70,7 +70,7 @@ function SSTDocSection({ file, data }: { file: CaseFile; data: AiExtractedData }
         {/* Contractor & Project */}
         <SubTitle>Contract Overview</SubTitle>
         <div className="bg-gray-50 rounded-lg p-4 space-y-0">
-          {data.customerName && <DetailRow label="Contractor / Applicant" value={data.customerName} />}
+          {data.customerName && <DetailRow label="Principal" value={data.customerName} />}
           {data.projectName && <DetailRow label="Description of Works" value={data.projectName} />}
           {data.caseType && <DetailRow label="Bond / Security Type" value={data.caseType} />}
           {r.issuingAgency != null && <DetailRow label="Issuing Agency" value={String(r.issuingAgency)} />}
@@ -80,9 +80,9 @@ function SSTDocSection({ file, data }: { file: CaseFile; data: AiExtractedData }
         <SubTitle>Contract & Bond Amounts</SubTitle>
         <div className="bg-gray-50 rounded-lg p-4 space-y-0">
           {data.amount && <DetailRow label="Contract Value" value={<span className="font-bold">{data.amount}</span>} />}
-          {data.bondValue && <DetailRow label="Performance Bond Value" value={<span className="font-bold text-violet-700">{data.bondValue}</span>} />}
-          {r.workInsuranceValue != null && <DetailRow label="Works Insurance (CAR)" value={<span className="font-semibold">{formatRMNumber(r.workInsuranceValue)}</span>} />}
-          {r.thirdPartyLiability != null && <DetailRow label="Third Party Liability" value={<span className="font-semibold">{formatRMNumber(r.thirdPartyLiability)}</span>} />}
+          {(data.bondValue || r.bonPelaksanaan != null) && <DetailRow label="Bon Pelaksanaan (5%)" value={<span className="font-bold text-violet-700">{data.bondValue || formatRMNumber(r.bonPelaksanaan)}</span>} />}
+          {r.workInsuranceValue != null && <DetailRow label="WC (Workmanship Insurance)" value={<span className="font-semibold">{formatRMNumber(r.workInsuranceValue)}</span>} />}
+          {r.thirdPartyLiability != null && <DetailRow label="Third Party Value" value={<span className="font-semibold">{formatRMNumber(r.thirdPartyLiability)}</span>} />}
           {r.latePenaltyRate != null && (
             <DetailRow
               label="Daily Penalty (LAD)"
@@ -146,7 +146,7 @@ function ExtractedDocSection({ file }: { file: CaseFile }) {
       {/* Standard fields */}
       <div className="pl-5 border-l-2 border-green-200">
         <div className="bg-gray-50 rounded-lg p-4 space-y-0">
-          {data.customerName && <DetailRow label="Contractor / Insured" value={data.customerName} />}
+          {data.customerName && <DetailRow label="Principal" value={data.customerName} />}
           {data.projectName && <DetailRow label="Project / Works" value={data.projectName} />}
           {data.caseType && <DetailRow label="Bond / Insurance Type" value={data.caseType} />}
           {data.amount && <DetailRow label="Contract Value" value={<span className="font-semibold">{data.amount}</span>} />}
