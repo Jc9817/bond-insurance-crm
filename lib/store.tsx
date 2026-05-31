@@ -538,7 +538,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const addCaseFile = (f: Omit<CaseFile, 'id' | 'uploadedAt'>): string => {
     const row: CaseFile = { ...f, id: generateId(), uploadedAt: nowIso() }
     setCaseFiles(prev => [...prev, row])
-    createClient().from('case_files').insert(toCaseFile(row)).then()
+    createClient().from('case_files').upsert(toCaseFile(row)).then()
     return row.id
   }
   const deleteCaseFile = (id: string) => {
