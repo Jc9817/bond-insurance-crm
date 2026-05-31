@@ -564,8 +564,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return row.id
   }
   const deleteCaseFile = (id: string) => {
+    const file = caseFiles.find(f => f.id === id)
     setCaseFiles(prev => prev.filter(x => x.id !== id))
-    createClient().from('case_files').delete().eq('id', id).then()
+    const sb = createClient()
+    sb.from('case_files').delete().eq('id', id).then()
+    // Also remove the actual file from Supabase Storage
+    if (file?.fileDataUrl?.startsWith('http')) {
+      const marker = '/object/public/case-files/'
+      const idx = file.fileDataUrl.indexOf(marker)
+      if (idx !== -1) {
+        const storagePath = decodeURIComponent(file.fileDataUrl.slice(idx + marker.length))
+        sb.storage.from('case-files').remove([storagePath]).then()
+      }
+    }
   }
   const updateCaseFile = (id: string, f: Partial<CaseFile>) => {
     setCaseFiles(prev => prev.map(x => x.id === id ? { ...x, ...f } : x))
