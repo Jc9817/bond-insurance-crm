@@ -587,14 +587,29 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       createClient().from('case_files').update({ ai_status: 'Not Scanned' }).eq('id', id).then()
       return
     }
-    fetch('/api/ai-scan', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        fileDataUrl: file.fileDataUrl, fileName: file.fileName,
-        documentType: file.documentType, aiPrompt: file.aiPrompt,
-      }),
-    })
+
+    // If fileDataUrl is a storage URL, fetch the file and convert to base64 first
+    const getBase64 = async (): Promise<string> => {
+      if (!file.fileDataUrl!.startsWith('http')) return file.fileDataUrl!
+      const res = await fetch(file.fileDataUrl!)
+      const blob = await res.blob()
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(reader.result as string)
+        reader.onerror = reject
+        reader.readAsDataURL(blob)
+      })
+    }
+
+    getBase64()
+      .then(fileDataUrl => fetch('/api/ai-scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fileDataUrl, fileName: file.fileName,
+          documentType: file.documentType, aiPrompt: file.aiPrompt,
+        }),
+      }))
       .then(res => res.json())
       .then(data => {
         setCaseFiles(prev => prev.map(x => x.id === id

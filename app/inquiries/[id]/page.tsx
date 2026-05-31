@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useStore } from '@/lib/store'
 import { useAuth } from '@/lib/auth'
+import { createClient } from '@/utils/supabase/client'
 import type { InquiryQuotation, InquiryDocument } from '@/lib/types'
 import { INQUIRY_TYPES } from '@/lib/types'
 import { formatCurrency, formatDate, timeAgo } from '@/lib/utils'
@@ -302,11 +303,16 @@ export default function InquiryDetailPage() {
     setEditingStatus(false)
   }
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? [])
-    files.forEach(file => {
-      const reader = new FileReader()
-      reader.onload = () => {
+    const sb = createClient()
+    for (const file of files) {
+      try {
+        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+        const path = `inquiries/${id}/${Date.now()}_${safeName}`
+        const { error } = await sb.storage.from('case-files').upload(path, file, { upsert: false })
+        if (error) throw error
+        const { data } = sb.storage.from('case-files').getPublicUrl(path)
         addInquiryDocument({
           inquiryId: id,
           fileName: file.name,
@@ -314,11 +320,12 @@ export default function InquiryDetailPage() {
           fileType: file.type,
           documentType: 'Supporting Document',
           uploadedBy: currentUser?.fullName ?? 'User',
-          fileDataUrl: reader.result as string,
+          fileDataUrl: data.publicUrl,
         })
+      } catch (err) {
+        console.error('[Storage] Inquiry upload failed:', err)
       }
-      reader.readAsDataURL(file)
-    })
+    }
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 

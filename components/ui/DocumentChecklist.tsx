@@ -3,29 +3,57 @@
 import { useRef, useState, useEffect } from 'react'
 import { useStore } from '@/lib/store'
 import { useAuth } from '@/lib/auth'
+import { createClient } from '@/utils/supabase/client'
 import type { WorkflowTemplate, CaseFile } from '@/lib/types'
 import { getActiveDocs, getUploadedFileForDoc, getUnassignedFiles, getDocsForStep } from '@/lib/workflow'
 import { formatFileSize, timeAgo } from '@/lib/utils'
 
-function downloadFile(file: CaseFile) {
+const STORAGE_BUCKET = 'case-files'
+
+function isStorageUrl(url?: string) {
+  return !!url && url.startsWith('http')
+}
+
+async function downloadFile(file: CaseFile) {
   if (!file.fileDataUrl) return
-  const a = document.createElement('a')
-  a.href = file.fileDataUrl
-  a.download = file.fileName
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
+  if (isStorageUrl(file.fileDataUrl)) {
+    // Fetch from storage and force-download via blob
+    try {
+      const res = await fetch(file.fileDataUrl)
+      const blob = await res.blob()
+      const blobUrl = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = blobUrl
+      a.download = file.fileName
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 10000)
+    } catch {
+      window.open(file.fileDataUrl, '_blank')
+    }
+  } else {
+    const a = document.createElement('a')
+    a.href = file.fileDataUrl
+    a.download = file.fileName
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+  }
 }
 
 function FileViewerModal({ file, onClose }: { file: CaseFile; onClose: () => void }) {
-  const mime = file.fileDataUrl?.split(';')[0].split(':')[1] ?? ''
-  const isImage = mime.startsWith('image/')
-  const isPdf = mime === 'application/pdf'
+  const ext = file.fileName.split('.').pop()?.toLowerCase() ?? ''
+  const storageFile = isStorageUrl(file.fileDataUrl)
 
-  // Browsers block data: URIs in iframes — convert to a blob URL instead
+  // Type detection: check URL for storage files, check MIME for base64
+  const isPdf = storageFile ? ext === 'pdf' : file.fileDataUrl?.split(';')[0].split(':')[1] === 'application/pdf'
+  const isImage = storageFile ? ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].includes(ext) : (file.fileDataUrl?.split(';')[0].split(':')[1]?.startsWith('image/') ?? false)
+
+  // For base64 PDFs: browsers block data: URIs in iframes — convert to blob URL
   const [blobUrl, setBlobUrl] = useState<string | null>(null)
   useEffect(() => {
-    if (!isPdf || !file.fileDataUrl) return
+    if (!isPdf || !file.fileDataUrl || storageFile) return
     const [header, b64] = file.fileDataUrl.split(',')
     const mimeType = header.match(/:(.*?);/)?.[1] ?? 'application/pdf'
     const bytes = atob(b64)
@@ -35,7 +63,7 @@ function FileViewerModal({ file, onClose }: { file: CaseFile; onClose: () => voi
     const url = URL.createObjectURL(blob)
     setBlobUrl(url)
     return () => URL.revokeObjectURL(url)
-  }, [isPdf, file.fileDataUrl])
+  }, [isPdf, file.fileDataUrl, storageFile])
 
   return (
     <div
@@ -80,7 +108,9 @@ function FileViewerModal({ file, onClose }: { file: CaseFile; onClose: () => voi
               <img src={file.fileDataUrl} alt={file.fileName} className="max-w-full max-h-[75vh] object-contain rounded-lg shadow-sm" />
             </div>
           ) : isPdf ? (
-            blobUrl ? (
+            storageFile ? (
+              <iframe src={file.fileDataUrl} className="w-full h-[75vh] border-0" title={file.fileName} />
+            ) : blobUrl ? (
               <iframe src={blobUrl} className="w-full h-[75vh] border-0" title={file.fileName} />
             ) : (
               <div className="flex items-center justify-center h-48 gap-2 text-gray-400">
@@ -144,13 +174,15 @@ export default function DocumentChecklist({ caseId, caseTitle, template, caseFil
   const uploadedRequiredCount = requiredDocs.filter(doc => getUploadedFileForDoc(doc.id, caseId, caseFiles)).length
   const stepCompleteness = requiredDocs.length > 0 ? Math.round((uploadedRequiredCount / requiredDocs.length) * 100) : 100
 
-  const readAsDataUrl = (file: File): Promise<string> =>
-    new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => resolve(reader.result as string)
-      reader.onerror = reject
-      reader.readAsDataURL(file)
-    })
+  const uploadToStorage = async (file: File, caseId: string): Promise<string> => {
+    const sb = createClient()
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+    const path = `cases/${caseId}/${Date.now()}_${safeName}`
+    const { error } = await sb.storage.from(STORAGE_BUCKET).upload(path, file, { upsert: false })
+    if (error) throw error
+    const { data } = sb.storage.from(STORAGE_BUCKET).getPublicUrl(path)
+    return data.publicUrl
+  }
 
   const handleAssignFile = (fileId: string, docId: string | null, docName: string) => {
     const file = caseFiles.find(f => f.id === fileId)
@@ -176,60 +208,70 @@ export default function DocumentChecklist({ caseId, caseTitle, template, caseFil
 
   const handleFileSelect = async (docId: string, file: File, docName: string, aiPrompt?: string) => {
     setUploadingDocId(docId)
-    const fileDataUrl = await readAsDataUrl(file)
-    const existingFile = getUploadedFileForDoc(docId, caseId, caseFiles)
-    const newId = addCaseFile({
-      caseId,
-      fileName: file.name,
-      fileSize: file.size,
-      fileType: file.name.split('.').pop()?.toUpperCase() ?? 'FILE',
-      documentType: docName,
-      requiredDocumentId: docId,
-      uploadedBy: currentUser?.fullName ?? 'Unknown',
-      aiScanned: false,
-      aiStatus: 'Not Scanned',
-      aiExtractedData: null,
-      fileDataUrl,
-      aiPrompt,
-    })
-    if (existingFile) {
-      updateCaseFile(existingFile.id, { supersededBy: newId, requiredDocumentId: undefined })
+    try {
+      const fileDataUrl = await uploadToStorage(file, caseId)
+      const existingFile = getUploadedFileForDoc(docId, caseId, caseFiles)
+      const newId = addCaseFile({
+        caseId,
+        fileName: file.name,
+        fileSize: file.size,
+        fileType: file.name.split('.').pop()?.toUpperCase() ?? 'FILE',
+        documentType: docName,
+        requiredDocumentId: docId,
+        uploadedBy: currentUser?.fullName ?? 'Unknown',
+        aiScanned: false,
+        aiStatus: 'Not Scanned',
+        aiExtractedData: null,
+        fileDataUrl,
+        aiPrompt,
+      })
+      if (existingFile) {
+        updateCaseFile(existingFile.id, { supersededBy: newId, requiredDocumentId: undefined })
+      }
+      addActivityLog({
+        caseId,
+        caseTitle,
+        actionType: 'DOCUMENT_UPLOADED',
+        title: existingFile ? 'Document replaced (v2+)' : 'Document uploaded',
+        newValue: docName,
+        description: `${file.name} uploaded${existingFile ? ` — replaced ${existingFile.fileName}` : ''}`,
+        changedBy: currentUser?.fullName ?? 'Unknown',
+      })
+    } catch (err) {
+      console.error('[Storage] Upload failed:', err)
+      alert('File upload failed. Please check your Supabase storage bucket is set up and try again.')
     }
-    addActivityLog({
-      caseId,
-      caseTitle,
-      actionType: 'DOCUMENT_UPLOADED',
-      title: existingFile ? 'Document replaced (v2+)' : 'Document uploaded',
-      newValue: docName,
-      description: `${file.name} uploaded${existingFile ? ` — replaced ${existingFile.fileName}` : ''}`,
-      changedBy: currentUser?.fullName ?? 'Unknown',
-    })
     setUploadingDocId(null)
   }
 
   const handleGeneralFileSelect = async (file: File) => {
     setUploadingDocId('general')
-    const fileDataUrl = await readAsDataUrl(file)
-    addCaseFile({
-      caseId,
-      fileName: file.name,
-      fileSize: file.size,
-      fileType: file.name.split('.').pop()?.toUpperCase() ?? 'FILE',
-      documentType: 'Supporting Document',
-      uploadedBy: currentUser?.fullName ?? 'Unknown',
-      aiScanned: false,
-      aiStatus: 'Not Scanned',
-      aiExtractedData: null,
-      fileDataUrl,
-    })
-    addActivityLog({
-      caseId,
-      caseTitle,
-      actionType: 'DOCUMENT_UPLOADED',
-      title: 'File uploaded',
-      description: `${file.name} uploaded`,
-      changedBy: currentUser?.fullName ?? 'Unknown',
-    })
+    try {
+      const fileDataUrl = await uploadToStorage(file, caseId)
+      addCaseFile({
+        caseId,
+        fileName: file.name,
+        fileSize: file.size,
+        fileType: file.name.split('.').pop()?.toUpperCase() ?? 'FILE',
+        documentType: 'Supporting Document',
+        uploadedBy: currentUser?.fullName ?? 'Unknown',
+        aiScanned: false,
+        aiStatus: 'Not Scanned',
+        aiExtractedData: null,
+        fileDataUrl,
+      })
+      addActivityLog({
+        caseId,
+        caseTitle,
+        actionType: 'DOCUMENT_UPLOADED',
+        title: 'File uploaded',
+        description: `${file.name} uploaded`,
+        changedBy: currentUser?.fullName ?? 'Unknown',
+      })
+    } catch (err) {
+      console.error('[Storage] Upload failed:', err)
+      alert('File upload failed. Please check your Supabase storage bucket is set up and try again.')
+    }
     setUploadingDocId(null)
   }
 
