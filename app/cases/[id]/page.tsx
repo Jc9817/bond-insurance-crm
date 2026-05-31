@@ -228,7 +228,7 @@ export default function CaseDetailPage() {
                 ? <Link href={`/customers/${customer.id}`} className="text-blue-600 hover:underline font-medium">{customer.customerName}</Link>
                 : <span className="font-medium text-gray-700">{caseItem.customerName}</span>}
               {caseItem.bondPrincipal && caseItem.bondPrincipal !== caseItem.customerName && (
-                <><span className="text-gray-300">→</span><span className="font-medium text-indigo-700">Principal: {caseItem.bondPrincipal}</span></>
+                <><span className="text-gray-300">→</span><span className="font-medium text-indigo-700">Contractor: {caseItem.bondPrincipal}</span></>
               )}
               {caseItem.caseType && <><span>·</span><span>{caseItem.caseType}</span></>}
               {caseItem.personInCharge && <><span>·</span><span>{caseItem.personInCharge}</span></>}
@@ -614,15 +614,15 @@ export default function CaseDetailPage() {
               </button>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-5">
-              <DetailRow label="Customer">
+              <DetailRow label="Main Contractor *">
                 {customer
                   ? <Link href={`/customers/${customer.id}`} className="text-sm font-semibold text-blue-600 hover:underline">{customer.customerName}</Link>
                   : <span className="text-sm font-semibold text-gray-800">{caseItem.customerName}</span>}
               </DetailRow>
-              <DetailRow label="Principal (name on bond)">
+              <DetailRow label="Contractor">
                 {caseItem.bondPrincipal
-                  ? <span className={`text-sm font-semibold ${caseItem.bondPrincipal !== caseItem.customerName ? 'text-indigo-700' : 'text-gray-800'}`}>{caseItem.bondPrincipal}</span>
-                  : <span className="text-sm text-gray-400">Same as customer</span>}
+                  ? <span className="text-sm font-semibold text-indigo-700">{caseItem.bondPrincipal}</span>
+                  : <span className="text-sm text-gray-400 italic">Same as Main Contractor</span>}
               </DetailRow>
               <DetailRow label="Case Type"><span className="text-sm font-semibold text-gray-800">{caseItem.caseType || '—'}</span></DetailRow>
               <DetailRow label="Amount"><span className="text-lg font-bold text-gray-900">{formatCurrency(caseItem.amount)}</span></DetailRow>
@@ -880,8 +880,18 @@ export default function CaseDetailPage() {
             <input className="input" value={editInfoForm.caseTitle} onChange={e => setEditInfoForm(p => ({ ...p, caseTitle: e.target.value }))} required />
           </div>
           <div>
-            <label className="label">Principal <span className="text-gray-400 font-normal">(name on the bond, if different from customer)</span></label>
-            <input className="input" value={editInfoForm.bondPrincipal} onChange={e => setEditInfoForm(p => ({ ...p, bondPrincipal: e.target.value }))} placeholder="e.g. JUTA-KASEH JV Sdn Bhd" />
+            <label className="label">
+              Contractor <span className="text-gray-400 font-normal">(optional)</span>
+            </label>
+            <input
+              className="input"
+              value={editInfoForm.bondPrincipal}
+              onChange={e => setEditInfoForm(p => ({ ...p, bondPrincipal: e.target.value }))}
+              placeholder="Leave blank if Main Contractor is doing the work directly"
+            />
+            <p className="text-xs text-gray-400 mt-1">
+              Fill in only if a <strong>sub-contractor</strong> is executing the works under the Main Contractor's name or licence. If left blank, the Main Contractor is assumed to be the Contractor.
+            </p>
           </div>
           <div>
             <label className="label">Case Type</label>
