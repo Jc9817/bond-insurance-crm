@@ -48,6 +48,45 @@ export type Contact = {
   isPrimary: boolean
 }
 
+// ─── Request Types ────────────────────────────────────────────────────────────
+
+export const REQUEST_TYPES = [
+  'New Business',
+  'Renewal',
+  'Endorsement',
+  'Cancellation',
+  'Claim',
+  'Servicing',
+] as const
+export type RequestType = (typeof REQUEST_TYPES)[number]
+
+// ─── Product Master ───────────────────────────────────────────────────────────
+
+export const PRODUCT_CATEGORIES = ['Bond', 'Insurance', 'Other'] as const
+export type ProductCategory = (typeof PRODUCT_CATEGORIES)[number]
+
+export type Product = {
+  id: string
+  name: string
+  category: ProductCategory
+  description: string
+  isActive: boolean
+}
+
+export type ProductPackage = {
+  id: string
+  name: string
+  description: string
+  productIds: string[]
+  isActive: boolean
+}
+
+export type CaseProduct = {
+  productId: string
+  productName: string
+  category: string
+}
+
 // ─── Case ────────────────────────────────────────────────────────────────────
 
 export const CASE_STATUSES = [
@@ -62,15 +101,13 @@ export const CASE_STATUSES = [
 export type CaseStatus = (typeof CASE_STATUSES)[number]
 
 export const CASE_TYPES = [
-  'Bond Request',
-  'Insurance Request',
-  'Policy Issuance',
-  'Renewal',
-  'Endorsement',
-  'Claim',
-  'Servicing Request',
-  'Quotation Request',
-  'Other',
+  'Bond Workflow',
+  'Simple Policy Workflow',
+  'Project Insurance Workflow',
+  'Claim Workflow',
+  'Renewal Workflow',
+  'Endorsement Workflow',
+  'Servicing Workflow',
 ]
 
 export const WAITING_FOR_OPTIONS = ['Customer', 'Insurer', 'Internal'] as const
@@ -101,6 +138,8 @@ export type Case = {
   acceptanceDate?: string   // date customer confirmed / accepted the quotation
   acceptedBy?: string       // name of contact who confirmed acceptance
   workflowTemplateId?: string  // snapshot of template ID at case creation — insulates from future template edits
+  requestType?: string         // New Business | Renewal | Endorsement | Cancellation | Claim | Servicing
+  selectedProducts?: CaseProduct[]  // products selected for this case (from Product Master)
 }
 
 export type CaseNote = {

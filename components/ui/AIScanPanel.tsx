@@ -11,7 +11,7 @@ type Props = {
   onClose: () => void
 }
 
-const SST_KEYS = new Set(['thirdPartyLiability', 'workStartDate', 'workEndDate', 'dlpEndDate', 'workInsuranceValue', 'sebuthargaNo', 'sstNo', 'issuingAgency', 'latePenaltyRate', 'bondValidUntil', 'dlpBreakdown', 'bonPelaksanaan'])
+const SST_KEYS = new Set(['thirdPartyLiability', 'workStartDate', 'workEndDate', 'dlpEndDate', 'workInsuranceValue', 'sebuthargaNo', 'sstNo', 'issuingAgency', 'latePenaltyRate', 'bondValidUntil', 'dlpBreakdown', 'bonPelaksanaan', 'defectLiabilityPeriod'])
 
 const INPUT_CLS = 'w-full text-sm font-medium text-gray-800 bg-white border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400'
 
@@ -245,7 +245,7 @@ function SSTEditFields({ raw, onChange }: { raw: Record<string, unknown>; onChan
     </div>
   )
 
-  const hasDate = raw.workStartDate != null || raw.workEndDate != null || raw.dlpEndDate != null || raw.bondValidUntil != null
+  const hasDate = raw.workStartDate != null || raw.workEndDate != null || raw.dlpEndDate != null || raw.bondValidUntil != null || raw.defectLiabilityPeriod != null
   const hasInsurance = raw.workInsuranceValue != null || raw.thirdPartyLiability != null || raw.bonPelaksanaan != null
   const hasRef = raw.sstNo != null || raw.sebuthargaNo != null || raw.issuingAgency != null
 
@@ -261,6 +261,7 @@ function SSTEditFields({ raw, onChange }: { raw: Record<string, unknown>; onChan
             {raw.workEndDate != null && <Chip label="Work End Date" fieldKey="workEndDate" accent="bg-amber-50" />}
             {raw.dlpEndDate != null && <Chip label="DLP End Date" fieldKey="dlpEndDate" accent="bg-orange-50" />}
             {raw.bondValidUntil != null && <Chip label="Bond Valid Until" fieldKey="bondValidUntil" accent="bg-violet-50" />}
+            {raw.defectLiabilityPeriod != null && <Chip label="Defect Liability Period" fieldKey="defectLiabilityPeriod" accent="bg-orange-50" />}
           </div>
         </div>
       )}

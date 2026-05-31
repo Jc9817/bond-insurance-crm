@@ -5,8 +5,8 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useStore } from '@/lib/store'
 import { useAuth } from '@/lib/auth'
-import type { CaseFile, WorkflowStep } from '@/lib/types'
-import { WAITING_FOR_OPTIONS } from '@/lib/types'
+import type { CaseFile, WorkflowStep, CaseProduct } from '@/lib/types'
+import { WAITING_FOR_OPTIONS, REQUEST_TYPES } from '@/lib/types'
 import {
   resolveTemplate, getWorkflowTemplate, getActiveSteps, getCaseReadiness, getDocumentCompleteness,
   getMissingRequiredDocs, getCurrentStep, getNextStep, getUnassignedFiles,
@@ -30,7 +30,7 @@ export default function CaseDetailPage() {
   const {
     cases, customers, contacts, caseNotes, followUps, pics, workflowTemplates,
     activityLogs, updateCase, addCase, addCaseNote, addFollowUp, toggleFollowUp, deleteFollowUp,
-    addActivityLog, caseFiles, settingsData,
+    addActivityLog, caseFiles, settingsData, products, productPackages,
   } = useStore()
   const { currentUser } = useAuth()
 
@@ -44,7 +44,8 @@ export default function CaseDetailPage() {
   const [fuForm, setFuForm] = useState({ title: '', personInCharge: pics[0]?.name ?? '', dueDate: '' })
   const [scanFile, setScanFile] = useState<CaseFile | null>(null)
   const [editInfoModal, setEditInfoModal] = useState(false)
-  const [editInfoForm, setEditInfoForm] = useState({ caseTitle: '', caseType: '', amount: 0, personInCharge: '', bondPrincipal: '', bondExpiryDate: '', waitingFor: '', targetInsurer: '', customerId: '' })
+  const [editInfoForm, setEditInfoForm] = useState({ caseTitle: '', caseType: '', amount: 0, personInCharge: '', bondPrincipal: '', bondExpiryDate: '', waitingFor: '', targetInsurer: '', customerId: '', requestType: '', selectedProducts: [] as CaseProduct[] })
+  const [editPkgId, setEditPkgId] = useState('')
   const [closingModal, setClosingModal] = useState(false)
   const [closingForm, setClosingForm] = useState({
     result: '', closingRemarks: '', lossReason: '', finalAmount: 0, finalInsurer: '', acceptanceDate: '', acceptedBy: '',
@@ -231,7 +232,9 @@ export default function CaseDetailPage() {
               {caseItem.bondPrincipal && caseItem.bondPrincipal !== caseItem.customerName && (
                 <><span className="text-gray-300">→</span><span className="font-medium text-indigo-700">Contractor: {caseItem.bondPrincipal}</span></>
               )}
-              {caseItem.caseType && <><span>·</span><span>{caseItem.caseType}</span></>}
+              {caseItem.requestType && <><span>·</span><span className="font-medium">{caseItem.requestType}</span></>}
+              {(caseItem.selectedProducts ?? []).length > 0 && <><span>·</span><span>{(caseItem.selectedProducts ?? []).map(p => p.productName).join(', ')}</span></>}
+              {!(caseItem.selectedProducts ?? []).length && caseItem.caseType && <><span>·</span><span>{caseItem.caseType}</span></>}
               {caseItem.personInCharge && <><span>·</span><span>{caseItem.personInCharge}</span></>}
               {caseItem.amount > 0 && <><span>·</span><span className="font-semibold text-gray-700">{formatCurrency(caseItem.amount)}</span></>}
               {caseItem.result && <><span>·</span><StatusBadge status={caseItem.result} size="sm" /></>}
@@ -274,7 +277,7 @@ export default function CaseDetailPage() {
             </button>
             <button
               onClick={() => {
-                setEditInfoForm({ caseTitle: caseItem.caseTitle, caseType: caseItem.caseType, amount: caseItem.amount, personInCharge: caseItem.personInCharge, bondPrincipal: caseItem.bondPrincipal ?? '', bondExpiryDate: caseItem.bondExpiryDate ?? '', waitingFor: caseItem.waitingFor ?? '', targetInsurer: caseItem.finalInsurer ?? '', customerId: caseItem.customerId })
+                setEditInfoForm({ caseTitle: caseItem.caseTitle, caseType: caseItem.caseType, amount: caseItem.amount, personInCharge: caseItem.personInCharge, bondPrincipal: caseItem.bondPrincipal ?? '', bondExpiryDate: caseItem.bondExpiryDate ?? '', waitingFor: caseItem.waitingFor ?? '', targetInsurer: caseItem.finalInsurer ?? '', customerId: caseItem.customerId, requestType: caseItem.requestType ?? '', selectedProducts: caseItem.selectedProducts ?? [] }); setEditPkgId('')
                 setEditInfoModal(true)
               }}
               className="btn-secondary text-sm"
@@ -606,7 +609,7 @@ export default function CaseDetailPage() {
               <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Case Information</h2>
               <button
                 onClick={() => {
-                  setEditInfoForm({ caseTitle: caseItem.caseTitle, caseType: caseItem.caseType, amount: caseItem.amount, personInCharge: caseItem.personInCharge, bondPrincipal: caseItem.bondPrincipal ?? '', bondExpiryDate: caseItem.bondExpiryDate ?? '', waitingFor: caseItem.waitingFor ?? '', targetInsurer: caseItem.finalInsurer ?? '', customerId: caseItem.customerId })
+                  setEditInfoForm({ caseTitle: caseItem.caseTitle, caseType: caseItem.caseType, amount: caseItem.amount, personInCharge: caseItem.personInCharge, bondPrincipal: caseItem.bondPrincipal ?? '', bondExpiryDate: caseItem.bondExpiryDate ?? '', waitingFor: caseItem.waitingFor ?? '', targetInsurer: caseItem.finalInsurer ?? '', customerId: caseItem.customerId, requestType: caseItem.requestType ?? '', selectedProducts: caseItem.selectedProducts ?? [] }); setEditPkgId('')
                   setEditInfoModal(true)
                 }}
                 className="btn-xs bg-gray-100 hover:bg-gray-200 text-gray-700"
@@ -625,7 +628,30 @@ export default function CaseDetailPage() {
                   ? <span className="text-sm font-semibold text-indigo-700">{caseItem.bondPrincipal}</span>
                   : <span className="text-sm text-gray-400 italic">Same as Main Contractor</span>}
               </DetailRow>
-              <DetailRow label="Case Type"><span className="text-sm font-semibold text-gray-800">{caseItem.caseType || '—'}</span></DetailRow>
+              <DetailRow label="Request Type">
+                {caseItem.requestType
+                  ? <span className={`text-xs font-semibold rounded-full px-3 py-1 ${
+                      caseItem.requestType === 'New Business' ? 'bg-blue-100 text-blue-700' :
+                      caseItem.requestType === 'Renewal' ? 'bg-emerald-100 text-emerald-700' :
+                      caseItem.requestType === 'Endorsement' ? 'bg-amber-100 text-amber-700' :
+                      caseItem.requestType === 'Cancellation' ? 'bg-red-100 text-red-700' :
+                      caseItem.requestType === 'Claim' ? 'bg-orange-100 text-orange-700' :
+                      'bg-gray-100 text-gray-600'
+                    }`}>{caseItem.requestType}</span>
+                  : <span className="text-sm text-gray-400">—</span>}
+              </DetailRow>
+              <DetailRow label="Products">
+                {(caseItem.selectedProducts ?? []).length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {(caseItem.selectedProducts ?? []).map(sp => (
+                      <span key={sp.productId} className={`text-xs font-medium rounded-full px-2.5 py-1 ${sp.category === 'Bond' ? 'bg-blue-50 text-blue-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                        {sp.productName}
+                      </span>
+                    ))}
+                  </div>
+                ) : <span className="text-sm text-gray-400">—</span>}
+              </DetailRow>
+              <DetailRow label="Workflow Type"><span className="text-sm font-semibold text-gray-800">{caseItem.caseType || '—'}</span></DetailRow>
               <DetailRow label="Amount"><span className="text-lg font-bold text-gray-900">{formatCurrency(caseItem.amount)}</span></DetailRow>
               <DetailRow label="Person in Charge"><span className="text-sm font-semibold text-gray-800">{caseItem.personInCharge || '—'}</span></DetailRow>
               <DetailRow label="Created"><span className="text-sm text-gray-700">{formatDate(caseItem.createdAt.split('T')[0])}</span></DetailRow>
@@ -855,7 +881,7 @@ export default function CaseDetailPage() {
       </Modal>
 
       {/* ── Edit Case Info Modal ──────────────────────────────────────────────── */}
-      <Modal isOpen={editInfoModal} onClose={() => setEditInfoModal(false)} title="Edit Case Info" maxWidth="sm">
+      <Modal isOpen={editInfoModal} onClose={() => setEditInfoModal(false)} title="Edit Case Info" maxWidth="lg">
         <form
           onSubmit={(e) => {
             e.preventDefault()
@@ -870,10 +896,11 @@ export default function CaseDetailPage() {
             if (editInfoForm.bondExpiryDate !== (caseItem.bondExpiryDate ?? '')) changes.push(`Bond Expiry: ${caseItem.bondExpiryDate || '—'} → ${editInfoForm.bondExpiryDate || '—'}`)
             if (editInfoForm.waitingFor !== (caseItem.waitingFor ?? '')) changes.push(`Waiting For: ${caseItem.waitingFor || '—'} → ${editInfoForm.waitingFor || '—'}`)
             if (editInfoForm.targetInsurer !== (caseItem.finalInsurer ?? '')) changes.push(`Target Insurer: ${caseItem.finalInsurer || '—'} → ${editInfoForm.targetInsurer || '—'}`)
+            if (editInfoForm.requestType !== (caseItem.requestType ?? '')) changes.push(`Request Type: ${caseItem.requestType || '—'} → ${editInfoForm.requestType || '—'}`)
             const newTemplateId = editInfoForm.caseType !== caseItem.caseType
               ? getWorkflowTemplate(editInfoForm.caseType, workflowTemplates, newCustomer?.businessType ?? customer?.businessType)?.id
               : caseItem.workflowTemplateId
-            updateCase(id, { customerId: editInfoForm.customerId, customerName: newCustomer?.customerName ?? caseItem.customerName, caseTitle: editInfoForm.caseTitle, caseType: editInfoForm.caseType, amount: editInfoForm.amount, personInCharge: editInfoForm.personInCharge, bondPrincipal: editInfoForm.bondPrincipal || undefined, bondExpiryDate: editInfoForm.bondExpiryDate || undefined, waitingFor: (editInfoForm.waitingFor as typeof WAITING_FOR_OPTIONS[number]) || null, finalInsurer: editInfoForm.targetInsurer || undefined, workflowTemplateId: newTemplateId })
+            updateCase(id, { customerId: editInfoForm.customerId, customerName: newCustomer?.customerName ?? caseItem.customerName, caseTitle: editInfoForm.caseTitle, caseType: editInfoForm.caseType, amount: editInfoForm.amount, personInCharge: editInfoForm.personInCharge, bondPrincipal: editInfoForm.bondPrincipal || undefined, bondExpiryDate: editInfoForm.bondExpiryDate || undefined, waitingFor: (editInfoForm.waitingFor as typeof WAITING_FOR_OPTIONS[number]) || null, finalInsurer: editInfoForm.targetInsurer || undefined, workflowTemplateId: newTemplateId, requestType: editInfoForm.requestType || undefined, selectedProducts: editInfoForm.selectedProducts.length > 0 ? editInfoForm.selectedProducts : undefined })
             if (changes.length > 0) {
               addActivityLog({ caseId: id, caseTitle: editInfoForm.caseTitle, actionType: 'CASE_UPDATED', title: 'Case info updated', description: changes.join('; '), changedBy: currentUser?.fullName ?? 'Unknown' })
             }
@@ -909,12 +936,79 @@ export default function CaseDetailPage() {
               Fill in only if a <strong>sub-contractor</strong> is executing the works under the Main Contractor's name or licence. If left blank, the Main Contractor is assumed to be the Contractor.
             </p>
           </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="label">Request Type</label>
+              <select className="input" value={editInfoForm.requestType} onChange={e => setEditInfoForm(p => ({ ...p, requestType: e.target.value }))}>
+                <option value="">— Select —</option>
+                {REQUEST_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label">Workflow Type</label>
+              <select className="input" value={editInfoForm.caseType} onChange={e => setEditInfoForm(p => ({ ...p, caseType: e.target.value }))}>
+                <option value="">— Select type —</option>
+                {caseTypeOptions.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+          </div>
           <div>
-            <label className="label">Case Type</label>
-            <select className="input" value={editInfoForm.caseType} onChange={e => setEditInfoForm(p => ({ ...p, caseType: e.target.value }))}>
-              <option value="">— Select type —</option>
-              {caseTypeOptions.map(t => <option key={t} value={t}>{t}</option>)}
-            </select>
+            <label className="label">Products</label>
+            <div className="mb-2">
+              <select
+                className="input text-sm"
+                value={editPkgId}
+                onChange={e => {
+                  setEditPkgId(e.target.value)
+                  const pkg = productPackages.find(p => p.id === e.target.value)
+                  if (pkg) {
+                    const prods: CaseProduct[] = pkg.productIds
+                      .map(id => products.find(p => p.id === id))
+                      .filter(Boolean)
+                      .map(p => ({ productId: p!.id, productName: p!.name, category: p!.category }))
+                    setEditInfoForm(prev => ({ ...prev, selectedProducts: prods }))
+                  }
+                }}
+              >
+                <option value="">— Quick-select a package —</option>
+                {productPackages.filter(p => p.isActive).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </div>
+            <div className="border border-gray-200 rounded-xl divide-y divide-gray-100 overflow-hidden">
+              {(['Bond', 'Insurance', 'Other'] as const).map(cat => {
+                const catProds = products.filter(p => p.isActive && p.category === cat)
+                if (catProds.length === 0) return null
+                return (
+                  <div key={cat} className="p-3">
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2">{cat}</p>
+                    <div className="grid grid-cols-3 gap-x-4 gap-y-1">
+                      {catProds.map(p => {
+                        const checked = editInfoForm.selectedProducts.some(sp => sp.productId === p.id)
+                        return (
+                          <label key={p.id} className="flex items-center gap-2 py-0.5 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => {
+                                setEditPkgId('')
+                                setEditInfoForm(prev => ({
+                                  ...prev,
+                                  selectedProducts: checked
+                                    ? prev.selectedProducts.filter(sp => sp.productId !== p.id)
+                                    : [...prev.selectedProducts, { productId: p.id, productName: p.name, category: p.category }],
+                                }))
+                              }}
+                              className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600"
+                            />
+                            <span className={`text-xs ${checked ? 'font-semibold text-gray-800' : 'text-gray-600'}`}>{p.name}</span>
+                          </label>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
           </div>
           <div>
             <label className="label">Estimated Amount (RM)</label>

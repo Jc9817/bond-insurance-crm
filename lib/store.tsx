@@ -7,13 +7,14 @@ import type {
   User, CaseFile, ActivityLog, SettingsItem, SettingsCategory,
   WorkflowTemplate, RequiredDocument, WorkflowStep,
   Inquiry, InquiryQuotation, InquiryNote, InquiryDocument,
+  Product, ProductPackage,
 } from './types'
 import {
   mockPics, mockUsers, mockWorkflowTemplates,
   mockSettingsCaseTypes, mockSettingsIndustries, mockSettingsContactTypes,
   mockSettingsFollowUpCategories, mockSettingsDocumentTypes,
   mockSettingsInquiryStatuses, mockSettingsQuotationStatuses,
-  mockSettingsInsurers,
+  mockSettingsInsurers, mockProducts, mockProductPackages,
 } from './mock-data'
 import { generateId, nowIso } from './utils'
 import { getWorkflowTemplate } from './workflow'
@@ -36,6 +37,8 @@ type StoreCtx = {
   inquiryQuotations: InquiryQuotation[]
   inquiryNotes: InquiryNote[]
   inquiryDocuments: InquiryDocument[]
+  products: Product[]
+  productPackages: ProductPackage[]
   loading: boolean
 
   addCustomer: (c: Omit<Customer, 'id' | 'createdAt'>) => void
@@ -87,6 +90,14 @@ type StoreCtx = {
   addRequiredDocument: (templateId: string, doc: Omit<RequiredDocument, 'id' | 'caseTypeId'>) => void
   updateRequiredDocument: (templateId: string, docId: string, doc: Partial<RequiredDocument>) => void
   deleteRequiredDocument: (templateId: string, docId: string) => void
+
+  addProduct: (p: Omit<Product, 'id'>) => void
+  updateProduct: (id: string, p: Partial<Product>) => void
+  deleteProduct: (id: string) => void
+
+  addProductPackage: (p: Omit<ProductPackage, 'id'>) => void
+  updateProductPackage: (id: string, p: Partial<ProductPackage>) => void
+  deleteProductPackage: (id: string) => void
 
   addInquiry: (i: Omit<Inquiry, 'id' | 'createdAt' | 'convertedToCase'>) => string
   updateInquiry: (id: string, i: Partial<Inquiry>) => void
@@ -144,6 +155,8 @@ const fromCase = (r: Row): Case => ({
   acceptanceDate: r.acceptance_date ?? undefined,
   acceptedBy: r.accepted_by ?? undefined,
   workflowTemplateId: r.workflow_template_id ?? undefined,
+  requestType: r.request_type ?? undefined,
+  selectedProducts: r.selected_products ?? undefined,
 })
 const toCase = (c: Case) => ({
   id: c.id, case_title: c.caseTitle, customer_id: c.customerId, customer_name: c.customerName,
@@ -159,6 +172,8 @@ const toCase = (c: Case) => ({
   acceptance_date: c.acceptanceDate ?? null,
   accepted_by: c.acceptedBy ?? null,
   workflow_template_id: c.workflowTemplateId ?? null,
+  request_type: c.requestType ?? null,
+  selected_products: c.selectedProducts ?? null,
 })
 
 const fromCaseNote = (r: Row): CaseNote => ({
@@ -281,6 +296,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [inquiryQuotations, setInquiryQuotations] = useState<InquiryQuotation[]>([])
   const [inquiryNotes, setInquiryNotes] = useState<InquiryNote[]>([])
   const [inquiryDocuments, setInquiryDocuments] = useState<InquiryDocument[]>([])
+  const [products, setProducts] = useState<Product[]>(mockProducts)
+  const [productPackages, setProductPackages] = useState<ProductPackage[]>(mockProductPackages)
   const [settingsData] = useState<SettingsData>({
     caseTypes: mockSettingsCaseTypes,
     industries: mockSettingsIndustries,
@@ -803,6 +820,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }).eq('id', quotationId).then()
   }
 
+  // ─── Product Master (in-memory) ───────────────────────────────────────────
+
+  const addProduct = (p: Omit<Product, 'id'>) =>
+    setProducts(prev => [...prev, { ...p, id: generateId() }])
+  const updateProduct = (id: string, p: Partial<Product>) =>
+    setProducts(prev => prev.map(x => x.id === id ? { ...x, ...p } : x))
+  const deleteProduct = (id: string) =>
+    setProducts(prev => prev.filter(x => x.id !== id))
+
+  const addProductPackage = (p: Omit<ProductPackage, 'id'>) =>
+    setProductPackages(prev => [...prev, { ...p, id: generateId() }])
+  const updateProductPackage = (id: string, p: Partial<ProductPackage>) =>
+    setProductPackages(prev => prev.map(x => x.id === id ? { ...x, ...p } : x))
+  const deleteProductPackage = (id: string) =>
+    setProductPackages(prev => prev.filter(x => x.id !== id))
+
   const convertInquiryToCase = (inquiryId: string, caseData: Omit<Case, 'id' | 'createdAt'>): string => {
     const caseId = generateId()
     const now = nowIso()
@@ -822,7 +855,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     <StoreContext.Provider value={{
       customers, contacts, cases, caseNotes, followUps, pics,
       users, caseFiles, activityLogs, settingsData: settingsState, workflowTemplates,
-      inquiries, inquiryQuotations, inquiryNotes, inquiryDocuments, loading,
+      inquiries, inquiryQuotations, inquiryNotes, inquiryDocuments,
+      products, productPackages, loading,
       addCustomer, updateCustomer, deleteCustomer,
       addContact, updateContact, deleteContact, setPrimaryContact,
       addCase, updateCase, deleteCase, archiveCase, restoreCase,
@@ -840,6 +874,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       addInquiryQuotation, updateInquiryQuotation, deleteInquiryQuotation, sendQuotationEmail,
       addInquiryNote, addInquiryDocument, deleteInquiryDocument,
       convertInquiryToCase,
+      addProduct, updateProduct, deleteProduct,
+      addProductPackage, updateProductPackage, deleteProductPackage,
     }}>
       {children}
     </StoreContext.Provider>

@@ -30,12 +30,17 @@ function mapCustomResponse(data: Record<string, unknown>) {
     data.caseType ?? data.case_type ?? data.bond_type ?? data.insurance_type ?? ''
   )
 
-  // amount / bondValue may come as raw numbers (SST prompt) or pre-formatted RM strings
+  // amount / bondValue may come as raw numbers (SST prompt) or pre-formatted RM strings.
+  // New LOA prompt uses ContractValue / BondValue (capital first letters).
   const amount = data.amount != null
     ? (typeof data.amount === 'number' ? formatRM(data.amount) : String(data.amount))
+    : data.ContractValue != null
+    ? (typeof data.ContractValue === 'number' ? formatRM(data.ContractValue) : String(data.ContractValue))
     : formatRM(data.contract_value)
   const bondValue = data.bondValue != null
     ? (typeof data.bondValue === 'number' ? formatRM(data.bondValue) : String(data.bondValue))
+    : data.BondValue != null
+    ? (typeof data.BondValue === 'number' ? formatRM(data.BondValue) : String(data.BondValue))
     : data.bond_value != null ? formatRM(data.bond_value)
     : data.bonPelaksanaan != null ? formatRM(data.bonPelaksanaan) : ''
 

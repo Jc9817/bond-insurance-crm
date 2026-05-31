@@ -3,19 +3,21 @@
 import { useState } from 'react'
 import { useStore } from '@/lib/store'
 import { useAuth } from '@/lib/auth'
-import { USER_ROLES, USER_STATUSES, BUSINESS_TYPES } from '@/lib/types'
-import type { SettingsCategory, User, UserRole, UserStatus, WorkflowTemplate, WorkflowStep, RequiredDocument } from '@/lib/types'
+import { USER_ROLES, USER_STATUSES, BUSINESS_TYPES, PRODUCT_CATEGORIES } from '@/lib/types'
+import type { SettingsCategory, User, UserRole, UserStatus, WorkflowTemplate, WorkflowStep, RequiredDocument, Product, ProductPackage, ProductCategory } from '@/lib/types'
 import PageHeader from '@/components/ui/PageHeader'
 import Modal from '@/components/ui/Modal'
 
 // ─── Tab type ─────────────────────────────────────────────────────────────────
 
-type Tab = 'users' | 'caseTypes' | 'industries' | 'contactTypes' | 'followUpCategories' | 'documentTypes' | 'pic' | 'workflowTemplates' | 'quotationWorkflow' | 'insurers'
+type Tab = 'users' | 'caseTypes' | 'industries' | 'contactTypes' | 'followUpCategories' | 'documentTypes' | 'pic' | 'workflowTemplates' | 'quotationWorkflow' | 'insurers' | 'productMaster' | 'productPackages'
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'users', label: 'Users' },
   { key: 'workflowTemplates', label: 'Workflow Templates' },
   { key: 'quotationWorkflow', label: 'Quotation Workflow' },
+  { key: 'productMaster', label: 'Product Master' },
+  { key: 'productPackages', label: 'Product Packages' },
   { key: 'caseTypes', label: 'Case Types' },
   { key: 'insurers', label: 'Insurers' },
   { key: 'industries', label: 'Industries' },
@@ -866,6 +868,250 @@ function WorkflowTemplatesTab() {
   )
 }
 
+// ─── Product Master tab ───────────────────────────────────────────────────────
+
+function ProductMasterTab() {
+  const { products, addProduct, updateProduct, deleteProduct } = useStore()
+  const [modal, setModal] = useState<'add' | 'edit' | null>(null)
+  const [selected, setSelected] = useState<Product | null>(null)
+  const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [form, setForm] = useState<{ name: string; category: ProductCategory; description: string }>({ name: '', category: 'Bond', description: '' })
+  const [error, setError] = useState('')
+
+  const openAdd = () => { setForm({ name: '', category: 'Bond', description: '' }); setError(''); setModal('add') }
+  const openEdit = (p: Product) => { setSelected(p); setForm({ name: p.name, category: p.category, description: p.description }); setError(''); setModal('edit') }
+  const closeModal = () => { setModal(null); setSelected(null) }
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!form.name.trim()) { setError('Product name is required.'); return }
+    if (modal === 'add') addProduct({ ...form, name: form.name.trim(), isActive: true })
+    else if (selected) updateProduct(selected.id, { ...form, name: form.name.trim() })
+    closeModal()
+  }
+
+  const byCategory = PRODUCT_CATEGORIES.map(cat => ({
+    cat,
+    items: products.filter(p => p.category === cat),
+  })).filter(g => g.items.length > 0)
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-5">
+        <p className="text-sm text-gray-500">Manage the products your agency places — bonds and insurance types.</p>
+        <button onClick={openAdd} className="btn-primary text-xs px-4 py-2">+ Add Product</button>
+      </div>
+
+      <div className="space-y-6">
+        {byCategory.map(({ cat, items }) => (
+          <div key={cat}>
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">{cat}</p>
+            <div className="space-y-2">
+              {items.map(p => (
+                <div key={p.id} className={`bg-white rounded-xl border p-4 flex items-center gap-4 ${p.isActive ? 'border-gray-200' : 'border-gray-100 opacity-60'}`}>
+                  <div className={`w-2 h-2 rounded-full shrink-0 ${cat === 'Bond' ? 'bg-blue-500' : cat === 'Insurance' ? 'bg-emerald-500' : 'bg-gray-400'}`} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-semibold text-gray-800">{p.name}</p>
+                      {!p.isActive && <span className="text-xs bg-gray-100 text-gray-400 rounded-full px-2 py-0.5">Inactive</span>}
+                    </div>
+                    {p.description && <p className="text-xs text-gray-500 mt-0.5">{p.description}</p>}
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button onClick={() => openEdit(p)} className="btn-xs bg-gray-100 hover:bg-gray-200 text-gray-700">Edit</button>
+                    <button
+                      onClick={() => updateProduct(p.id, { isActive: !p.isActive })}
+                      className={`btn-xs ${p.isActive ? 'bg-amber-50 text-amber-700 hover:bg-amber-100' : 'bg-green-50 text-green-700 hover:bg-green-100'}`}
+                    >
+                      {p.isActive ? 'Deactivate' : 'Activate'}
+                    </button>
+                    {deleteId === p.id ? (
+                      <>
+                        <button onClick={() => { deleteProduct(p.id); setDeleteId(null) }} className="btn-xs bg-red-600 text-white hover:bg-red-700">Confirm</button>
+                        <button onClick={() => setDeleteId(null)} className="btn-xs bg-gray-100 text-gray-600">Cancel</button>
+                      </>
+                    ) : (
+                      <button onClick={() => setDeleteId(p.id)} className="btn-xs bg-red-50 text-red-500 hover:bg-red-100">Delete</button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+        {products.length === 0 && <p className="text-sm text-gray-400 py-4">No products defined yet.</p>}
+      </div>
+
+      {(modal === 'add' || modal === 'edit') && (
+        <Modal isOpen onClose={closeModal} title={modal === 'add' ? 'Add Product' : 'Edit Product'} maxWidth="sm">
+          <form onSubmit={submit} className="px-6 py-5 space-y-4">
+            {error && <p className="text-sm text-red-600 bg-red-50 rounded-xl p-3">{error}</p>}
+            <div>
+              <label className="label">Product Name *</label>
+              <input className="input" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Performance Bond" autoFocus />
+            </div>
+            <div>
+              <label className="label">Category</label>
+              <select className="input" value={form.category} onChange={e => setForm(p => ({ ...p, category: e.target.value as ProductCategory }))}>
+                {PRODUCT_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label">Description</label>
+              <input className="input" value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} placeholder="Brief description for staff reference" />
+            </div>
+            <div className="flex gap-3 pt-1">
+              <button type="button" onClick={closeModal} className="btn-secondary flex-1">Cancel</button>
+              <button type="submit" className="btn-primary flex-1">{modal === 'add' ? 'Add Product' : 'Save Changes'}</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+    </div>
+  )
+}
+
+// ─── Product Packages tab ─────────────────────────────────────────────────────
+
+function ProductPackagesTab() {
+  const { products, productPackages, addProductPackage, updateProductPackage, deleteProductPackage } = useStore()
+  const [modal, setModal] = useState<'add' | 'edit' | null>(null)
+  const [selected, setSelected] = useState<ProductPackage | null>(null)
+  const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [form, setForm] = useState<{ name: string; description: string; productIds: string[] }>({ name: '', description: '', productIds: [] })
+  const [error, setError] = useState('')
+
+  const activeProducts = products.filter(p => p.isActive)
+
+  const openAdd = () => { setForm({ name: '', description: '', productIds: [] }); setError(''); setModal('add') }
+  const openEdit = (pkg: ProductPackage) => { setSelected(pkg); setForm({ name: pkg.name, description: pkg.description, productIds: [...pkg.productIds] }); setError(''); setModal('edit') }
+  const closeModal = () => { setModal(null); setSelected(null) }
+
+  const toggleProduct = (id: string) => {
+    setForm(prev => ({
+      ...prev,
+      productIds: prev.productIds.includes(id) ? prev.productIds.filter(x => x !== id) : [...prev.productIds, id],
+    }))
+  }
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!form.name.trim()) { setError('Package name is required.'); return }
+    if (modal === 'add') addProductPackage({ ...form, name: form.name.trim(), isActive: true })
+    else if (selected) updateProductPackage(selected.id, { ...form, name: form.name.trim() })
+    closeModal()
+  }
+
+  const getProductNames = (ids: string[]) => ids.map(id => products.find(p => p.id === id)?.name ?? id).join(', ')
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-sm text-gray-500">Quick-select presets that auto-fill products when creating a new case.</p>
+        <button onClick={openAdd} className="btn-primary text-xs px-4 py-2">+ Add Package</button>
+      </div>
+      <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 mb-5">
+        <p className="text-xs text-blue-700">Packages are a shortcut — they pre-fill products at case creation. What is saved on the case are the individual products, not the package name.</p>
+      </div>
+
+      <div className="space-y-2">
+        {productPackages.map(pkg => (
+          <div key={pkg.id} className={`bg-white rounded-xl border p-4 flex items-start gap-4 ${pkg.isActive ? 'border-gray-200' : 'border-gray-100 opacity-60'}`}>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-semibold text-gray-800">{pkg.name}</p>
+                {!pkg.isActive && <span className="text-xs bg-gray-100 text-gray-400 rounded-full px-2 py-0.5">Inactive</span>}
+              </div>
+              {pkg.description && <p className="text-xs text-gray-500 mt-0.5">{pkg.description}</p>}
+              {pkg.productIds.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {pkg.productIds.map(id => {
+                    const prod = products.find(p => p.id === id)
+                    return prod ? (
+                      <span key={id} className={`text-xs rounded-full px-2.5 py-0.5 font-medium ${prod.category === 'Bond' ? 'bg-blue-50 text-blue-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                        {prod.name}
+                      </span>
+                    ) : null
+                  })}
+                </div>
+              ) : (
+                <p className="text-xs text-gray-400 mt-1 italic">No products pre-selected (Custom — user picks manually)</p>
+              )}
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button onClick={() => openEdit(pkg)} className="btn-xs bg-gray-100 hover:bg-gray-200 text-gray-700">Edit</button>
+              <button
+                onClick={() => updateProductPackage(pkg.id, { isActive: !pkg.isActive })}
+                className={`btn-xs ${pkg.isActive ? 'bg-amber-50 text-amber-700 hover:bg-amber-100' : 'bg-green-50 text-green-700 hover:bg-green-100'}`}
+              >
+                {pkg.isActive ? 'Deactivate' : 'Activate'}
+              </button>
+              {deleteId === pkg.id ? (
+                <>
+                  <button onClick={() => { deleteProductPackage(pkg.id); setDeleteId(null) }} className="btn-xs bg-red-600 text-white hover:bg-red-700">Confirm</button>
+                  <button onClick={() => setDeleteId(null)} className="btn-xs bg-gray-100 text-gray-600">Cancel</button>
+                </>
+              ) : (
+                <button onClick={() => setDeleteId(pkg.id)} className="btn-xs bg-red-50 text-red-500 hover:bg-red-100">Delete</button>
+              )}
+            </div>
+          </div>
+        ))}
+        {productPackages.length === 0 && <p className="text-sm text-gray-400 py-4">No packages defined yet.</p>}
+      </div>
+
+      {(modal === 'add' || modal === 'edit') && (
+        <Modal isOpen onClose={closeModal} title={modal === 'add' ? 'Add Package' : 'Edit Package'} maxWidth="sm">
+          <form onSubmit={submit} className="px-6 py-5 space-y-4">
+            {error && <p className="text-sm text-red-600 bg-red-50 rounded-xl p-3">{error}</p>}
+            <div>
+              <label className="label">Package Name *</label>
+              <input className="input" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Performance Bond + WC + TPL" autoFocus />
+            </div>
+            <div>
+              <label className="label">Description</label>
+              <input className="input" value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} placeholder="Brief description for staff reference" />
+            </div>
+            <div>
+              <label className="label">Products included</label>
+              <p className="text-xs text-gray-400 mb-2">Leave all unchecked for "Custom" (user selects manually)</p>
+              <div className="space-y-1 max-h-56 overflow-y-auto border border-gray-100 rounded-xl p-3">
+                {['Bond', 'Insurance', 'Other'].map(cat => {
+                  const catProducts = activeProducts.filter(p => p.category === cat)
+                  if (catProducts.length === 0) return null
+                  return (
+                    <div key={cat} className="mb-3">
+                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1.5">{cat}</p>
+                      {catProducts.map(p => (
+                        <label key={p.id} className="flex items-center gap-2.5 py-1 cursor-pointer hover:bg-gray-50 px-1 rounded">
+                          <input
+                            type="checkbox"
+                            checked={form.productIds.includes(p.id)}
+                            onChange={() => toggleProduct(p.id)}
+                            className="w-4 h-4 rounded border-gray-300 text-blue-600"
+                          />
+                          <span className="text-sm text-gray-700">{p.name}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )
+                })}
+              </div>
+              {form.productIds.length > 0 && (
+                <p className="text-xs text-blue-600 mt-1.5">{form.productIds.length} product{form.productIds.length !== 1 ? 's' : ''} selected: {getProductNames(form.productIds)}</p>
+              )}
+            </div>
+            <div className="flex gap-3 pt-1">
+              <button type="button" onClick={closeModal} className="btn-secondary flex-1">Cancel</button>
+              <button type="submit" className="btn-primary flex-1">{modal === 'add' ? 'Add Package' : 'Save Changes'}</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+    </div>
+  )
+}
+
 // ─── Main settings page ───────────────────────────────────────────────────────
 
 export default function SettingsPage() {
@@ -1006,6 +1252,24 @@ export default function SettingsPage() {
             <p className="text-sm text-gray-500 mb-5">Statuses for individual insurer quotations within an inquiry.</p>
             <ListSection category="quotationStatuses" />
           </div>
+        </div>
+      )}
+
+      {/* ── Product Master tab ─────────────────────────────────────────────── */}
+      {tab === 'productMaster' && (
+        <div className="card-section">
+          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1">Product Master</h2>
+          <p className="text-sm text-gray-500 mb-5">All bonds and insurance products your agency offers. Used for product selection when creating a case.</p>
+          <ProductMasterTab />
+        </div>
+      )}
+
+      {/* ── Product Packages tab ───────────────────────────────────────────── */}
+      {tab === 'productPackages' && (
+        <div className="card-section">
+          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1">Product Packages</h2>
+          <p className="text-sm text-gray-500 mb-5">Named presets that pre-fill product combinations when creating a case.</p>
+          <ProductPackagesTab />
         </div>
       )}
 

@@ -1,7 +1,8 @@
-import type {
+﻿import type {
   Customer, Contact, Case, CaseNote, FollowUp, PicUser, User,
   CaseFile, ActivityLog, SettingsItem, WorkflowTemplate,
   Inquiry, InquiryQuotation, InquiryNote, InquiryDocument,
+  Product, ProductPackage,
 } from './types'
 
 export const mockPics: PicUser[] = [
@@ -700,15 +701,13 @@ export const mockActivityLogs: ActivityLog[] = [
 // ─── Editable Settings ────────────────────────────────────────────────────────
 
 export const mockSettingsCaseTypes: SettingsItem[] = [
-  { id: 'sct1', name: 'Bond Request', isActive: true },
-  { id: 'sct2', name: 'Insurance Request', isActive: true },
-  { id: 'sct3', name: 'Policy Issuance', isActive: true },
-  { id: 'sct4', name: 'Renewal', isActive: true },
-  { id: 'sct5', name: 'Endorsement', isActive: true },
-  { id: 'sct6', name: 'Claim', isActive: true },
-  { id: 'sct7', name: 'Servicing Request', isActive: true },
-  { id: 'sct8', name: 'Quotation Request', isActive: true },
-  { id: 'sct9', name: 'Other', isActive: true },
+  { id: 'sct1', name: 'Bond Workflow', isActive: true },
+  { id: 'sct2', name: 'Simple Policy Workflow', isActive: true },
+  { id: 'sct3', name: 'Project Insurance Workflow', isActive: true },
+  { id: 'sct4', name: 'Claim Workflow', isActive: true },
+  { id: 'sct5', name: 'Renewal Workflow', isActive: true },
+  { id: 'sct6', name: 'Endorsement Workflow', isActive: true },
+  { id: 'sct7', name: 'Servicing Workflow', isActive: true },
 ]
 
 export const mockSettingsIndustries: SettingsItem[] = [
@@ -791,23 +790,55 @@ export const mockSettingsInsurers: SettingsItem[] = [
   { id: 'sins8', name: 'MSIG Insurance', isActive: true },
 ]
 
+// ─── Product Master ───────────────────────────────────────────────────────────
+
+export const mockProducts: Product[] = [
+  // ── Bonds ──
+  { id: 'prod1', name: 'Performance Bond', category: 'Bond', description: 'Guarantees contractor performance per contract terms', isActive: true },
+  { id: 'prod2', name: 'Tender Bond / Bid Bond', category: 'Bond', description: 'Required during tender process; forfeited if contractor withdraws after award', isActive: true },
+  { id: 'prod3', name: 'Advance Payment Bond', category: 'Bond', description: 'Guarantees repayment of advance payment if not utilised by contractor', isActive: true },
+  { id: 'prod4', name: 'Retention Bond', category: 'Bond', description: 'Replaces cash retention withheld by employer; released upon DLP end', isActive: true },
+  { id: 'prod5', name: 'Customs Bond', category: 'Bond', description: 'Required by Royal Malaysian Customs for duty-deferred imports', isActive: true },
+  { id: 'prod6', name: 'Immigration Bond', category: 'Bond', description: 'Required for foreign worker visa and permit applications (PLKS/PATI)', isActive: true },
+  { id: 'prod7', name: 'Fidelity Guarantee', category: 'Bond', description: 'Covers employer against employee dishonesty, fraud, or defalcation', isActive: true },
+  // ── Insurance ──
+  { id: 'prod8', name: 'Workmen Compensation (WC)', category: 'Insurance', description: 'Covers work-related injury, illness, disability, and death for workers', isActive: true },
+  { id: 'prod9', name: 'Third Party Liability (TPL)', category: 'Insurance', description: 'Covers legal liability to third parties for bodily injury or property damage', isActive: true },
+  { id: 'prod10', name: 'Contractor All Risk (CAR)', category: 'Insurance', description: 'All-risk cover for contract works in progress and third party liability during construction', isActive: true },
+  { id: 'prod11', name: 'Contractor Plant & Machinery (CPM)', category: 'Insurance', description: 'Covers sudden accidental damage to contractor plant and equipment on-site', isActive: true },
+  { id: 'prod12', name: 'Fire Insurance', category: 'Insurance', description: 'Covers property against fire, lightning, and related perils', isActive: true },
+  { id: 'prod13', name: 'Marine Cargo Insurance', category: 'Insurance', description: 'Covers goods during transit by sea, air, or land', isActive: true },
+]
+
+export const mockProductPackages: ProductPackage[] = [
+  { id: 'pkg1', name: 'Performance Bond Only', description: 'Standalone performance bond for government or private contracts', productIds: ['prod1'], isActive: true },
+  { id: 'pkg2', name: 'Tender Bond Only', description: 'Standalone tender / bid bond for submission stage', productIds: ['prod2'], isActive: true },
+  { id: 'pkg3', name: 'Advance Payment Bond Only', description: 'Standalone advance payment bond', productIds: ['prod3'], isActive: true },
+  { id: 'pkg4', name: 'WC Only', description: 'Workmen compensation insurance only', productIds: ['prod8'], isActive: true },
+  { id: 'pkg5', name: 'TPL Only', description: 'Third party liability insurance only', productIds: ['prod9'], isActive: true },
+  { id: 'pkg6', name: 'WC + TPL', description: 'Workers compensation and third party liability package', productIds: ['prod8', 'prod9'], isActive: true },
+  { id: 'pkg7', name: 'Performance Bond + WC + TPL', description: 'Full government construction package — bond plus insurance cover', productIds: ['prod1', 'prod8', 'prod9'], isActive: true },
+  { id: 'pkg8', name: 'CAR Package', description: 'Contractor All Risk with Third Party Liability', productIds: ['prod10', 'prod9'], isActive: true },
+  { id: 'pkg9', name: 'Custom', description: 'Select products manually — for non-standard combinations', productIds: [], isActive: true },
+]
+
 // ─── Workflow Templates ───────────────────────────────────────────────────────
 
 export const mockWorkflowTemplates: WorkflowTemplate[] = [
+
+  // ─── 1. Bond Workflow — Sdn. Bhd. / Company ────────────────────────────────
   {
-    id: 'wt1',
-    caseType: 'Bond Request',
+    id: 'wt_bond',
+    caseType: 'Bond Workflow',
     businessType: 'Sdn. Bhd.',
-    description: 'Bond request workflow for Sdn. Bhd. / company applicants — from LOA receipt to bond issuance.',
+    description: 'Full bond placement workflow for company applicants — from LOA receipt to bond issuance.',
     isActive: true,
     requiredDocuments: [
-      // ── Step 1: Receive Letter of Award ──
       {
-        id: 'rd4', caseTypeId: 'wt1', workflowStepId: 'ws0',
+        id: 'wt_bond_d1', caseTypeId: 'wt_bond', workflowStepId: 'wt_bond_s1',
         name: 'Letter of Award (LOA)',
         description: 'Surat Setuju Terima (SST) or Letter of Award from the project owner confirming contract award',
-        required: true,
-        acceptedFileTypes: ['PDF', 'DOCX'], isActive: true,
+        required: true, acceptedFileTypes: ['PDF', 'DOCX'], isActive: true,
         aiPrompt: `This is a Surat Setuju Terima (SST) / Letter of Award / Contract Acceptance from a Malaysian government agency.
 
 Extract the following fields and return as a single JSON object:
@@ -817,7 +848,6 @@ Extract the following fields and return as a single JSON object:
    Look for: company awarded the contract — "Enterprise", "Sdn. Bhd.", "Sdn Bhd", "Trading", "Resources"
    NOT the government agency or university
    Example: "MASAYU ENTERPRISE 198003027177 (000504744-H)"
-   Example: "TNO RESOURCES (003356082-V)"
 
 2. projectName
    The full project/works description exactly as written in the document
@@ -845,18 +875,15 @@ Extract the following fields and return as a single JSON object:
    Return as number only e.g. 100000
 
 7. workStartDate
-   The date work is allowed to begin / site possession date
    Look for: "Tarikh Mula Kerja", "Tarikh Milik Tapak"
    Return as YYYY-MM-DD
 
 8. workEndDate
-   The contract completion date
    Look for: "Tarikh Siap", "Tarikh Tamat Kerja", "Tarikh Siap Kerja"
    Return as YYYY-MM-DD
 
 9. dlpEndDate
-   The end date of the Defect Liability Period (DLP / Tempoh Tanggungan Kecacatan)
-   STEP 1 — Look for an explicit date first under "Tempoh Sah Laku" or "Tempoh Perlindungan"
+   STEP 1 — Look for explicit date under "Tempoh Sah Laku" or "Tempoh Perlindungan"
    STEP 2 — If not found, CALCULATE: workEndDate + 12 months + 3 months + 14 days
    Return as YYYY-MM-DD
 
@@ -865,22 +892,20 @@ Extract the following fields and return as a single JSON object:
     Return as number only
 
 11. sebuthargaNo
-    Tender/quotation reference. Look for "No. Sebutharga", "No. Tender". Return null if not found.
+    Look for "No. Sebutharga", "No. Tender". Return null if not found.
 
 12. sstNo
-    Primary contract reference. Priority: (a) No. Surat Setuju Terima (b) No. Kontrak (c) Rujukan
+    Priority: (a) No. Surat Setuju Terima (b) No. Kontrak (c) Rujukan
     Return as string
 
 13. issuingAgency
     The government agency or university issuing this contract (NOT the contractor)
-    e.g. "Universiti Kebangsaan Malaysia (UKM)"
 
 14. latePenaltyRate
-    Daily late completion penalty. Fixed table rate or LAD formula (rate% × amount / 365).
-    Return as number only
+    Daily late completion penalty. Return as number only.
 
 15. bondValidUntil
-    Bond expiry date from "Tempoh Sah Laku" under "Bon Pelaksanaan".
+    From "Tempoh Sah Laku" under "Bon Pelaksanaan".
     If not explicit: amount ≤ RM10M → dlpEndDate + 12 months; > RM10M → dlpEndDate + 24 months
     Return as YYYY-MM-DD
 
@@ -908,511 +933,209 @@ Return this exact JSON structure:
   "dlpBreakdown": { "dlpMonths": number, "bufferMonths": number, "bufferDays": number, "label": string }
 }`,
       },
-      // ── Step 4: Collect Application Documents ──
-      {
-        id: 'rd1', caseTypeId: 'wt1', workflowStepId: 'ws3',
-        name: 'Company Profile',
-        description: 'Company background, business overview, and track record (minimum 2 pages)', required: true,
-        acceptedFileTypes: ['PDF', 'DOCX'], isActive: true,
-      },
-      {
-        id: 'rd2', caseTypeId: 'wt1', workflowStepId: 'ws3',
-        name: 'SSM Certificate',
-        description: 'Companies Commission of Malaysia (SSM) registration certificate — Form 9, 13, 24, 49', required: true,
-        acceptedFileTypes: ['PDF', 'JPG', 'PNG'], isActive: true,
-      },
-      {
-        id: 'rd3', caseTypeId: 'wt1', workflowStepId: 'ws3',
-        name: 'Latest Audited Financial Statement',
-        description: 'Audited accounts for the last 2 financial years (signed by auditor)', required: true,
-        acceptedFileTypes: ['PDF', 'XLSX'], isActive: true,
-      },
-      {
-        id: 'rd5', caseTypeId: 'wt1', workflowStepId: 'ws3',
-        name: 'Bond Application Form',
-        description: 'Completed and signed bond application form from insurer (obtain from insurer or company letterhead)', required: true,
-        acceptedFileTypes: ['PDF', 'DOCX'], isActive: true,
-      },
-      {
-        id: 'rd7', caseTypeId: 'wt1', workflowStepId: 'ws3',
-        name: "Director's IC / MyKad",
-        description: "Copy of MyKad (front and back) for all directors listed in SSM", required: true,
-        acceptedFileTypes: ['PDF', 'JPG', 'PNG'], isActive: true,
-      },
-      {
-        id: 'rd8', caseTypeId: 'wt1', workflowStepId: 'ws3',
-        name: 'Authorization Letter',
-        description: 'Company authorization letter for bond application, signed by director and company stamp', required: true,
-        acceptedFileTypes: ['PDF', 'DOCX'], isActive: true,
-      },
-      {
-        id: 'rd6', caseTypeId: 'wt1', workflowStepId: 'ws3',
-        name: 'Bank Statement',
-        description: 'Latest 3 months company bank statement (all accounts)', required: false,
-        acceptedFileTypes: ['PDF'], isActive: true,
-      },
+      { id: 'wt_bond_d2', caseTypeId: 'wt_bond', workflowStepId: 'wt_bond_s4', name: 'Company Profile', description: 'Company background, business overview, and track record (minimum 2 pages)', required: true, acceptedFileTypes: ['PDF', 'DOCX'], isActive: true },
+      { id: 'wt_bond_d3', caseTypeId: 'wt_bond', workflowStepId: 'wt_bond_s4', name: 'SSM Certificate', description: 'Companies Commission of Malaysia (SSM) registration certificate — Form 9, 13, 24, 49', required: true, acceptedFileTypes: ['PDF', 'JPG', 'PNG'], isActive: true },
+      { id: 'wt_bond_d4', caseTypeId: 'wt_bond', workflowStepId: 'wt_bond_s4', name: 'Latest Audited Financial Statement', description: 'Audited accounts for the last 2 financial years (signed by auditor)', required: true, acceptedFileTypes: ['PDF', 'XLSX'], isActive: true },
+      { id: 'wt_bond_d5', caseTypeId: 'wt_bond', workflowStepId: 'wt_bond_s4', name: 'Bond Application Form', description: 'Completed and signed bond application form from insurer (obtain from insurer or company letterhead)', required: true, acceptedFileTypes: ['PDF', 'DOCX'], isActive: true },
+      { id: 'wt_bond_d6', caseTypeId: 'wt_bond', workflowStepId: 'wt_bond_s4', name: "Director's IC / MyKad", description: "Copy of MyKad (front and back) for all directors listed in SSM", required: true, acceptedFileTypes: ['PDF', 'JPG', 'PNG'], isActive: true },
+      { id: 'wt_bond_d7', caseTypeId: 'wt_bond', workflowStepId: 'wt_bond_s4', name: 'Authorization Letter', description: 'Company authorization letter for bond application, signed by director and company stamp', required: true, acceptedFileTypes: ['PDF', 'DOCX'], isActive: true },
+      { id: 'wt_bond_d8', caseTypeId: 'wt_bond', workflowStepId: 'wt_bond_s4', name: 'Bank Statement', description: 'Latest 3 months company bank statement (all accounts)', required: false, acceptedFileTypes: ['PDF'], isActive: true },
     ],
     workflowSteps: [
-      {
-        id: 'ws0', caseTypeId: 'wt1', name: 'Receive LOA', order: 1,
-        description: 'Client submits Letter of Award (LOA). Verify project name, bond value, bond type, and principal entity before proceeding.',
-        requireDocumentsComplete: true,
-        defaultFollowUpSuggestion: 'Verify LOA details and confirm bond requirements with client',
-        isActive: true,
-        slaDays: 2,
-      },
-      {
-        id: 'ws1', caseTypeId: 'wt1', name: 'Request Quotation', order: 2,
-        description: 'Send quotation requests to selected insurers with LOA and project details. Use the email panel to contact multiple insurers at once.',
-        requireDocumentsComplete: false,
-        defaultFollowUpSuggestion: 'Follow up with insurers for outstanding quotations',
-        isActive: true,
-        aiEmailEnabled: true,
-        slaDays: 5,
-      },
-      {
-        id: 'ws2', caseTypeId: 'wt1', name: 'Quote to Client', order: 3,
-        description: 'Compare received quotations on premium rate, terms, and insurer reputation. Prepare a summary and present your recommendation to the client.',
-        requireDocumentsComplete: false,
-        defaultFollowUpSuggestion: 'Follow up with client on preferred insurer selection',
-        isActive: true,
-        slaDays: 3,
-      },
-      {
-        id: 'ws3', caseTypeId: 'wt1', name: 'Collect Documents', order: 4,
-        description: 'Client has confirmed insurer selection. Collect all required documents: company profile, SSM, director IC, authorization letter, financial statements, and application form.',
-        requireDocumentsComplete: true,
-        defaultFollowUpSuggestion: 'Chase client for outstanding application documents',
-        isActive: true,
-        slaDays: 7,
-      },
-      {
-        id: 'ws4', caseTypeId: 'wt1', name: 'Confirm Payment', order: 5,
-        description: 'Client settles premium payment. Confirm amount received, issue official receipt, and prepare final submission package for insurer.',
-        requireDocumentsComplete: false,
-        defaultFollowUpSuggestion: 'Confirm payment received and issue receipt to client',
-        isActive: true,
-        slaDays: 2,
-      },
-      {
-        id: 'ws5', caseTypeId: 'wt1', name: 'Issue Bond', order: 6,
-        description: 'Submit complete documentation to insurer. Follow up for bond certificate. On receipt, verify principal name, sum insured, and bond validity period.',
-        requireDocumentsComplete: true,
-        defaultFollowUpSuggestion: 'Follow up with insurer for bond certificate issuance',
-        isActive: true,
-        slaDays: 5,
-      },
-      {
-        id: 'ws6', caseTypeId: 'wt1', name: 'Close Case', order: 7,
-        description: 'Deliver bond certificate to client. Record acceptance date, bond expiry, and final insurer. Set renewal reminder 90 days before bond expiry.',
-        requireDocumentsComplete: true,
-        defaultFollowUpSuggestion: 'Confirm client received bond certificate and record bond expiry date',
-        isActive: true,
-        slaDays: 1,
-      },
+      { id: 'wt_bond_s1', caseTypeId: 'wt_bond', name: 'Receive LOA', order: 1, description: 'Client submits Letter of Award (LOA). Verify project name, bond value, bond type, and principal entity before proceeding. AI-scan the LOA to extract key details.', requireDocumentsComplete: true, defaultFollowUpSuggestion: 'Verify LOA details and confirm bond requirements with client', isActive: true, slaDays: 2 },
+      { id: 'wt_bond_s2', caseTypeId: 'wt_bond', name: 'Request Quotation', order: 2, description: 'Send quotation requests to selected insurers with LOA and project details. Use the AI email panel to contact multiple insurers efficiently.', requireDocumentsComplete: false, defaultFollowUpSuggestion: 'Follow up with insurers for outstanding quotations', isActive: true, aiEmailEnabled: true, slaDays: 5 },
+      { id: 'wt_bond_s3', caseTypeId: 'wt_bond', name: 'Quote to Client', order: 3, description: 'Compare received quotations on premium rate, terms, and insurer reputation. Prepare a summary and present your recommendation to the client. Confirm preferred insurer before proceeding.', requireDocumentsComplete: false, defaultFollowUpSuggestion: 'Follow up with client on preferred insurer selection', isActive: true, slaDays: 3 },
+      { id: 'wt_bond_s4', caseTypeId: 'wt_bond', name: 'Collect Documents', order: 4, description: 'Client has confirmed insurer selection. Collect all required documents: company profile, SSM, director IC, authorization letter, financial statements, and bond application form.', requireDocumentsComplete: true, defaultFollowUpSuggestion: 'Chase client for outstanding application documents', isActive: true, slaDays: 7 },
+      { id: 'wt_bond_s5', caseTypeId: 'wt_bond', name: 'Confirm Payment', order: 5, description: 'Client settles premium payment. Confirm amount received, issue official receipt, and prepare final submission package for insurer.', requireDocumentsComplete: false, defaultFollowUpSuggestion: 'Confirm payment received and issue receipt to client', isActive: true, slaDays: 2 },
+      { id: 'wt_bond_s6', caseTypeId: 'wt_bond', name: 'Issue Bond', order: 6, description: 'Submit complete documentation to insurer. Follow up for bond certificate. On receipt, verify principal name, sum insured, and bond validity period match the LOA.', requireDocumentsComplete: true, defaultFollowUpSuggestion: 'Follow up with insurer for bond certificate issuance', isActive: true, slaDays: 5 },
+      { id: 'wt_bond_s7', caseTypeId: 'wt_bond', name: 'Close Case', order: 7, description: 'Deliver bond certificate to client. Record acceptance date, bond expiry, and final insurer. Set renewal reminder 90 days before bond expiry.', requireDocumentsComplete: true, defaultFollowUpSuggestion: 'Confirm client received bond certificate and record bond expiry date', isActive: true, slaDays: 1 },
     ],
   },
+
+  // ─── 1b. Bond Workflow — Sole Proprietor ────────────────────────────────────
   {
-    id: 'wt2',
-    caseType: 'Insurance Request',
-    description: 'Standard insurance application and issuance process.',
+    id: 'wt_bond_sp',
+    caseType: 'Bond Workflow',
+    businessType: 'Sole Proprietor',
+    description: 'Bond placement workflow for sole proprietor (enterprise) applicants.',
     isActive: true,
     requiredDocuments: [
       {
-        id: 'rd10', caseTypeId: 'wt2', name: 'Application Form',
-        description: 'Completed insurance application form', required: true,
+        id: 'wt_bond_sp_d1', caseTypeId: 'wt_bond_sp', workflowStepId: 'wt_bond_sp_s1',
+        name: 'Letter of Award (LOA)',
+        description: 'SST or letter of award from the project owner confirming contract award', required: true,
         acceptedFileTypes: ['PDF', 'DOCX'], isActive: true,
+        aiPrompt: `This is a Surat Setuju Terima (SST) / Letter of Award from a Malaysian government agency. Extract: customerName (contractor name + reg no), projectName (full works description), caseType (bond type in English), amount (contract value as number), bondValue (bond amount as number), workStartDate (YYYY-MM-DD), workEndDate (YYYY-MM-DD), dlpEndDate (explicit or workEndDate + 12m + 3m + 14d), bondValidUntil (explicit or dlpEndDate + 12m if ≤RM10M), sstNo (contract reference), issuingAgency (government body name). Return as JSON.`,
       },
-      {
-        id: 'rd11', caseTypeId: 'wt2', name: 'Identity Card',
-        description: 'Copy of IC or passport (directors/owners)', required: true,
-        acceptedFileTypes: ['PDF', 'JPG', 'PNG'], isActive: true,
-      },
-      {
-        id: 'rd12', caseTypeId: 'wt2', name: 'Supporting Documents',
-        description: 'Additional documents specific to the policy type', required: false,
-        acceptedFileTypes: ['PDF', 'DOCX', 'JPG'], isActive: true,
-      },
+      { id: 'wt_bond_sp_d2', caseTypeId: 'wt_bond_sp', workflowStepId: 'wt_bond_sp_s4', name: 'Bond Application Form', description: 'Completed and signed bond application form', required: true, acceptedFileTypes: ['PDF', 'DOCX'], isActive: true },
+      { id: 'wt_bond_sp_d3', caseTypeId: 'wt_bond_sp', workflowStepId: 'wt_bond_sp_s4', name: 'SSM Business Certificate (Form D / ROB)', description: 'Business registration certificate from Suruhanjaya Syarikat Malaysia', required: true, acceptedFileTypes: ['PDF', 'JPG', 'PNG'], isActive: true },
+      { id: 'wt_bond_sp_d4', caseTypeId: 'wt_bond_sp', workflowStepId: 'wt_bond_sp_s4', name: "Proprietor's IC / MyKad", description: "Copy of sole proprietor's MyKad (front and back)", required: true, acceptedFileTypes: ['PDF', 'JPG', 'PNG'], isActive: true },
+      { id: 'wt_bond_sp_d5', caseTypeId: 'wt_bond_sp', workflowStepId: 'wt_bond_sp_s4', name: 'Bank Statement', description: 'Latest 3 months personal or business bank statement', required: true, acceptedFileTypes: ['PDF'], isActive: true },
+      { id: 'wt_bond_sp_d6', caseTypeId: 'wt_bond_sp', workflowStepId: 'wt_bond_sp_s4', name: 'Previous Bond / Policy', description: 'Copy of most recent bond or insurance certificate (if applicable)', required: false, acceptedFileTypes: ['PDF', 'JPG'], isActive: true },
+      { id: 'wt_bond_sp_d7', caseTypeId: 'wt_bond_sp', workflowStepId: 'wt_bond_sp_s4', name: 'Business Profile', description: 'Business background, track record, and completed projects (recommended for large bonds)', required: false, acceptedFileTypes: ['PDF', 'DOCX'], isActive: true },
     ],
     workflowSteps: [
-      {
-        id: 'ws09', caseTypeId: 'wt2', name: 'Send out for Quotation', order: 1,
-        description: 'Send quotation request to insurer(s) via AI-composed email',
-        requireDocumentsComplete: false,
-        defaultFollowUpSuggestion: 'Follow up with insurer on quotation request',
-        isActive: true,
-        aiEmailEnabled: true,
-      },
-      {
-        id: 'ws10', caseTypeId: 'wt2', name: 'Collect Requirements', order: 2,
-        description: 'Understand client needs and collect required documents',
-        requireDocumentsComplete: false,
-        defaultFollowUpSuggestion: 'Contact client for insurance requirements',
-        isActive: true,
-      },
-      {
-        id: 'ws11', caseTypeId: 'wt2', name: 'Get Quotation', order: 3,
-        description: 'Obtain quotations from suitable insurers',
-        requireDocumentsComplete: true,
-        defaultFollowUpSuggestion: 'Request quotation from insurer',
-        isActive: true,
-      },
-      {
-        id: 'ws12', caseTypeId: 'wt2', name: 'Present to Customer', order: 4,
-        description: 'Present and explain quotation options to client',
-        requireDocumentsComplete: true,
-        defaultFollowUpSuggestion: 'Follow up with client on insurance proposal',
-        isActive: true,
-      },
-      {
-        id: 'ws13', caseTypeId: 'wt2', name: 'Confirm Policy', order: 5,
-        description: 'Client confirms chosen policy and authorizes payment',
-        requireDocumentsComplete: true,
-        defaultFollowUpSuggestion: 'Confirm policy acceptance and collect payment',
-        isActive: true,
-      },
-      {
-        id: 'ws14', caseTypeId: 'wt2', name: 'Issue Certificate', order: 6,
-        description: 'Insurer issues policy certificate to client',
-        requireDocumentsComplete: true,
-        defaultFollowUpSuggestion: 'Deliver policy documents to client',
-        isActive: true,
-      },
-      {
-        id: 'ws15', caseTypeId: 'wt2', name: 'Close Case', order: 7,
-        description: 'Policy issued. Case complete.',
-        requireDocumentsComplete: true,
-        defaultFollowUpSuggestion: '',
-        isActive: true,
-      },
+      { id: 'wt_bond_sp_s1', caseTypeId: 'wt_bond_sp', name: 'Receive LOA', order: 1, description: 'Client submits Letter of Award (LOA). Verify project name, bond value, bond type, and proprietor details before proceeding.', requireDocumentsComplete: true, defaultFollowUpSuggestion: 'Verify LOA details and confirm bond requirements with client', isActive: true, slaDays: 2 },
+      { id: 'wt_bond_sp_s2', caseTypeId: 'wt_bond_sp', name: 'Request Quotation', order: 2, description: 'Send quotation requests to selected insurers with LOA and project details.', requireDocumentsComplete: false, defaultFollowUpSuggestion: 'Follow up with insurers for outstanding quotations', isActive: true, aiEmailEnabled: true, slaDays: 5 },
+      { id: 'wt_bond_sp_s3', caseTypeId: 'wt_bond_sp', name: 'Quote to Client', order: 3, description: 'Compare received quotations and present recommendation to client. Confirm preferred insurer before collecting documents.', requireDocumentsComplete: false, defaultFollowUpSuggestion: 'Follow up with client on preferred insurer selection', isActive: true, slaDays: 3 },
+      { id: 'wt_bond_sp_s4', caseTypeId: 'wt_bond_sp', name: 'Collect Documents', order: 4, description: 'Client confirmed insurer. Collect SSM certificate, proprietor IC, application form, bank statement, and any supporting documents.', requireDocumentsComplete: true, defaultFollowUpSuggestion: 'Chase client for outstanding application documents', isActive: true, slaDays: 7 },
+      { id: 'wt_bond_sp_s5', caseTypeId: 'wt_bond_sp', name: 'Confirm Payment', order: 5, description: 'Client settles premium payment. Confirm amount received and prepare final submission package.', requireDocumentsComplete: false, defaultFollowUpSuggestion: 'Confirm payment received and issue receipt to client', isActive: true, slaDays: 2 },
+      { id: 'wt_bond_sp_s6', caseTypeId: 'wt_bond_sp', name: 'Issue Bond', order: 6, description: 'Submit complete documentation to insurer. Follow up for bond certificate. Verify details on receipt.', requireDocumentsComplete: true, defaultFollowUpSuggestion: 'Follow up with insurer for bond certificate issuance', isActive: true, slaDays: 5 },
+      { id: 'wt_bond_sp_s7', caseTypeId: 'wt_bond_sp', name: 'Close Case', order: 7, description: 'Deliver bond certificate to client. Record acceptance date, bond expiry, and final insurer.', requireDocumentsComplete: true, defaultFollowUpSuggestion: 'Confirm client received bond certificate and record bond expiry date', isActive: true, slaDays: 1 },
     ],
   },
+
+  // ─── 2. Simple Policy Workflow ───────────────────────────────────────────────
   {
-    id: 'wt3',
-    caseType: 'Renewal',
-    description: 'Annual renewal process for existing bonds and policies.',
+    id: 'wt_simple',
+    caseType: 'Simple Policy Workflow',
+    description: 'For straightforward single-policy insurance products — WC, TPL, Fidelity Guarantee, Fire Insurance.',
+    isActive: true,
+    requiredDocuments: [
+      { id: 'wt_simple_d1', caseTypeId: 'wt_simple', workflowStepId: 'wt_simple_s4', name: 'Application Form', description: 'Completed and signed insurance application form (obtain from insurer)', required: true, acceptedFileTypes: ['PDF', 'DOCX'], isActive: true },
+      { id: 'wt_simple_d2', caseTypeId: 'wt_simple', workflowStepId: 'wt_simple_s4', name: 'IC / Passport (Director or Owner)', description: "Copy of Director's or Owner's MyKad or Passport (front and back)", required: true, acceptedFileTypes: ['PDF', 'JPG', 'PNG'], isActive: true },
+      { id: 'wt_simple_d3', caseTypeId: 'wt_simple', workflowStepId: 'wt_simple_s4', name: 'Supporting Documents', description: 'Additional documents specific to the policy type (e.g. workers list for WC, site plan for TPL)', required: false, acceptedFileTypes: ['PDF', 'DOCX', 'XLSX', 'JPG'], isActive: true },
+    ],
+    workflowSteps: [
+      { id: 'wt_simple_s1', caseTypeId: 'wt_simple', name: 'Understand Requirements', order: 1, description: 'Discuss insurance requirements with client. Confirm coverage type, scope, period, and sum insured. Clarify if this is standalone or part of a project.', requireDocumentsComplete: false, defaultFollowUpSuggestion: 'Contact client to understand insurance requirements and coverage scope', isActive: true, slaDays: 2 },
+      { id: 'wt_simple_s2', caseTypeId: 'wt_simple', name: 'Request Quotation', order: 2, description: 'Send quotation requests to suitable insurers with key risk details and coverage requirements.', requireDocumentsComplete: false, defaultFollowUpSuggestion: 'Follow up with insurers for outstanding quotations', isActive: true, aiEmailEnabled: true, slaDays: 3 },
+      { id: 'wt_simple_s3', caseTypeId: 'wt_simple', name: 'Present Quote to Client', order: 3, description: 'Present quotation options to client. Explain coverage, exclusions, and premium. Make a clear recommendation.', requireDocumentsComplete: false, defaultFollowUpSuggestion: 'Follow up with client on insurance quotation decision', isActive: true, slaDays: 2 },
+      { id: 'wt_simple_s4', caseTypeId: 'wt_simple', name: 'Collect Documents', order: 4, description: 'Client confirmed insurer. Collect completed application form and all required supporting documents.', requireDocumentsComplete: true, defaultFollowUpSuggestion: 'Chase client for outstanding application documents', isActive: true, slaDays: 5 },
+      { id: 'wt_simple_s5', caseTypeId: 'wt_simple', name: 'Confirm Payment', order: 5, description: 'Client settles premium. Confirm receipt and prepare policy issuance request for insurer.', requireDocumentsComplete: false, defaultFollowUpSuggestion: 'Confirm premium payment received and issue receipt', isActive: true, slaDays: 2 },
+      { id: 'wt_simple_s6', caseTypeId: 'wt_simple', name: 'Issue Policy', order: 6, description: 'Insurer issues policy certificate. Verify policy number, coverage dates, sum insured, and insured name on receipt.', requireDocumentsComplete: true, defaultFollowUpSuggestion: 'Follow up with insurer for policy certificate issuance', isActive: true, slaDays: 3 },
+      { id: 'wt_simple_s7', caseTypeId: 'wt_simple', name: 'Close Case', order: 7, description: 'Deliver policy documents to client. Record policy number, expiry date, and set renewal reminder 60 days before expiry.', requireDocumentsComplete: true, defaultFollowUpSuggestion: 'Confirm client received policy documents and record policy expiry date', isActive: true, slaDays: 1 },
+    ],
+  },
+
+  // ─── 3. Project Insurance Workflow ──────────────────────────────────────────
+  {
+    id: 'wt_project',
+    caseType: 'Project Insurance Workflow',
+    description: 'For construction project insurance packages — WC + TPL, CAR + TPL, or multi-policy combinations tied to a contract or project.',
+    isActive: true,
+    requiredDocuments: [
+      { id: 'wt_project_d1', caseTypeId: 'wt_project', workflowStepId: 'wt_project_s1', name: 'Contract / Award Letter', description: 'Contract or letter of award showing project value, scope, and duration', required: true, acceptedFileTypes: ['PDF', 'DOCX'], isActive: true },
+      { id: 'wt_project_d2', caseTypeId: 'wt_project', workflowStepId: 'wt_project_s5', name: 'Company Profile', description: 'Company background and track record for project insurance submission', required: true, acceptedFileTypes: ['PDF', 'DOCX'], isActive: true },
+      { id: 'wt_project_d3', caseTypeId: 'wt_project', workflowStepId: 'wt_project_s5', name: 'SSM Certificate', description: 'SSM registration certificate (Form 9, 13, 24, 49)', required: true, acceptedFileTypes: ['PDF', 'JPG', 'PNG'], isActive: true },
+      { id: 'wt_project_d4', caseTypeId: 'wt_project', workflowStepId: 'wt_project_s5', name: "Director's IC / MyKad", description: "MyKad copies for all directors listed in SSM", required: true, acceptedFileTypes: ['PDF', 'JPG', 'PNG'], isActive: true },
+      { id: 'wt_project_d5', caseTypeId: 'wt_project', workflowStepId: 'wt_project_s5', name: 'Application Forms (All Policies)', description: 'Completed and signed application forms for each insurance policy being placed', required: true, acceptedFileTypes: ['PDF', 'DOCX'], isActive: true },
+      { id: 'wt_project_d6', caseTypeId: 'wt_project', workflowStepId: 'wt_project_s5', name: 'Workers List (for WC)', description: 'Full list of workers including names, IC numbers, job scope, and monthly wages', required: false, acceptedFileTypes: ['PDF', 'XLSX', 'DOCX'], isActive: true },
+      { id: 'wt_project_d7', caseTypeId: 'wt_project', workflowStepId: 'wt_project_s5', name: 'Site Plan / Risk Description', description: 'Site layout or written risk description — location, access, surrounding hazards', required: false, acceptedFileTypes: ['PDF', 'JPG', 'PNG'], isActive: true },
+      { id: 'wt_project_d8', caseTypeId: 'wt_project', workflowStepId: 'wt_project_s5', name: 'Bank Statement', description: 'Latest 3 months company bank statement', required: false, acceptedFileTypes: ['PDF'], isActive: true },
+    ],
+    workflowSteps: [
+      { id: 'wt_project_s1', caseTypeId: 'wt_project', name: 'Understand Project Requirements', order: 1, description: 'Understand project scope, contract value, site details, worker count, and coverage requirements. Confirm which policies are needed (WC, TPL, CAR, etc.).', requireDocumentsComplete: false, defaultFollowUpSuggestion: 'Contact client to gather project details and coverage requirements', isActive: true, slaDays: 2 },
+      { id: 'wt_project_s2', caseTypeId: 'wt_project', name: 'Assess Risk & Request Quotations', order: 2, description: 'Prepare risk summary and send quotation requests to selected insurers for all required policies. Use the AI email panel for efficiency.', requireDocumentsComplete: false, defaultFollowUpSuggestion: 'Follow up with insurers for project insurance quotations', isActive: true, aiEmailEnabled: true, slaDays: 5 },
+      { id: 'wt_project_s3', caseTypeId: 'wt_project', name: 'Present Insurance Proposal', order: 3, description: 'Compile all quotations into a proposal. Present coverage, premiums, and insurer recommendations for each policy to client.', requireDocumentsComplete: false, defaultFollowUpSuggestion: 'Follow up with client on project insurance proposal', isActive: true, slaDays: 3 },
+      { id: 'wt_project_s4', caseTypeId: 'wt_project', name: 'Client Confirmation', order: 4, description: 'Client confirms insurer selection for each policy. Obtain written confirmation of approved coverages before proceeding.', requireDocumentsComplete: false, defaultFollowUpSuggestion: 'Obtain written confirmation from client for all selected policies', isActive: true, slaDays: 2 },
+      { id: 'wt_project_s5', caseTypeId: 'wt_project', name: 'Collect Documents', order: 5, description: 'Collect all application documents — company profile, SSM, director IC, application forms, workers list, site plan, and supporting documents.', requireDocumentsComplete: true, defaultFollowUpSuggestion: 'Chase client for outstanding application documents', isActive: true, slaDays: 7 },
+      { id: 'wt_project_s6', caseTypeId: 'wt_project', name: 'Confirm Payment', order: 6, description: 'Client settles premiums for all policies. Confirm receipt of each payment and prepare submission packages.', requireDocumentsComplete: false, defaultFollowUpSuggestion: 'Confirm all premium payments received and issue receipts', isActive: true, slaDays: 2 },
+      { id: 'wt_project_s7', caseTypeId: 'wt_project', name: 'Issue Policies', order: 7, description: 'Submit to insurers. Follow up for all policy certificates. Verify each policy on receipt — coverage dates, sum insured, and insured name.', requireDocumentsComplete: true, defaultFollowUpSuggestion: 'Follow up with insurers for all policy certificates', isActive: true, slaDays: 5 },
+      { id: 'wt_project_s8', caseTypeId: 'wt_project', name: 'Close Case', order: 8, description: 'Deliver all policy documents to client. Record expiry dates for each policy and set renewal reminders.', requireDocumentsComplete: true, defaultFollowUpSuggestion: 'Confirm client received all policy documents and record expiry dates', isActive: true, slaDays: 1 },
+    ],
+  },
+
+  // ─── 4. Claim Workflow ───────────────────────────────────────────────────────
+  {
+    id: 'wt_claim',
+    caseType: 'Claim Workflow',
+    description: 'For handling claims under existing bonds or insurance policies — from claim notification to settlement.',
+    isActive: true,
+    requiredDocuments: [
+      { id: 'wt_claim_d1', caseTypeId: 'wt_claim', name: 'Policy / Bond Certificate', description: 'Copy of the active policy or bond certificate under which the claim is being made', required: true, acceptedFileTypes: ['PDF', 'JPG'], isActive: true },
+      { id: 'wt_claim_d2', caseTypeId: 'wt_claim', workflowStepId: 'wt_claim_s2', name: 'Claim Form', description: 'Completed and signed claim form from the insurer', required: true, acceptedFileTypes: ['PDF', 'DOCX'], isActive: true },
+      { id: 'wt_claim_d3', caseTypeId: 'wt_claim', workflowStepId: 'wt_claim_s2', name: 'Incident / Accident Report', description: 'Written report of the incident — date, time, location, circumstances, and parties involved', required: true, acceptedFileTypes: ['PDF', 'DOCX'], isActive: true },
+      { id: 'wt_claim_d4', caseTypeId: 'wt_claim', workflowStepId: 'wt_claim_s3', name: 'Supporting Evidence', description: 'Photographs, invoices, receipts, or other evidence supporting the claim amount', required: true, acceptedFileTypes: ['PDF', 'JPG', 'PNG', 'XLSX'], isActive: true },
+      { id: 'wt_claim_d5', caseTypeId: 'wt_claim', workflowStepId: 'wt_claim_s3', name: 'Medical Report (if applicable)', description: 'Medical certificate or report from registered physician (required for bodily injury or WC claims)', required: false, acceptedFileTypes: ['PDF', 'JPG'], isActive: true },
+      { id: 'wt_claim_d6', caseTypeId: 'wt_claim', workflowStepId: 'wt_claim_s3', name: 'Police Report (if applicable)', description: 'Police report for accident, theft, or third-party claims', required: false, acceptedFileTypes: ['PDF', 'JPG'], isActive: true },
+    ],
+    workflowSteps: [
+      { id: 'wt_claim_s1', caseTypeId: 'wt_claim', name: 'Receive Claim Notification', order: 1, description: 'Receive claim notification from client. Confirm date of loss, nature of claim, and which policy is affected. Acknowledge receipt and advise on next steps.', requireDocumentsComplete: false, defaultFollowUpSuggestion: 'Acknowledge claim receipt and gather initial details from client', isActive: true, slaDays: 1 },
+      { id: 'wt_claim_s2', caseTypeId: 'wt_claim', name: 'Verify Coverage', order: 2, description: 'Verify the policy is in force on the date of loss, the incident falls within coverage scope, and check any excess, deductible, or exclusions. Advise client accordingly.', requireDocumentsComplete: true, defaultFollowUpSuggestion: 'Confirm policy coverage and advise client of next steps', isActive: true, slaDays: 2 },
+      { id: 'wt_claim_s3', caseTypeId: 'wt_claim', name: 'Submit Claim to Insurer', order: 3, description: 'Compile all claim documents and submit formal claim to insurer. Obtain claim reference number and confirm submission received.', requireDocumentsComplete: true, defaultFollowUpSuggestion: 'Follow up with insurer to confirm claim submission received and get reference number', isActive: true, slaDays: 3 },
+      { id: 'wt_claim_s4', caseTypeId: 'wt_claim', name: 'Follow Up with Insurer', order: 4, description: 'Monitor claim progress. Follow up regularly with insurer. Provide any additional documents requested. Update client on status.', requireDocumentsComplete: false, defaultFollowUpSuggestion: 'Follow up with insurer on claim assessment progress', isActive: true, slaDays: 14 },
+      { id: 'wt_claim_s5', caseTypeId: 'wt_claim', name: 'Claim Assessment', order: 5, description: 'Insurer appoints adjuster or assessor. Facilitate site access and provide additional information as requested. Attend assessment if needed.', requireDocumentsComplete: false, defaultFollowUpSuggestion: 'Follow up with insurer on claim assessment outcome', isActive: true, slaDays: 7 },
+      { id: 'wt_claim_s6', caseTypeId: 'wt_claim', name: 'Claim Settlement', order: 6, description: 'Insurer issues settlement offer. Review offer with client. If acceptable, obtain client written acceptance. Coordinate payment receipt.', requireDocumentsComplete: false, defaultFollowUpSuggestion: 'Advise client on settlement offer and obtain written acceptance', isActive: true, slaDays: 7 },
+      { id: 'wt_claim_s7', caseTypeId: 'wt_claim', name: 'Close Case', order: 7, description: 'Settlement received by client. Record claim outcome, settlement amount, and insurer. Close case with complete documentation on file.', requireDocumentsComplete: false, defaultFollowUpSuggestion: 'Confirm client received claim settlement and close case', isActive: true, slaDays: 2 },
+    ],
+  },
+
+  // ─── 5. Renewal Workflow ─────────────────────────────────────────────────────
+  {
+    id: 'wt_renewal',
+    caseType: 'Renewal Workflow',
+    description: 'Annual renewal process for existing bonds and policies — from expiry identification to renewed certificate delivery.',
     isActive: true,
     requiredDocuments: [
       {
-        id: 'rd20', caseTypeId: 'wt3', name: 'Previous Policy / Bond',
-        description: 'Copy of existing policy or bond certificate for renewal', required: true,
+        id: 'wt_renewal_d1', caseTypeId: 'wt_renewal', name: 'Previous Policy / Bond Certificate',
+        description: 'Copy of existing policy or bond certificate being renewed', required: true,
         acceptedFileTypes: ['PDF', 'JPG'], isActive: true,
         aiPrompt: `This is a performance bond certificate, bank guarantee, or insurance policy document for renewal purposes.
 
 Extract the following:
 - customerName: The INSURED / PRINCIPAL company name and registration number
 - projectName: The project description or risk location as stated in the certificate
-- caseType: Bond or insurance type (e.g. "Performance Bond", "Contractor All Risk", "Public Liability", "Workmen Compensation")
+- caseType: Bond or insurance type (e.g. "Performance Bond", "Contractor All Risk", "Workmen Compensation")
 - amount: Contract value or sum insured (if stated)
-- bondValue: The guaranteed / insured amount — the principal sum of the bond or policy
+- bondValue: The guaranteed / insured amount
 - expiryDate: The bond or policy EXPIRY DATE / Tarikh Tamat / validity end date
 - notes: Certificate or policy number, issuing insurer or bank name`,
       },
-      {
-        id: 'rd21', caseTypeId: 'wt3', name: 'Updated Bank Statement',
-        description: 'Latest 3 months bank statement if required by insurer', required: false,
-        acceptedFileTypes: ['PDF'], isActive: true,
-      },
+      { id: 'wt_renewal_d2', caseTypeId: 'wt_renewal', name: 'Updated Bank Statement', description: 'Latest 3 months bank statement if required by insurer for renewal', required: false, acceptedFileTypes: ['PDF'], isActive: true },
+      { id: 'wt_renewal_d3', caseTypeId: 'wt_renewal', name: 'Revised Workers List (for WC renewals)', description: 'Updated workers list with current headcount, wages, and job scopes', required: false, acceptedFileTypes: ['PDF', 'XLSX'], isActive: true },
     ],
     workflowSteps: [
-      {
-        id: 'ws19', caseTypeId: 'wt3', name: 'Send out for Quotation', order: 1,
-        description: 'Send renewal quotation request to insurer(s) via AI-composed email',
-        requireDocumentsComplete: false,
-        defaultFollowUpSuggestion: 'Follow up with insurer on renewal quotation request',
-        isActive: true,
-        aiEmailEnabled: true,
-      },
-      {
-        id: 'ws20', caseTypeId: 'wt3', name: 'Review Expiry', order: 2,
-        description: 'Review expiry date and initiate renewal process with client',
-        requireDocumentsComplete: false,
-        defaultFollowUpSuggestion: 'Notify client of upcoming renewal',
-        isActive: true,
-      },
-      {
-        id: 'ws21', caseTypeId: 'wt3', name: 'Get Renewal Quote', order: 3,
-        description: 'Obtain renewal quotation from current or alternative insurer',
-        requireDocumentsComplete: false,
-        defaultFollowUpSuggestion: 'Request renewal quotation from insurer',
-        isActive: true,
-      },
-      {
-        id: 'ws22', caseTypeId: 'wt3', name: 'Send to Customer', order: 4,
-        description: 'Present renewal quotation to client for approval',
-        requireDocumentsComplete: false,
-        defaultFollowUpSuggestion: 'Follow up with client on renewal decision',
-        isActive: true,
-      },
-      {
-        id: 'ws23', caseTypeId: 'wt3', name: 'Confirm Renewal', order: 5,
-        description: 'Client approves renewal and authorizes payment',
-        requireDocumentsComplete: true,
-        defaultFollowUpSuggestion: 'Confirm renewal approval and collect payment',
-        isActive: true,
-      },
-      {
-        id: 'ws24', caseTypeId: 'wt3', name: 'Process Renewal', order: 6,
-        description: 'Submit renewal to insurer and obtain new certificate',
-        requireDocumentsComplete: true,
-        defaultFollowUpSuggestion: 'Deliver renewed policy documents to client',
-        isActive: true,
-      },
-      {
-        id: 'ws25', caseTypeId: 'wt3', name: 'Close Case', order: 7,
-        description: 'Renewal complete. New certificate issued to client.',
-        requireDocumentsComplete: true,
-        defaultFollowUpSuggestion: '',
-        isActive: true,
-      },
+      { id: 'wt_renewal_s1', caseTypeId: 'wt_renewal', name: 'Identify Upcoming Renewal', order: 1, description: 'Review expiry date and contact client to confirm renewal intention. Check if sum insured, coverage period, or terms need updating for the renewal.', requireDocumentsComplete: false, defaultFollowUpSuggestion: 'Contact client to confirm renewal intention and check if any changes needed', isActive: true, slaDays: 3 },
+      { id: 'wt_renewal_s2', caseTypeId: 'wt_renewal', name: 'Request Renewal Quotation', order: 2, description: 'Send renewal quotation requests to the current insurer and/or alternative insurers if a market check is warranted.', requireDocumentsComplete: false, defaultFollowUpSuggestion: 'Follow up with insurers for renewal quotations', isActive: true, aiEmailEnabled: true, slaDays: 5 },
+      { id: 'wt_renewal_s3', caseTypeId: 'wt_renewal', name: 'Present Renewal Quote', order: 3, description: 'Present renewal quotation to client. Compare with current terms and advise if switching insurer is beneficial. Recommend course of action.', requireDocumentsComplete: false, defaultFollowUpSuggestion: 'Follow up with client on renewal quotation decision', isActive: true, slaDays: 3 },
+      { id: 'wt_renewal_s4', caseTypeId: 'wt_renewal', name: 'Client Confirmation', order: 4, description: 'Client confirms renewal with selected insurer. Collect premium payment and any updated documents required.', requireDocumentsComplete: false, defaultFollowUpSuggestion: 'Obtain renewal confirmation and collect premium payment', isActive: true, slaDays: 2 },
+      { id: 'wt_renewal_s5', caseTypeId: 'wt_renewal', name: 'Collect Updated Documents', order: 5, description: 'Collect any updated documents required for renewal — financial statements, revised worker lists, or bank statements as required by insurer.', requireDocumentsComplete: false, defaultFollowUpSuggestion: 'Request updated documents from client for renewal submission', isActive: true, slaDays: 5 },
+      { id: 'wt_renewal_s6', caseTypeId: 'wt_renewal', name: 'Process Renewal', order: 6, description: 'Submit renewal to insurer. Follow up for renewed certificate. Verify expiry date and all policy terms on receipt.', requireDocumentsComplete: true, defaultFollowUpSuggestion: 'Follow up with insurer for renewed certificate issuance', isActive: true, slaDays: 5 },
+      { id: 'wt_renewal_s7', caseTypeId: 'wt_renewal', name: 'Close Case', order: 7, description: 'Deliver renewed certificate to client. Update expiry date in system and set next renewal reminder 90 days before the new expiry.', requireDocumentsComplete: true, defaultFollowUpSuggestion: 'Confirm client received renewed certificate and update renewal date', isActive: true, slaDays: 1 },
     ],
   },
+
+  // ─── 6. Endorsement Workflow ─────────────────────────────────────────────────
   {
-    id: 'wt4',
-    caseType: 'Bond Request',
-    businessType: 'Sole Proprietor',
-    description: 'Bond request workflow for sole proprietor (enterprise) applicants — from LOA receipt to bond issuance.',
+    id: 'wt_endorse',
+    caseType: 'Endorsement Workflow',
+    description: 'Mid-term changes to existing bonds or policies — sum insured adjustments, period extensions, name changes, or other amendments.',
     isActive: true,
     requiredDocuments: [
-      // ── Step 1: Receive Letter of Award ──
-      {
-        id: 'rd43', caseTypeId: 'wt4', workflowStepId: 'ws39',
-        name: 'Letter of Award (LOA)',
-        description: 'SST or letter of award from the project owner confirming contract award', required: true,
-        acceptedFileTypes: ['PDF', 'DOCX'], isActive: true,
-        aiPrompt: `This is a Surat Setuju Terima (SST) / Letter of Award from a Malaysian government agency. Extract: customerName (contractor name + reg no), projectName (full works description), caseType (bond type in English), amount (contract value as number), bondValue (bond amount as number), workStartDate (YYYY-MM-DD), workEndDate (YYYY-MM-DD), dlpEndDate (explicit or workEndDate + 12m + 3m + 14d), bondValidUntil (explicit or dlpEndDate + 12m if ≤RM10M), sstNo (contract reference), issuingAgency (government body name). Return as JSON.`,
-      },
-      // ── Step 4: Collect Application Documents ──
-      {
-        id: 'rd40', caseTypeId: 'wt4', workflowStepId: 'ws42',
-        name: 'Bond Application Form',
-        description: 'Completed and signed bond application form', required: true,
-        acceptedFileTypes: ['PDF', 'DOCX'], isActive: true,
-      },
-      {
-        id: 'rd41', caseTypeId: 'wt4', workflowStepId: 'ws42',
-        name: 'SSM Business Certificate (Form D / ROB)',
-        description: 'Business registration certificate from Suruhanjaya Syarikat Malaysia', required: true,
-        acceptedFileTypes: ['PDF', 'JPG', 'PNG'], isActive: true,
-      },
-      {
-        id: 'rd42', caseTypeId: 'wt4', workflowStepId: 'ws42',
-        name: "Proprietor's IC / MyKad",
-        description: "Copy of sole proprietor's MyKad (front and back)", required: true,
-        acceptedFileTypes: ['PDF', 'JPG', 'PNG'], isActive: true,
-      },
-      {
-        id: 'rd43', caseTypeId: 'wt4', name: 'Contract / Award Letter',
-        description: 'SST or letter of award from the project owner', required: true,
-        acceptedFileTypes: ['PDF', 'DOCX'], isActive: true,
-        aiPrompt: `This is a Surat Setuju Terima (SST) / Letter of Award / Contract Acceptance from a Malaysian government agency.
-
-Extract the following fields and return as a single JSON object:
-
-1. customerName
-   The CONTRACTOR's full company name AND registration number
-   Look for: company awarded the contract — "Enterprise", "Sdn. Bhd.", "Sdn Bhd", "Trading", "Resources"
-   NOT the government agency or university
-   Example: "MASAYU ENTERPRISE 198003027177 (000504744-H)"
-   Example: "TNO RESOURCES (003356082-V)"
-
-2. projectName
-   The full project/works description exactly as written in the document
-   Look for: "Kerja-Kerja", "Skop Kerja", "Perihal Kerja", or the bold heading after "Sebutharga Untuk"
-   Copy the full text — do not shorten or summarise
-
-3. caseType
-   The type of bond or security required
-   Look for: "Bon Pelaksanaan", "Wang Jaminan Perlaksanaan", "Jaminan Bank"
-   Return in English: "Performance Bond" or "Bank Guarantee" or "Cash Deposit"
-
-4. amount
-   The total awarded contract value
-   Look for: "Harga Kontrak", "Harga Sebutharga", "Harga Tender", "harga sebanyak Ringgit Malaysia"
-   Return as number only e.g. 267740
-
-5. bondValue
-   The performance bond / deposit amount
-   Look for: "Nilai Bon Pelaksanaan", "bon pelaksanaan...berjumlah", typically 5% of contract value
-   Return as number only e.g. 13387
-
-6. thirdPartyLiability
-   The public liability insurance value
-   Look for: "Polisi Insurans Tanggungan Awam", "Nilai Polisi" under Tanggungan Awam section
-   Return as number only e.g. 100000
-
-7. workStartDate
-   The date work is allowed to begin / site possession date
-   Look for: "Tarikh Mula Kerja", "Tarikh Milik Tapak", "tarikh mula kerja seperti yang disebutkan dalam Lampiran A"
-   Return as YYYY-MM-DD
-
-8. workEndDate
-   The contract completion date
-   Look for: "Tarikh Siap", "Tarikh Tamat Kerja", "Tarikh Siap untuk seluruh kerja-kerja", "Tarikh Siap Kerja"
-   Return as YYYY-MM-DD
-
-9. dlpEndDate
-   The end date of the Defect Liability Period (DLP / Tempoh Tanggungan Kecacatan)
-
-   STEP 1 — Look for an explicit date first:
-   Check "Polisi Insurans Tanggungan Awam" -> "Tempoh Perlindungan" end date
-   Check "Tempoh Sah Laku" under bond section for a stated end date
-   If an explicit end date is found, use it directly.
-
-   STEP 2 — If NO explicit end date is found, CALCULATE it:
-   Formula: workEndDate + 12 months (DLP) + 3 months + 14 days
-
-   Return as YYYY-MM-DD
-
-10. workInsuranceValue
-    The Contractors All Risk (CAR) / Works Insurance / Polisi Insurans Kerja policy value
-    Look for: "Polisi Insurans Kerja", "Nilai Polisi" under Insurans Kerja section
-    Usually equals the contract value
-    Return as number only
-
-11. sebuthargaNo
-    The tender/quotation reference number
-    Look for: "No. Sebutharga", "No. Tender"
-    NOTE: Some JKR documents use "No. Kontrak" only — if there is no "No. Sebutharga" or
-    "No. Tender", return null. Do NOT put the contract number here — that goes into sstNo
-    Return as string e.g. "NETSS202600078" or null
-
-12. sstNo
-    The primary reference number for this contract/acceptance letter
-    Look for in this order of priority:
-    (a) "No. Surat Setuju Terima" e.g. "SST202600224"
-    (b) "No. Kontrak" e.g. "JKR/WPP/Q/10/2026"
-    (c) "Rujukan" / reference number at the top of the letter
-    Return whichever is found first, as a string
-
-13. issuingAgency
-    The name of the government agency or university issuing this contract
-    Return full name including abbreviation
-    e.g. "Universiti Kebangsaan Malaysia (UKM)"
-    e.g. "Jabatan Kerja Raya Wilayah Persekutuan Putrajaya (JKR WPP)"
-
-14. latePenaltyRate
-    The daily late completion penalty rate
-    TYPE A: Fixed table — find the row matching the contract amount, return the daily rate as a number
-    TYPE B: LAD Formula — if only formula stated e.g. "6.40% x Harga Kontrak / 365":
-    Calculate: (percentage / 100) x amount / 365, round to 2 decimal places
-    Return as number only
-
-15. bondValidUntil
-    The expiry date of the performance bond (Tempoh Sah Laku Bon Pelaksanaan)
-    STEP 1 — explicit date from "Tempoh Sah Laku" under "Bon Pelaksanaan"
-    STEP 2 — CALCULATE: amount <= RM10M: dlpEndDate + 12 months; amount > RM10M: dlpEndDate + 24 months
-    Return as YYYY-MM-DD
-
-16. dlpBreakdown
-    { "dlpMonths": number, "bufferMonths": number, "bufferDays": number, "label": string }
-    Default if not found: { "dlpMonths": 12, "bufferMonths": 3, "bufferDays": 14, "label": "12MONTHS + 3MONTHS + 14DAYS" }
-
-Return this exact JSON structure:
-{
-  "customerName": string | null,
-  "projectName": string | null,
-  "caseType": string | null,
-  "amount": number | null,
-  "bondValue": number | null,
-  "thirdPartyLiability": number | null,
-  "workStartDate": string | null,
-  "workEndDate": string | null,
-  "dlpEndDate": string | null,
-  "workInsuranceValue": number | null,
-  "sebuthargaNo": string | null,
-  "sstNo": string | null,
-  "issuingAgency": string | null,
-  "latePenaltyRate": number | null,
-  "bondValidUntil": string | null,
-  "dlpBreakdown": {
-    "dlpMonths": number,
-    "bufferMonths": number,
-    "bufferDays": number,
-    "label": string
-  }
-}`,
-      },
-      {
-        id: 'rd44', caseTypeId: 'wt4', workflowStepId: 'ws42',
-        name: 'Bank Statement',
-        description: 'Latest 3 months personal or business bank statement', required: true,
-        acceptedFileTypes: ['PDF'], isActive: true,
-      },
-      {
-        id: 'rd45', caseTypeId: 'wt4', workflowStepId: 'ws42',
-        name: 'Previous Bond / Policy',
-        description: 'Copy of most recent bond or insurance certificate (if applicable)', required: false,
-        acceptedFileTypes: ['PDF', 'JPG'], isActive: true,
-      },
-      {
-        id: 'rd46', caseTypeId: 'wt4', workflowStepId: 'ws42',
-        name: 'Business Profile',
-        description: 'Business background, track record, and completed projects (optional but recommended for large bonds)', required: false,
-        acceptedFileTypes: ['PDF', 'DOCX'], isActive: true,
-      },
+      { id: 'wt_endorse_d1', caseTypeId: 'wt_endorse', workflowStepId: 'wt_endorse_s2', name: 'Current Policy / Bond Certificate', description: 'Original policy or bond certificate to be endorsed', required: true, acceptedFileTypes: ['PDF', 'JPG'], isActive: true },
+      { id: 'wt_endorse_d2', caseTypeId: 'wt_endorse', workflowStepId: 'wt_endorse_s3', name: 'Endorsement Request Letter', description: "Client's written request for the mid-term change, on company letterhead with authorised signature", required: true, acceptedFileTypes: ['PDF', 'DOCX'], isActive: true },
+      { id: 'wt_endorse_d3', caseTypeId: 'wt_endorse', workflowStepId: 'wt_endorse_s3', name: 'Supporting Documents', description: 'Documents supporting the endorsement request — contract variation order, revised LOA, updated project details', required: false, acceptedFileTypes: ['PDF', 'DOCX', 'JPG'], isActive: true },
     ],
     workflowSteps: [
-      {
-        id: 'ws39', caseTypeId: 'wt4', name: 'Receive LOA', order: 1,
-        description: 'Client submits Letter of Award (LOA). Verify project name, bond value, bond type, and proprietor details before proceeding.',
-        requireDocumentsComplete: true,
-        defaultFollowUpSuggestion: 'Verify LOA details and confirm bond requirements with client',
-        isActive: true,
-        slaDays: 2,
-      },
-      {
-        id: 'ws40', caseTypeId: 'wt4', name: 'Request Quotation', order: 2,
-        description: 'Send quotation requests to selected insurers with LOA and project details.',
-        requireDocumentsComplete: false,
-        defaultFollowUpSuggestion: 'Follow up with insurers for outstanding quotations',
-        isActive: true,
-        aiEmailEnabled: true,
-        slaDays: 5,
-      },
-      {
-        id: 'ws41', caseTypeId: 'wt4', name: 'Quote to Client', order: 3,
-        description: 'Compare received quotations and present recommendation to client. Confirm preferred insurer before collecting documents.',
-        requireDocumentsComplete: false,
-        defaultFollowUpSuggestion: 'Follow up with client on preferred insurer selection',
-        isActive: true,
-        slaDays: 3,
-      },
-      {
-        id: 'ws42', caseTypeId: 'wt4', name: 'Collect Documents', order: 4,
-        description: 'Client confirmed insurer. Collect SSM certificate, proprietor IC, application form, bank statement, and any supporting documents.',
-        requireDocumentsComplete: true,
-        defaultFollowUpSuggestion: 'Chase client for outstanding application documents',
-        isActive: true,
-        slaDays: 7,
-      },
-      {
-        id: 'ws43', caseTypeId: 'wt4', name: 'Confirm Payment', order: 5,
-        description: 'Client settles premium payment. Confirm amount received and prepare final submission package.',
-        requireDocumentsComplete: false,
-        defaultFollowUpSuggestion: 'Confirm payment received and issue receipt to client',
-        isActive: true,
-        slaDays: 2,
-      },
-      {
-        id: 'ws44', caseTypeId: 'wt4', name: 'Issue Bond', order: 6,
-        description: 'Submit complete documentation to insurer. Follow up for bond certificate. Verify details on receipt.',
-        requireDocumentsComplete: true,
-        defaultFollowUpSuggestion: 'Follow up with insurer for bond certificate issuance',
-        isActive: true,
-        slaDays: 5,
-      },
-      {
-        id: 'ws45', caseTypeId: 'wt4', name: 'Close Case', order: 7,
-        description: 'Deliver bond certificate to client. Record acceptance date, bond expiry, and final insurer.',
-        requireDocumentsComplete: true,
-        defaultFollowUpSuggestion: 'Confirm client received bond certificate and record bond expiry date',
-        isActive: true,
-        slaDays: 1,
-      },
+      { id: 'wt_endorse_s1', caseTypeId: 'wt_endorse', name: 'Receive Endorsement Request', order: 1, description: 'Receive request for mid-term change from client. Confirm which policy is affected and exactly what needs to change — sum insured, period, name, or other terms.', requireDocumentsComplete: false, defaultFollowUpSuggestion: 'Acknowledge endorsement request and clarify required changes with client', isActive: true, slaDays: 1 },
+      { id: 'wt_endorse_s2', caseTypeId: 'wt_endorse', name: 'Verify Current Policy', order: 2, description: 'Obtain current policy or bond certificate. Verify existing terms, check if the requested change is permissible, and determine if additional premium applies.', requireDocumentsComplete: true, defaultFollowUpSuggestion: 'Obtain current policy certificate from client or insurer records', isActive: true, slaDays: 2 },
+      { id: 'wt_endorse_s3', caseTypeId: 'wt_endorse', name: 'Submit Endorsement to Insurer', order: 3, description: "Prepare endorsement request with client's supporting documents and submit to insurer for approval.", requireDocumentsComplete: true, defaultFollowUpSuggestion: 'Follow up with insurer to confirm endorsement request received', isActive: true, slaDays: 3 },
+      { id: 'wt_endorse_s4', caseTypeId: 'wt_endorse', name: 'Get Endorsement Approval', order: 4, description: 'Follow up with insurer for endorsement approval. Collect any additional premium debit note or process refund credit note as applicable.', requireDocumentsComplete: false, defaultFollowUpSuggestion: 'Follow up with insurer on endorsement approval and additional premium or refund', isActive: true, slaDays: 7 },
+      { id: 'wt_endorse_s5', caseTypeId: 'wt_endorse', name: 'Issue Endorsement Certificate', order: 5, description: 'Receive endorsement certificate from insurer. Verify all amended terms are correctly reflected before delivering to client.', requireDocumentsComplete: false, defaultFollowUpSuggestion: 'Follow up with insurer for endorsement certificate issuance', isActive: true, slaDays: 3 },
+      { id: 'wt_endorse_s6', caseTypeId: 'wt_endorse', name: 'Close Case', order: 6, description: 'Deliver endorsement certificate to client. Update case records to reflect the amended policy terms and new effective date.', requireDocumentsComplete: false, defaultFollowUpSuggestion: 'Confirm client received endorsement certificate and update policy records', isActive: true, slaDays: 1 },
+    ],
+  },
+
+  // ─── 7. Servicing Workflow ───────────────────────────────────────────────────
+  {
+    id: 'wt_service',
+    caseType: 'Servicing Workflow',
+    description: 'Administrative and servicing requests — certificate copies, policy queries, payment records, and general client support.',
+    isActive: true,
+    requiredDocuments: [
+      { id: 'wt_service_d1', caseTypeId: 'wt_service', name: 'Supporting Documents', description: 'Any documents provided by client in relation to the servicing request', required: false, acceptedFileTypes: ['PDF', 'DOCX', 'JPG', 'PNG'], isActive: true },
+    ],
+    workflowSteps: [
+      { id: 'wt_service_s1', caseTypeId: 'wt_service', name: 'Receive Servicing Request', order: 1, description: 'Receive and log the servicing request. Confirm what is needed: certificate copy, policy clarification, payment record, certificate of currency, or other.', requireDocumentsComplete: false, defaultFollowUpSuggestion: 'Acknowledge servicing request and clarify requirements with client', isActive: true, slaDays: 1 },
+      { id: 'wt_service_s2', caseTypeId: 'wt_service', name: 'Verify Policy Details', order: 2, description: 'Verify current policy status, insurer, and terms. Determine if the request can be fulfilled internally or requires insurer involvement.', requireDocumentsComplete: false, defaultFollowUpSuggestion: 'Verify policy details and confirm ability to fulfil request', isActive: true, slaDays: 1 },
+      { id: 'wt_service_s3', caseTypeId: 'wt_service', name: 'Process Request', order: 3, description: 'Process the request — obtain documents from insurer, prepare requested information, or coordinate with relevant parties to fulfil the request.', requireDocumentsComplete: false, defaultFollowUpSuggestion: 'Follow up with insurer or internal team to process servicing request', isActive: true, slaDays: 3 },
+      { id: 'wt_service_s4', caseTypeId: 'wt_service', name: 'Deliver to Client', order: 4, description: 'Deliver requested documents or information to client via preferred channel (email, courier, or in-person). Confirm receipt.', requireDocumentsComplete: false, defaultFollowUpSuggestion: 'Confirm client received requested information or documents', isActive: true, slaDays: 1 },
+      { id: 'wt_service_s5', caseTypeId: 'wt_service', name: 'Close Case', order: 5, description: 'Request fulfilled. Record outcome and close case. Note any follow-on actions required (e.g. pending renewal, pending endorsement).', requireDocumentsComplete: false, defaultFollowUpSuggestion: 'Confirm servicing request completed and close case', isActive: true, slaDays: 1 },
     ],
   },
 ]
+
 
 // ─── Inquiries ────────────────────────────────────────────────────────────────
 
