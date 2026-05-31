@@ -16,6 +16,7 @@ import {
   mockSettingsInsurers,
 } from './mock-data'
 import { generateId, nowIso } from './utils'
+import { getWorkflowTemplate } from './workflow'
 
 type SettingsData = Record<SettingsCategory, SettingsItem[]>
 
@@ -142,6 +143,7 @@ const fromCase = (r: Row): Case => ({
   archivedAt: r.archived_at ?? undefined,
   acceptanceDate: r.acceptance_date ?? undefined,
   acceptedBy: r.accepted_by ?? undefined,
+  workflowTemplateId: r.workflow_template_id ?? undefined,
 })
 const toCase = (c: Case) => ({
   id: c.id, case_title: c.caseTitle, customer_id: c.customerId, customer_name: c.customerName,
@@ -156,6 +158,7 @@ const toCase = (c: Case) => ({
   archived_at: c.archivedAt ?? null,
   acceptance_date: c.acceptanceDate ?? null,
   accepted_by: c.acceptedBy ?? null,
+  workflow_template_id: c.workflowTemplateId ?? null,
 })
 
 const fromCaseNote = (r: Row): CaseNote => ({
@@ -459,7 +462,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // ─── Cases ────────────────────────────────────────────────────────────────
 
   const addCase = (c: Omit<Case, 'id' | 'createdAt'>): string => {
-    const row: Case = { ...c, id: generateId(), createdAt: nowIso(), updatedAt: nowIso() }
+    const customer = customers.find(x => x.id === c.customerId)
+    const template = getWorkflowTemplate(c.caseType, workflowTemplates, customer?.businessType)
+    const row: Case = { ...c, id: generateId(), createdAt: nowIso(), updatedAt: nowIso(), workflowTemplateId: template?.id }
     setCases(prev => [row, ...prev])
     createClient().from('cases').insert(toCase(row)).then()
     return row.id

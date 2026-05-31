@@ -8,7 +8,7 @@ import { useAuth } from '@/lib/auth'
 import type { CaseFile, WorkflowStep } from '@/lib/types'
 import { WAITING_FOR_OPTIONS } from '@/lib/types'
 import {
-  getWorkflowTemplate, getActiveSteps, getCaseReadiness, getDocumentCompleteness,
+  resolveTemplate, getWorkflowTemplate, getActiveSteps, getCaseReadiness, getDocumentCompleteness,
   getMissingRequiredDocs, getCurrentStep, getNextStep, getUnassignedFiles,
   getDocsForStep, getStepDocumentCompleteness, getNextRecommendedAction,
 } from '@/lib/workflow'
@@ -70,7 +70,7 @@ export default function CaseDetailPage() {
   }
 
   const customer = customers.find(c => c.id === caseItem.customerId)
-  const template = getWorkflowTemplate(caseItem.caseType, workflowTemplates, customer?.businessType)
+  const template = resolveTemplate(caseItem, workflowTemplates, customer?.businessType)
   const steps = getActiveSteps(template)
   const caseDocs = caseFiles.filter(f => f.caseId === id)
   const unassignedDocs = getUnassignedFiles(id, template, caseDocs)
@@ -869,7 +869,10 @@ export default function CaseDetailPage() {
             if (editInfoForm.bondExpiryDate !== (caseItem.bondExpiryDate ?? '')) changes.push(`Bond Expiry: ${caseItem.bondExpiryDate || '—'} → ${editInfoForm.bondExpiryDate || '—'}`)
             if (editInfoForm.waitingFor !== (caseItem.waitingFor ?? '')) changes.push(`Waiting For: ${caseItem.waitingFor || '—'} → ${editInfoForm.waitingFor || '—'}`)
             if (editInfoForm.targetInsurer !== (caseItem.finalInsurer ?? '')) changes.push(`Target Insurer: ${caseItem.finalInsurer || '—'} → ${editInfoForm.targetInsurer || '—'}`)
-            updateCase(id, { customerId: editInfoForm.customerId, customerName: newCustomer?.customerName ?? caseItem.customerName, caseTitle: editInfoForm.caseTitle, caseType: editInfoForm.caseType, amount: editInfoForm.amount, personInCharge: editInfoForm.personInCharge, bondPrincipal: editInfoForm.bondPrincipal || undefined, bondExpiryDate: editInfoForm.bondExpiryDate || undefined, waitingFor: (editInfoForm.waitingFor as typeof WAITING_FOR_OPTIONS[number]) || null, finalInsurer: editInfoForm.targetInsurer || undefined })
+            const newTemplateId = editInfoForm.caseType !== caseItem.caseType
+              ? getWorkflowTemplate(editInfoForm.caseType, workflowTemplates, newCustomer?.businessType ?? customer?.businessType)?.id
+              : caseItem.workflowTemplateId
+            updateCase(id, { customerId: editInfoForm.customerId, customerName: newCustomer?.customerName ?? caseItem.customerName, caseTitle: editInfoForm.caseTitle, caseType: editInfoForm.caseType, amount: editInfoForm.amount, personInCharge: editInfoForm.personInCharge, bondPrincipal: editInfoForm.bondPrincipal || undefined, bondExpiryDate: editInfoForm.bondExpiryDate || undefined, waitingFor: (editInfoForm.waitingFor as typeof WAITING_FOR_OPTIONS[number]) || null, finalInsurer: editInfoForm.targetInsurer || undefined, workflowTemplateId: newTemplateId })
             if (changes.length > 0) {
               addActivityLog({ caseId: id, caseTitle: editInfoForm.caseTitle, actionType: 'CASE_UPDATED', title: 'Case info updated', description: changes.join('; '), changedBy: currentUser?.fullName ?? 'Unknown' })
             }

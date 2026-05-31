@@ -17,6 +17,33 @@ export function getWorkflowTemplate(
   return matching.find(t => !t.businessType) ?? matching[0]
 }
 
+/** Look up a template by its stored ID (ignores isActive — the case owns it). */
+export function getWorkflowTemplateById(
+  templateId: string | undefined,
+  templates: WorkflowTemplate[]
+): WorkflowTemplate | null {
+  if (!templateId) return null
+  return templates.find(t => t.id === templateId) ?? null
+}
+
+/**
+ * Resolve the workflow template for a case.
+ * Prefers the snapshotted templateId stored on the case (so template edits
+ * don't affect existing cases). Falls back to caseType lookup for old cases
+ * that predate the snapshot feature.
+ */
+export function resolveTemplate(
+  caseItem: { workflowTemplateId?: string; caseType: string },
+  templates: WorkflowTemplate[],
+  businessType?: string
+): WorkflowTemplate | null {
+  if (caseItem.workflowTemplateId) {
+    const byId = getWorkflowTemplateById(caseItem.workflowTemplateId, templates)
+    if (byId) return byId
+  }
+  return getWorkflowTemplate(caseItem.caseType, templates, businessType)
+}
+
 export function getActiveSteps(template: WorkflowTemplate | null): WorkflowStep[] {
   if (!template) return []
   return [...template.workflowSteps.filter(s => s.isActive)].sort((a, b) => a.order - b.order)

@@ -100,6 +100,7 @@ export type Case = {
   archivedAt?: string       // set when case is archived (soft delete)
   acceptanceDate?: string   // date customer confirmed / accepted the quotation
   acceptedBy?: string       // name of contact who confirmed acceptance
+  workflowTemplateId?: string  // snapshot of template ID at case creation — insulates from future template edits
 }
 
 export type CaseNote = {
