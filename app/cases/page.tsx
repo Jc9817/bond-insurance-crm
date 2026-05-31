@@ -83,15 +83,16 @@ function CaseForm({ initial, customers, pics, onSave, onCancel }: {
         <input className="input" value={form.caseTitle} onChange={set('caseTitle')} placeholder="e.g. Performance Bond — Project XYZ" />
       </div>
       <div>
-        <label className="label">Customer *</label>
+        <label className="label">Main Contractor *</label>
         <select className="input" value={form.customerId} onChange={set('customerId')}>
-          <option value="">— Select Customer —</option>
+          <option value="">— Select Main Contractor —</option>
           {customers.map(c => <option key={c.id} value={c.id}>{c.customerName}</option>)}
         </select>
       </div>
       <div>
-        <label className="label">Principal <span className="text-gray-400 font-normal">(name on the bond, if different from customer)</span></label>
-        <input className="input" value={form.bondPrincipal || ''} onChange={set('bondPrincipal')} placeholder="e.g. JUTA-KASEH JV Sdn Bhd" />
+        <label className="label">Contractor <span className="text-gray-400 font-normal">(optional)</span></label>
+        <input className="input" value={form.bondPrincipal || ''} onChange={set('bondPrincipal')} placeholder="Leave blank if Main Contractor is doing the work directly" />
+        <p className="text-xs text-gray-400 mt-1">Fill in only if a sub-contractor is executing the works under the Main Contractor's name or licence.</p>
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div>
@@ -178,7 +179,7 @@ export default function CasesPage() {
     <div className="p-8 max-w-screen-xl mx-auto">
       <PageHeader
         title="Cases"
-        subtitle={principalFilter !== 'All' ? `Showing cases for principal: ${principalFilter}` : `${cases.length} total cases`}
+        subtitle={principalFilter !== 'All' ? `Showing cases for contractor: ${principalFilter}` : `${cases.length} total cases`}
         action={<button className="btn-primary" onClick={() => setModal('add')}>+ New Case</button>}
       />
 
@@ -191,7 +192,7 @@ export default function CasesPage() {
         </select>
         {principalFilter !== 'All' && (
           <div className="flex items-center gap-1.5 bg-indigo-50 border border-indigo-200 text-indigo-700 text-sm font-medium rounded-xl px-3 py-2">
-            <span className="text-xs text-indigo-400 font-normal">Principal:</span>
+            <span className="text-xs text-indigo-400 font-normal">Contractor:</span>
             {principalFilter}
             <button
               onClick={() => setPrincipalFilter('All')}
@@ -266,7 +267,7 @@ export default function CasesPage() {
                     <td className="table-td">
                       <span className="text-gray-500 whitespace-nowrap">{c.customerName}</span>
                       {c.bondPrincipal && c.bondPrincipal !== c.customerName && (
-                        <p className="text-xs text-indigo-600 whitespace-nowrap mt-0.5">Principal: {c.bondPrincipal}</p>
+                        <p className="text-xs text-indigo-600 whitespace-nowrap mt-0.5">Contractor: {c.bondPrincipal}</p>
                       )}
                     </td>
                     <td className="table-td text-gray-500 whitespace-nowrap">{c.caseType || '—'}</td>
