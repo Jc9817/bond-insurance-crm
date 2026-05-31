@@ -209,8 +209,18 @@ export default function DocumentChecklist({ caseId, caseTitle, template, caseFil
   const handleFileSelect = async (docId: string, file: File, docName: string, aiPrompt?: string) => {
     setUploadingDocId(docId)
     try {
-      const fileDataUrl = await uploadToStorage(file, caseId)
       const existingFile = getUploadedFileForDoc(docId, caseId, caseFiles)
+
+      // Clear the old file's slot in Supabase BEFORE inserting the new one.
+      // Without this await, both records race to own the same required_document_id → 409 Conflict.
+      if (existingFile) {
+        await createClient()
+          .from('case_files')
+          .update({ required_document_id: null })
+          .eq('id', existingFile.id)
+      }
+
+      const fileDataUrl = await uploadToStorage(file, caseId)
       const newId = addCaseFile({
         caseId,
         fileName: file.name,
