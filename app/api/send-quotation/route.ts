@@ -42,6 +42,7 @@ export async function POST(req: NextRequest) {
   try {
     const {
       recipientEmail,
+      ccEmails,         // string[] — optional CC addresses
       recipientTitle,
       coverNotes,       // string | string[]
       bondType,
@@ -130,10 +131,12 @@ ${senderName ?? ''}`
     }
 
     // Build Microsoft Graph message
+    const ccList: string[] = Array.isArray(ccEmails) ? ccEmails.filter(Boolean) : []
     const message = {
       subject,
       body: { contentType: 'Text', content: bodyText },
       toRecipients: [{ emailAddress: { address: recipientEmail } }],
+      ...(ccList.length > 0 ? { ccRecipients: ccList.map(addr => ({ emailAddress: { address: addr } })) } : {}),
       ...(attachments.length > 0 ? { attachments } : {}),
     }
 

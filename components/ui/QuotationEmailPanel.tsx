@@ -4,12 +4,12 @@ import { useState, useEffect } from 'react'
 import { useStore } from '@/lib/store'
 import { createClient } from '@/utils/supabase/client'
 import type { Case, WorkflowStep } from '@/lib/types'
-import { formatCurrency } from '@/lib/utils'
 
 type EmailEntry = {
   id: string
   insurerName: string
   emailTo: string
+  emailCc: string
   recipientTitle: string
   subject: string
   body: string
@@ -67,12 +67,12 @@ export default function QuotationEmailPanel({ caseItem, step, customerName, docu
     coverNotes: '',
   })
   const [entries, setEntries] = useState<EmailEntry[]>([])
-  const [generating, setGenerating] = useState<string | null>(null)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [showAddForm, setShowAddForm] = useState(entries.length === 0)
   const [addSelect, setAddSelect] = useState('')
   const [addCustomName, setAddCustomName] = useState('')
   const [addEmail, setAddEmail] = useState('')
+  const [addCc, setAddCc] = useState('')
   const [addTitle, setAddTitle] = useState('')
 
   const resolvedInsurerName = addSelect === '__other__' ? addCustomName : addSelect
@@ -115,43 +115,16 @@ ${caseItem.personInCharge}`
     const newId = String(Date.now())
     const template = buildTemplate(name, addTitle)
     setEntries(prev => [...prev, {
-      id: newId, insurerName: name, emailTo: email,
+      id: newId, insurerName: name, emailTo: email, emailCc: addCc.trim(),
       recipientTitle: addTitle, ...template, status: 'draft',
     }])
     setExpandedId(newId)
     setAddSelect('')
     setAddCustomName('')
     setAddEmail('')
+    setAddCc('')
     setAddTitle('')
     setShowAddForm(false)
-  }
-
-  const generateEmail = async (entry: EmailEntry) => {
-    setGenerating(entry.id)
-    try {
-      const res = await fetch('/api/generate-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          caseTitle: caseItem.caseTitle,
-          caseType: bondDetails.bondType || caseItem.caseType,
-          customerName,
-          principalName: bondDetails.principalName,
-          bondAmount: formatCurrency(bondDetails.bondAmount),
-          amount: formatCurrency(bondDetails.bondAmount),
-          personInCharge: caseItem.personInCharge,
-          insurerName: entry.insurerName,
-          notes: '',
-          aiEmailPrompt: step.aiEmailPrompt,
-        }),
-      })
-      if (res.ok) {
-        const { subject, body } = await res.json()
-        updateEntry(entry.id, { subject, body })
-      }
-    } finally {
-      setGenerating(null)
-    }
   }
 
   const sendEmail = async (entry: EmailEntry) => {
@@ -165,6 +138,7 @@ ${caseItem.personInCharge}`
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           recipientEmail: entry.emailTo,
+          ccEmails: entry.emailCc ? entry.emailCc.split(',').map(s => s.trim()).filter(Boolean) : [],
           recipientTitle: entry.recipientTitle || `${entry.insurerName} Team`,
           coverNotes: coverNotesArr,
           bondType: bondDetails.bondType || caseItem.caseType,
@@ -289,7 +263,6 @@ ${caseItem.personInCharge}`
           <div className="divide-y divide-gray-100">
             {entries.map((entry, idx) => {
               const isExpanded = expandedId === entry.id
-              const isGen = generating === entry.id
               const isSent = entry.status === 'sent'
               const isSending = entry.status === 'sending'
 
@@ -301,8 +274,7 @@ ${caseItem.personInCharge}`
                       isSent ? 'bg-green-500 text-white' :
                       entry.status === 'error' ? 'bg-red-100 text-red-600' :
                       'bg-gray-100 text-gray-600'
-                    }`}>
-                      {isSent ? '✓' : idx + 1}
+                    }`}>{isSent ? '✓' : idx + 1}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-gray-800">{entry.insurerName}</p>
@@ -355,28 +327,30 @@ ${caseItem.personInCharge}`
                   {/* Expanded email editor */}
                   {isExpanded && (
                     <div className="mx-5 mb-4 rounded-xl border border-gray-200 overflow-hidden">
-                      <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 border-b border-gray-200">
+                      <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-200">
                         <p className="text-xs font-semibold text-gray-500">Email preview</p>
-                        {!isSent && (
-                          <button
-                            onClick={() => generateEmail(entry)}
-                            disabled={isGen}
-                            className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800 disabled:opacity-50 font-medium transition-colors"
-                          >
-                            {isGen ? (
-                              <><span className="w-3 h-3 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />Generating…</>
-                            ) : (
-                              <>
-                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.347.347a3.75 3.75 0 01-5.303 0l-.347-.347z" />
-                                </svg>
-                                Customise with AI
-                              </>
-                            )}
-                          </button>
-                        )}
                       </div>
                       <div className="p-4 space-y-3 bg-white">
+                        <div>
+                          <label className="label">To</label>
+                          <input
+                            className="input text-sm"
+                            value={entry.emailTo}
+                            onChange={e => updateEntry(entry.id, { emailTo: e.target.value })}
+                            disabled={isSent}
+                            placeholder="recipient@insurer.com"
+                          />
+                        </div>
+                        <div>
+                          <label className="label">CC <span className="text-gray-400 font-normal">(comma-separated)</span></label>
+                          <input
+                            className="input text-sm"
+                            value={entry.emailCc}
+                            onChange={e => updateEntry(entry.id, { emailCc: e.target.value })}
+                            disabled={isSent}
+                            placeholder="cc1@example.com, cc2@example.com"
+                          />
+                        </div>
                         <div>
                           <label className="label">Subject</label>
                           <input
@@ -471,6 +445,15 @@ ${caseItem.personInCharge}`
               )}
             </div>
             <div>
+              <label className="label">CC <span className="text-gray-400 font-normal">(comma-separated, optional)</span></label>
+              <input
+                className="input text-sm"
+                value={addCc}
+                onChange={e => setAddCc(e.target.value)}
+                placeholder="cc1@example.com, cc2@example.com"
+              />
+            </div>
+            <div>
               <label className="label">Salutation / Dear… <span className="text-gray-400 font-normal">(optional)</span></label>
               <input
                 className="input text-sm"
@@ -492,7 +475,7 @@ ${caseItem.personInCharge}`
             </button>
             {entries.length > 0 && (
               <button
-                onClick={() => { setShowAddForm(false); setAddSelect(''); setAddCustomName(''); setAddEmail('') }}
+                onClick={() => { setShowAddForm(false); setAddSelect(''); setAddCustomName(''); setAddEmail(''); setAddCc('') }}
                 className="btn-secondary text-sm"
               >
                 Cancel
