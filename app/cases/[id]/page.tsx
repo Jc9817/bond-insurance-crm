@@ -502,6 +502,7 @@ export default function CaseDetailPage() {
                   caseItem={caseItem}
                   step={viewingStep}
                   customerName={customer?.customerName ?? caseItem.customerName}
+                  documentUrl={caseDocs.find(f => f.fileDataUrl?.startsWith('http'))?.fileDataUrl}
                 />
               </div>
             ) : (

@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useStore } from '@/lib/store'
+import { createClient } from '@/utils/supabase/client'
 import type { Case, WorkflowStep } from '@/lib/types'
 import { formatCurrency } from '@/lib/utils'
 
@@ -9,33 +10,61 @@ type EmailEntry = {
   id: string
   insurerName: string
   emailTo: string
+  recipientTitle: string
   subject: string
   body: string
   status: 'draft' | 'sending' | 'sent' | 'error'
   sentAt?: string
   errorMsg?: string
+  warning?: string
 }
 
 type BondDetails = {
   principalName: string
   bondAmount: number
   bondType: string
+  projectName: string
+  coverNotes: string   // comma-separated cover note numbers
 }
+
+type InsurerOption = { id: string; name: string; email: string }
 
 type Props = {
   caseItem: Case
   step: WorkflowStep
   customerName: string
+  documentUrl?: string   // Supabase storage URL of the LOA/main document to attach
 }
 
-export default function QuotationEmailPanel({ caseItem, step, customerName }: Props) {
+export default function QuotationEmailPanel({ caseItem, step, customerName, documentUrl }: Props) {
   const { settingsData } = useStore()
-  const insurerOptions = settingsData.insurers.filter(i => i.isActive).map(i => i.name)
+
+  // Insurer list — loaded from Supabase `insurers` table (with emails), falls back to settings
+  const [insurerOptions, setInsurerOptions] = useState<InsurerOption[]>([])
+  useEffect(() => {
+    const sb = createClient()
+    sb.from('insurers').select('id, name, email').order('name')
+      .then(({ data }) => {
+        if (data && data.length > 0) {
+          setInsurerOptions(data as InsurerOption[])
+        } else {
+          // Fall back to settings list (no email addresses)
+          setInsurerOptions(
+            settingsData.insurers
+              .filter(i => i.isActive)
+              .map(i => ({ id: i.id, name: i.name, email: '' }))
+          )
+        }
+      })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const [bondDetails, setBondDetails] = useState<BondDetails>({
     principalName: caseItem.bondPrincipal ?? customerName,
     bondAmount: caseItem.amount,
     bondType: caseItem.caseType,
+    projectName: caseItem.caseTitle,
+    coverNotes: '',
   })
   const [entries, setEntries] = useState<EmailEntry[]>([])
   const [generating, setGenerating] = useState<string | null>(null)
@@ -44,46 +73,56 @@ export default function QuotationEmailPanel({ caseItem, step, customerName }: Pr
   const [addSelect, setAddSelect] = useState('')
   const [addCustomName, setAddCustomName] = useState('')
   const [addEmail, setAddEmail] = useState('')
+  const [addTitle, setAddTitle] = useState('')
 
   const resolvedInsurerName = addSelect === '__other__' ? addCustomName : addSelect
+
+  // Auto-fill email when a known insurer is selected
+  const handleInsurerSelect = (value: string) => {
+    setAddSelect(value)
+    setAddCustomName('')
+    if (value && value !== '__other__') {
+      const match = insurerOptions.find(i => i.name === value)
+      if (match?.email) setAddEmail(match.email)
+    }
+  }
 
   const updateEntry = (id: string, patch: Partial<EmailEntry>) =>
     setEntries(prev => prev.map(e => e.id === id ? { ...e, ...patch } : e))
 
-  const buildTemplate = (insurerName: string): { subject: string; body: string } => ({
-    subject: `Quotation Request — ${bondDetails.bondType || caseItem.caseType} | ${bondDetails.principalName}`,
-    body: `Dear ${insurerName} Team,
+  const buildTemplate = (insurerName: string, recipientTitle: string): { subject: string; body: string } => {
+    const coverNotesStr = bondDetails.coverNotes.trim()
+    const amountFormatted = Number(bondDetails.bondAmount || 0).toLocaleString('en-MY', {
+      minimumFractionDigits: 2, maximumFractionDigits: 2,
+    })
+    const greeting = recipientTitle.trim() || `${insurerName} Team`
+    const subject = `Cover Note ${coverNotesStr} : Quotation of ${bondDetails.bondType || caseItem.caseType} - ${bondDetails.projectName} - ${bondDetails.principalName} (CV RM${amountFormatted})`
+    const body = `Dear ${greeting},
 
-We are pleased to request a quotation on behalf of our client for the following:
+Cover Note ${coverNotesStr} : Quotation of ${bondDetails.bondType || caseItem.caseType} - ${bondDetails.projectName} - ${bondDetails.principalName} (CV RM${amountFormatted})
 
-Principal Name   : ${bondDetails.principalName}
-Bond / Policy    : ${bondDetails.bondType || caseItem.caseType}
-Sum Insured      : ${formatCurrency(bondDetails.bondAmount)}
-Applicant        : ${customerName}
-Person in Charge : ${caseItem.personInCharge}
+Thanks
 
-Kindly provide us with your best premium offer at your earliest convenience. Please also include any applicable terms and conditions.
-
-Should you require any further information or supporting documents, please do not hesitate to contact us.
-
-Thank you.
-
-Best regards,
-${caseItem.personInCharge}
-Bond Insurance CRM`,
-  })
+Regards
+${caseItem.personInCharge}`
+    return { subject, body }
+  }
 
   const addInsurer = () => {
     const name = resolvedInsurerName.trim()
     const email = addEmail.trim()
     if (!name || !email) return
     const newId = String(Date.now())
-    const template = buildTemplate(name)
-    setEntries(prev => [...prev, { id: newId, insurerName: name, emailTo: email, ...template, status: 'draft' }])
+    const template = buildTemplate(name, addTitle)
+    setEntries(prev => [...prev, {
+      id: newId, insurerName: name, emailTo: email,
+      recipientTitle: addTitle, ...template, status: 'draft',
+    }])
     setExpandedId(newId)
     setAddSelect('')
     setAddCustomName('')
     setAddEmail('')
+    setAddTitle('')
     setShowAddForm(false)
   }
 
@@ -116,22 +155,39 @@ Bond Insurance CRM`,
   }
 
   const sendEmail = async (entry: EmailEntry) => {
-    if (!entry.emailTo || !entry.subject || !entry.body) return
+    if (!entry.emailTo) return
     updateEntry(entry.id, { status: 'sending' })
     try {
-      const res = await fetch('/api/send-email', {
+      const coverNotesArr = bondDetails.coverNotes
+        .split(',').map(s => s.trim()).filter(Boolean)
+      const res = await fetch('/api/send-quotation', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ emailTo: entry.emailTo, emailSubject: entry.subject, emailBody: entry.body }),
+        body: JSON.stringify({
+          recipientEmail: entry.emailTo,
+          recipientTitle: entry.recipientTitle || `${entry.insurerName} Team`,
+          coverNotes: coverNotesArr,
+          bondType: bondDetails.bondType || caseItem.caseType,
+          projectName: bondDetails.projectName,
+          principalName: bondDetails.principalName,
+          amount: bondDetails.bondAmount,
+          senderName: caseItem.personInCharge,
+          documentUrl: documentUrl ?? null,
+        }),
       })
-      if (res.ok) {
-        updateEntry(entry.id, { status: 'sent', sentAt: new Date().toISOString() })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        updateEntry(entry.id, {
+          status: 'sent',
+          sentAt: new Date().toISOString(),
+          subject: data.subject ?? entry.subject,
+          warning: data.warning,
+        })
       } else {
-        const { error } = await res.json()
-        updateEntry(entry.id, { status: 'error', errorMsg: error ?? 'Send failed' })
+        updateEntry(entry.id, { status: 'error', errorMsg: data.error ?? 'Send failed' })
       }
     } catch {
-      updateEntry(entry.id, { status: 'error', errorMsg: 'Network error' })
+      updateEntry(entry.id, { status: 'error', errorMsg: 'Network error — check your connection' })
     }
   }
 
@@ -159,8 +215,17 @@ Bond Insurance CRM`,
       {/* ── Bond Details — shared across all emails ── */}
       <div className="px-5 py-4 bg-blue-50 border-b border-blue-100">
         <p className="text-xs font-bold text-blue-800 uppercase tracking-wide mb-0.5">Step 1 — Bond Details</p>
-        <p className="text-xs text-blue-500 mb-3">These values will be inserted into every email automatically.</p>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <p className="text-xs text-blue-500 mb-3">These values are inserted into the subject and body of every email.</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+          <div>
+            <label className="label text-blue-800">Cover Note No. <span className="font-normal text-blue-400">(comma-separated if multiple)</span></label>
+            <input
+              className="input text-sm"
+              value={bondDetails.coverNotes}
+              onChange={e => setBondDetails(p => ({ ...p, coverNotes: e.target.value }))}
+              placeholder="e.g. CN-2026-001, CN-2026-002"
+            />
+          </div>
           <div>
             <label className="label text-blue-800">Principal Name *</label>
             <input
@@ -169,19 +234,16 @@ Bond Insurance CRM`,
               onChange={e => setBondDetails(p => ({ ...p, principalName: e.target.value }))}
               placeholder="e.g. JUTA-KASEH JV Sdn Bhd"
             />
-            <p className="text-xs text-blue-400 mt-1">Entity named on the bond document</p>
+            <p className="text-xs text-blue-400 mt-1">Entity named on the bond</p>
           </div>
           <div>
-            <label className="label text-blue-800">Sum Insured (RM) *</label>
+            <label className="label text-blue-800">Project Name *</label>
             <input
               className="input text-sm"
-              type="number"
-              min={0}
-              value={bondDetails.bondAmount || ''}
-              onChange={e => setBondDetails(p => ({ ...p, bondAmount: Number(e.target.value) }))}
-              placeholder="0"
+              value={bondDetails.projectName}
+              onChange={e => setBondDetails(p => ({ ...p, projectName: e.target.value }))}
+              placeholder="e.g. Projek Pembinaan Sekolah Daerah Petaling"
             />
-            <p className="text-xs text-blue-400 mt-1">Bond amount to be covered</p>
           </div>
           <div>
             <label className="label text-blue-800">Bond / Policy Type</label>
@@ -192,6 +254,29 @@ Bond Insurance CRM`,
               placeholder="e.g. Performance Bond"
             />
           </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="label text-blue-800">Contract Value (RM) *</label>
+            <input
+              className="input text-sm"
+              type="number"
+              min={0}
+              value={bondDetails.bondAmount || ''}
+              onChange={e => setBondDetails(p => ({ ...p, bondAmount: Number(e.target.value) }))}
+              placeholder="0"
+            />
+          </div>
+          {documentUrl && (
+            <div className="flex items-end pb-0.5">
+              <div className="flex items-center gap-2 text-xs text-blue-700 bg-blue-100 rounded-xl px-3 py-2 w-full">
+                <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                </svg>
+                <span className="truncate">Document attached: {decodeURIComponent(documentUrl.split('/').pop() ?? '').replace(/^\d+_/, '')}</span>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -314,12 +399,17 @@ Bond Insurance CRM`,
                           <p className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">{entry.errorMsg}</p>
                         )}
                         {isSent && entry.sentAt && (
-                          <p className="text-xs text-green-700 bg-green-50 rounded-lg px-3 py-2 flex items-center gap-1.5">
-                            <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            Sent at {new Date(entry.sentAt).toLocaleTimeString('en-MY', { hour: '2-digit', minute: '2-digit' })}
-                          </p>
+                          <div className="space-y-1.5">
+                            <p className="text-xs text-green-700 bg-green-50 rounded-lg px-3 py-2 flex items-center gap-1.5">
+                              <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                              Sent via Outlook at {new Date(entry.sentAt).toLocaleTimeString('en-MY', { hour: '2-digit', minute: '2-digit' })}
+                            </p>
+                            {entry.warning && (
+                              <p className="text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2">{entry.warning}</p>
+                            )}
+                          </div>
                         )}
                         {!isSent && (
                           <button
@@ -352,9 +442,9 @@ Bond Insurance CRM`,
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
             <div>
               <label className="label">Insurer *</label>
-              <select className="input text-sm" value={addSelect} onChange={e => { setAddSelect(e.target.value); setAddCustomName('') }}>
+              <select className="input text-sm" value={addSelect} onChange={e => handleInsurerSelect(e.target.value)}>
                 <option value="">— Select insurer —</option>
-                {insurerOptions.map(i => <option key={i} value={i}>{i}</option>)}
+                {insurerOptions.map(i => <option key={i.id} value={i.name}>{i.name}</option>)}
                 <option value="__other__">Other (type below)</option>
               </select>
               {addSelect === '__other__' && (
@@ -375,8 +465,21 @@ Bond Insurance CRM`,
                 value={addEmail}
                 onChange={e => setAddEmail(e.target.value)}
                 placeholder="underwriter@insurer.com"
+              />
+              {addSelect && addSelect !== '__other__' && !insurerOptions.find(i => i.name === addSelect)?.email && (
+                <p className="text-xs text-amber-600 mt-1">No email on file for this insurer — enter manually</p>
+              )}
+            </div>
+            <div>
+              <label className="label">Salutation / Dear… <span className="text-gray-400 font-normal">(optional)</span></label>
+              <input
+                className="input text-sm"
+                value={addTitle}
+                onChange={e => setAddTitle(e.target.value)}
+                placeholder="e.g. Ms. Wong, Underwriting Team"
                 onKeyDown={e => { if (e.key === 'Enter') addInsurer() }}
               />
+              <p className="text-xs text-gray-400 mt-1">Appears after "Dear" — leave blank for insurer team name</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
