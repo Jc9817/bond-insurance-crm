@@ -484,7 +484,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const template = getWorkflowTemplate(c.caseType, workflowTemplates, customer?.businessType)
     const row: Case = { ...c, id: generateId(), createdAt: nowIso(), updatedAt: nowIso(), workflowTemplateId: template?.id }
     setCases(prev => [row, ...prev])
-    createClient().from('cases').insert(toCase(row)).then()
+    createClient().from('cases').insert(toCase(row)).then(({ error }) => {
+      if (error) console.error('[Supabase] addCase failed:', error.message, '| hint:', error.hint, '| details:', error.details)
+      else console.log('[Supabase] addCase saved:', row.caseTitle)
+    })
     return row.id
   }
   const updateCase = (id: string, c: Partial<Case>) => {
