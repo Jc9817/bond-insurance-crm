@@ -496,8 +496,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     createClient().from('cases').update(toCase({ ...updated, id } as Case)).eq('id', id).then()
   }
   const deleteCase = (id: string) => {
+    // Remove from memory immediately
     setCases(prev => prev.filter(x => x.id !== id))
-    createClient().from('cases').delete().eq('id', id).then()
+    setCaseNotes(prev => prev.filter(x => x.caseId !== id))
+    setFollowUps(prev => prev.filter(x => x.caseId !== id))
+    setActivityLogs(prev => prev.filter(x => x.caseId !== id))
+    setCaseFiles(prev => prev.filter(x => x.caseId !== id))
+
+    // Delete from Supabase — related records first to avoid FK constraint errors
+    const sb = createClient()
+    sb.from('case_files').delete().eq('case_id', id).then()
+    sb.from('case_notes').delete().eq('case_id', id).then()
+    sb.from('follow_ups').delete().eq('case_id', id).then()
+    sb.from('activity_logs').delete().eq('case_id', id).then()
+    sb.from('cases').delete().eq('id', id).then(({ error }) => {
+      if (error) console.error('[Supabase] deleteCase failed:', error.message)
+      else console.log('[Supabase] deleteCase removed:', id)
+    })
   }
   const archiveCase = (id: string) => {
     const archivedAt = nowIso()
