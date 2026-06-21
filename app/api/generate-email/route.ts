@@ -8,7 +8,7 @@ export async function POST(req: NextRequest) {
   }
 
   const {
-    caseTitle, caseType, customerName, principalName, bondAmount, amount, personInCharge,
+    caseType, customerName, principalName, bondAmount, amount, personInCharge,
     insurerName, notes, aiEmailPrompt,
   } = await req.json()
 

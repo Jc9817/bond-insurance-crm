@@ -37,7 +37,7 @@ export default function CaseDetailPage() {
   const caseItem = cases.find(c => c.id === id)
 
   // ── state ──────────────────────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState<'checklist' | 'info' | 'notes' | 'followups' | 'activity'>('checklist')
+  const [activeTab, setActiveTab] = useState<'files' | 'ai' | 'emails' | 'info' | 'notes' | 'activity'>('files')
   const [noteText, setNoteText] = useState('')
   const [notePic, setNotePic] = useState(pics[0]?.name ?? '')
   const [followUpModal, setFollowUpModal] = useState(false)
@@ -61,6 +61,9 @@ export default function CaseDetailPage() {
 
   // Which step's checklist is currently shown (defaults to current step)
   const [viewingStepId, setViewingStepId] = useState<string | null>(null)
+
+  // Stable timestamp captured at mount — used for date diff calculations
+  const [now] = useState(Date.now)
 
   if (!caseItem) {
     return (
@@ -112,7 +115,7 @@ export default function CaseDetailPage() {
       : new Date(caseItem.createdAt).getTime()
     : null
   const daysAtCurrentStep = currentStepEnteredAt
-    ? Math.floor((Date.now() - currentStepEnteredAt) / 86400000)
+    ? Math.floor((now - currentStepEnteredAt) / 86400000)
     : null
   const slaBreached = currentStep?.slaDays != null && daysAtCurrentStep != null && daysAtCurrentStep > currentStep.slaDays && caseItem.currentStatus !== 'Closed'
 
@@ -123,7 +126,7 @@ export default function CaseDetailPage() {
     setStepDate(ts ? new Date(ts).toISOString().slice(0, 16) : new Date().toISOString().slice(0, 16))
     setStepModal({ step, state, dateEditOnly: state === 'done' && step.id === caseItem.currentWorkflowStepId })
     setViewingStepId(step.id)
-    setActiveTab('checklist')
+    setActiveTab('files')
   }
 
   const confirmStepChange = () => {
@@ -204,10 +207,11 @@ export default function CaseDetailPage() {
   }
 
   const TABS = [
-    { key: 'checklist' as const, label: `Workflow${missingDocs.length > 0 ? ` (${missingDocs.length} missing)` : ''}` },
-    { key: 'followups' as const, label: `Follow-Ups${openFollowUps.length > 0 ? ` (${openFollowUps.length})` : ''}` },
+    { key: 'files' as const, label: `Files${caseDocs.length > 0 ? ` (${caseDocs.length})` : ''}` },
+    { key: 'ai' as const, label: 'AI Data' },
+    { key: 'emails' as const, label: 'Emails' },
     { key: 'info' as const, label: 'Case Info' },
-    { key: 'notes' as const, label: `Notes${notes.length > 0 ? ` (${notes.length})` : ''}` },
+    { key: 'notes' as const, label: `Notes${notes.length + openFollowUps.length > 0 ? ` (${notes.length + openFollowUps.length})` : ''}` },
     { key: 'activity' as const, label: `Activity${caseLogs.length > 0 ? ` (${caseLogs.length})` : ''}` },
   ]
 
@@ -267,6 +271,15 @@ export default function CaseDetailPage() {
               </button>
             )}
             <button
+              onClick={() => router.push(`/cases/${id}/submission-letter`)}
+              className="btn-secondary text-sm flex items-center gap-1.5"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" />
+              </svg>
+              Submission Letter
+            </button>
+            <button
               onClick={() => router.push(`/cases/${id}/report`)}
               className="btn-secondary text-sm flex items-center gap-1.5"
             >
@@ -291,7 +304,7 @@ export default function CaseDetailPage() {
       {/* ── Priority alert (max 1 shown, highest priority wins) ─────────────── */}
       {(() => {
         const expiryDays = caseItem.bondExpiryDate
-          ? Math.ceil((new Date(caseItem.bondExpiryDate).getTime() - Date.now()) / 86400000)
+          ? Math.ceil((new Date(caseItem.bondExpiryDate).getTime() - now) / 86400000)
           : null
         const warn = (color: string, msg: string, action?: React.ReactNode) => (
           <div className={`px-8 py-3 flex items-center justify-between gap-4 ${color}`}>
@@ -322,21 +335,19 @@ export default function CaseDetailPage() {
         {steps.length === 0 ? (
           <div className="text-sm text-gray-400 py-2">No workflow template for this case type. <Link href="/settings" className="text-blue-600 hover:underline">Configure in Settings →</Link></div>
         ) : (
-          <>
-            <StagePipeline
-              steps={steps}
-              currentStepId={caseItem.currentWorkflowStepId ?? ''}
-              stepTimestamps={stepTimestamps}
-              result={caseItem.result}
-              selectedStepId={effectiveViewingStepId ?? undefined}
-              onStepSelect={(stepId) => { setViewingStepId(stepId); setActiveTab('checklist') }}
-              onStageClick={handleStageClick}
-              onResultClick={() => {
-                setClosingForm({ result: caseItem.result, closingRemarks: caseItem.closingRemarks, lossReason: caseItem.lossReason ?? '', finalAmount: caseItem.finalAmount ?? caseItem.amount, finalInsurer: caseItem.finalInsurer ?? '', acceptanceDate: caseItem.acceptanceDate ?? '', acceptedBy: caseItem.acceptedBy ?? '' })
-                setClosingModal(true)
-              }}
-            />
-          </>
+          <StagePipeline
+            steps={steps}
+            currentStepId={caseItem.currentWorkflowStepId ?? ''}
+            stepTimestamps={stepTimestamps}
+            result={caseItem.result}
+            selectedStepId={effectiveViewingStepId ?? undefined}
+            onStepSelect={(stepId) => { setViewingStepId(stepId); setActiveTab('files') }}
+            onStageClick={handleStageClick}
+            onResultClick={() => {
+              setClosingForm({ result: caseItem.result, closingRemarks: caseItem.closingRemarks, lossReason: caseItem.lossReason ?? '', finalAmount: caseItem.finalAmount ?? caseItem.amount, finalInsurer: caseItem.finalInsurer ?? '', acceptanceDate: caseItem.acceptanceDate ?? '', acceptedBy: caseItem.acceptedBy ?? '' })
+              setClosingModal(true)
+            }}
+          />
         )}
       </div>
 
@@ -420,8 +431,9 @@ export default function CaseDetailPage() {
         followUps={caseFollowUps}
         nextStep={nextStep}
         currentStep={currentStep}
-        onGoToDocs={() => { setActiveTab('checklist'); setViewingStepId(steps[0]?.id ?? null) }}
-        onGoToFollowUps={() => setActiveTab('followups')}
+        onGoToDocs={() => { setActiveTab('files'); setViewingStepId(steps[0]?.id ?? null) }}
+        onGoToFollowUps={() => setActiveTab('notes')}
+        onGoToEmails={() => setActiveTab('emails')}
         onAdvance={() => {
           if (!nextStep) return
           setStepDate(new Date().toISOString().slice(0, 16))
@@ -450,154 +462,206 @@ export default function CaseDetailPage() {
           ))}
         </div>
 
-        {/* ── Documents / Checklist tab ─────────────────────────────────────── */}
-        {activeTab === 'checklist' && (
-          <div>
-            {/* Step selector row */}
-            {steps.length > 0 && (
-              <div className="flex items-center gap-2 mb-4 flex-wrap">
-                <span className="text-xs text-gray-400 font-medium">Viewing checklist for:</span>
-                {steps.map((step, idx) => {
-                  const isViewing = effectiveViewingStepId === step.id
-                  const sIdx = steps.findIndex(s => s.id === caseItem.currentWorkflowStepId)
-                  const isDone = idx < sIdx
-                  const isCurrent = idx === sIdx
-                  return (
-                    <button
-                      key={step.id}
-                      onClick={() => setViewingStepId(step.id)}
-                      className={`text-xs px-3 py-1 rounded-full border transition-colors font-medium ${
-                        isViewing ? 'bg-blue-600 text-white border-blue-600' :
-                        isDone ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200' :
-                        isCurrent ? 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100' :
-                        'bg-gray-100 text-gray-500 border-gray-200 hover:bg-gray-200'
-                      }`}
-                    >
-                      {isDone ? '✓ ' : ''}{step.name}
-                    </button>
-                  )
-                })}
-                <button
-                  onClick={() => setViewingStepId(null)}
-                  className={`text-xs px-3 py-1 rounded-full border transition-colors ${
-                    effectiveViewingStepId === null ? 'bg-gray-700 text-white border-gray-700' : 'bg-gray-100 text-gray-500 border-gray-200 hover:bg-gray-200'
-                  }`}
-                >
-                  All
-                </button>
-              </div>
-            )}
+        {/* ── Files tab ─────────────────────────────────────────────────────── */}
+        {activeTab === 'files' && (
+          <div className="space-y-5">
+            {/* Document checklist section */}
+            <div className="card-section">
+              {steps.length > 0 && (
+                <div className="flex items-center gap-2 mb-4 flex-wrap">
+                  <span className="text-xs text-gray-400 font-medium">Filter by step:</span>
+                  {steps.map((step, idx) => {
+                    const isViewing = effectiveViewingStepId === step.id
+                    const sIdx = steps.findIndex(s => s.id === caseItem.currentWorkflowStepId)
+                    const isDone = idx < sIdx
+                    const isCurrent = idx === sIdx
+                    return (
+                      <button
+                        key={step.id}
+                        onClick={() => setViewingStepId(step.id)}
+                        className={`text-xs px-3 py-1 rounded-full border transition-colors font-medium ${
+                          isViewing ? 'bg-blue-600 text-white border-blue-600' :
+                          isDone ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200' :
+                          isCurrent ? 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100' :
+                          'bg-gray-100 text-gray-500 border-gray-200 hover:bg-gray-200'
+                        }`}
+                      >
+                        {isDone ? '✓ ' : ''}{step.name}
+                      </button>
+                    )
+                  })}
+                  <button
+                    onClick={() => setViewingStepId(null)}
+                    className={`text-xs px-3 py-1 rounded-full border transition-colors ${
+                      effectiveViewingStepId === null ? 'bg-gray-700 text-white border-gray-700' : 'bg-gray-100 text-gray-500 border-gray-200 hover:bg-gray-200'
+                    }`}
+                  >
+                    All
+                  </button>
+                </div>
+              )}
 
-            {viewingStep?.aiEmailEnabled ? (
-              /* ── Quotation step: documents + AI first, email second ── */
-              <div className="space-y-5">
-                <div className="card-section">
-                  <QuotationDocumentPanel
-                    caseId={id}
-                    caseTitle={caseItem.caseTitle}
-                    caseFiles={caseDocs}
-                  />
-                </div>
-                <QuotationEmailPanel
-                  caseItem={caseItem}
-                  step={viewingStep}
-                  customerName={customer?.customerName ?? caseItem.customerName}
-                  documentUrl={caseDocs.find(f => f.fileDataUrl?.startsWith('http'))?.fileDataUrl}
-                />
-              </div>
-            ) : (
-              /* ── Regular step: required docs checklist ── */
-              <div className="card-section">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest">
-                    {viewingStep ? `${viewingStep.name} — Checklist` : 'All Documents'}
-                  </h2>
-                  {unassignedDocs.length > 0 && (
-                    <span className="text-xs font-semibold rounded-full px-2.5 py-1 bg-amber-100 text-amber-700">
-                      {unassignedDocs.length} unassigned file{unassignedDocs.length > 1 ? 's' : ''}
-                    </span>
-                  )}
-                </div>
-                <DocumentChecklist
+              {viewingStep?.aiEmailEnabled ? (
+                <QuotationDocumentPanel
                   caseId={id}
                   caseTitle={caseItem.caseTitle}
-                  template={template}
                   caseFiles={caseDocs}
-                  filterStepId={effectiveViewingStepId}
-                  readOnly={viewingIdx !== currentIdx}
-                  onScanReady={file => setScanFile(file)}
                 />
+              ) : (
+                <>
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest">
+                      {viewingStep ? `${viewingStep.name} — Checklist` : 'All Documents'}
+                    </h2>
+                    {unassignedDocs.length > 0 && (
+                      <span className="text-xs font-semibold rounded-full px-2.5 py-1 bg-amber-100 text-amber-700">
+                        {unassignedDocs.length} unassigned file{unassignedDocs.length > 1 ? 's' : ''}
+                      </span>
+                    )}
+                  </div>
+                  <DocumentChecklist
+                    caseId={id}
+                    caseTitle={caseItem.caseTitle}
+                    template={template}
+                    caseFiles={caseDocs}
+                    filterStepId={effectiveViewingStepId}
+                    readOnly={viewingIdx !== currentIdx}
+                    onScanReady={file => setScanFile(file)}
+                  />
+                </>
+              )}
+            </div>
+
+            {/* All attached files */}
+            {caseDocs.length > 0 && (
+              <div className="card-section">
+                <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">
+                  All Attached Files
+                  <span className="ml-1.5 text-[10px] font-bold bg-gray-100 text-gray-500 rounded-full px-2 py-0.5">{caseDocs.length}</span>
+                </h2>
+                <div className="space-y-1.5">
+                  {[...caseDocs]
+                    .sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime())
+                    .map(f => {
+                      const ext = f.fileName.split('.').pop()?.toUpperCase() ?? 'FILE'
+                      const isPdf = f.fileType === 'application/pdf'
+                      const isImg = f.fileType.startsWith('image/')
+                      const bytes = f.fileSize
+                      const size = bytes < 1024 ? `${bytes} B`
+                        : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB`
+                        : `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+                      return (
+                        <div key={f.id} className="flex items-start gap-2.5 p-2.5 rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors group">
+                          <div className={`shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-[9px] font-bold tracking-tight ${isPdf ? 'bg-red-100 text-red-600' : isImg ? 'bg-blue-100 text-blue-600' : 'bg-gray-200 text-gray-500'}`}>
+                            {ext.slice(0, 4)}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            {f.fileDataUrl ? (
+                              <a href={f.fileDataUrl} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-blue-600 hover:underline truncate block leading-snug">{f.fileName}</a>
+                            ) : (
+                              <p className="text-sm font-medium text-gray-700 truncate leading-snug">{f.fileName}</p>
+                            )}
+                            <div className="flex items-center gap-1 mt-0.5 flex-wrap">
+                              <span className="text-xs text-gray-400">{f.documentType}</span>
+                              <span className="text-gray-300 text-xs">·</span>
+                              <span className="text-xs text-gray-400">{size}</span>
+                              <span className="text-gray-300 text-xs">·</span>
+                              <span className="text-xs text-gray-400">{timeAgo(f.uploadedAt)}</span>
+                              {f.aiStatus === 'Approved' && <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 rounded-full px-1.5 py-0.5">AI ✓</span>}
+                              {f.requiredDocumentId && <span className="text-[10px] font-medium text-blue-600 bg-blue-50 rounded-full px-1.5 py-0.5">Checklist</span>}
+                            </div>
+                          </div>
+                          {f.aiStatus !== 'Approved' && (
+                            <button
+                              onClick={() => setScanFile(f)}
+                              className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-xs px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 font-medium"
+                            >
+                              Scan
+                            </button>
+                          )}
+                        </div>
+                      )
+                    })}
+                </div>
               </div>
             )}
           </div>
         )}
 
-        {/* ── Follow-Ups tab ─────────────────────────────────────────────────── */}
-        {activeTab === 'followups' && (
+        {/* ── AI Data tab ─────────────────────────────────────────────────────── */}
+        {activeTab === 'ai' && (
           <div className="card-section">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest">
-                Follow-Ups <span className="text-gray-300">({openFollowUps.length} open)</span>
-              </h2>
-              <button
-                onClick={() => {
-                  if (currentStep?.defaultFollowUpSuggestion) {
-                    setFuForm(prev => ({ ...prev, title: currentStep.defaultFollowUpSuggestion }))
-                  }
-                  setFollowUpModal(true)
-                }}
-                className="btn-xs bg-blue-50 text-blue-600 hover:bg-blue-100 font-semibold"
-              >
-                + Add Follow-Up
-              </button>
-            </div>
-            {currentStep?.defaultFollowUpSuggestion && openFollowUps.length === 0 && (
-              <div className="mb-4">
-                <p className="text-xs text-gray-400 mb-2">Suggested for current step:</p>
-                <button
-                  onClick={() => { setFuForm(prev => ({ ...prev, title: currentStep.defaultFollowUpSuggestion })); setFollowUpModal(true) }}
-                  className="w-full text-left text-xs bg-blue-50 text-blue-700 rounded-xl px-3 py-2 hover:bg-blue-100 transition-colors"
-                >
-                  + {currentStep.defaultFollowUpSuggestion}
+            <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-5">AI Extracted Data</h2>
+            {caseDocs.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <svg className="w-10 h-10 text-gray-200 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+                </svg>
+                <p className="text-sm text-gray-400">No files uploaded yet.</p>
+                <p className="text-xs text-gray-300 mt-1">Upload documents in the Files tab to enable AI extraction.</p>
+                <button onClick={() => setActiveTab('files')} className="mt-4 text-xs px-4 py-2 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 font-medium transition-colors">
+                  Go to Files →
                 </button>
               </div>
-            )}
-            {caseFollowUps.length === 0 ? (
-              <p className="text-sm text-gray-400">No follow-ups yet.</p>
             ) : (
               <div className="space-y-3">
-                {caseFollowUps.map(f => {
-                  const d = getDaysUntil(f.dueDate)
-                  const isOD = d !== null && d < 0 && f.status === 'Open'
+                {caseDocs.map(f => {
+                  const scanned = f.aiStatus === 'Approved' || f.aiStatus === 'Rejected'
                   return (
-                    <div key={f.id} className="flex items-start gap-3 p-3 rounded-xl bg-gray-50">
-                      <button
-                        onClick={() => {
-                          const wasOpen = f.status === 'Open'
-                          toggleFollowUp(f.id)
-                          if (wasOpen) {
-                            addActivityLog({ caseId: id, caseTitle: caseItem.caseTitle, actionType: 'FOLLOW_UP_COMPLETED', title: 'Follow-up completed', description: f.title, changedBy: currentUser?.fullName ?? 'Unknown' })
-                          }
-                        }}
-                        className={`mt-0.5 w-5 h-5 rounded-full border-2 shrink-0 flex items-center justify-center transition-colors ${
-                          f.status === 'Done' ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 hover:border-blue-400'
-                        }`}
-                      >
-                        {f.status === 'Done' && <span className="text-xs leading-none">✓</span>}
-                      </button>
-                      <div className="flex-1 min-w-0">
-                        <p className={`text-sm font-medium ${f.status === 'Done' ? 'line-through text-gray-400' : isOD ? 'text-red-700' : 'text-gray-800'}`}>
-                          {f.title}
-                        </p>
-                        <p className="text-xs text-gray-400 mt-0.5">
-                          {f.personInCharge} · {f.dueDate ? formatDate(f.dueDate) : '—'}
-                          {isOD && <span className="ml-1 text-red-500 font-medium">overdue</span>}
-                        </p>
+                    <div key={f.id} className="p-4 rounded-xl border border-gray-100 bg-gray-50">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                            f.aiStatus === 'Approved' ? 'bg-emerald-100 text-emerald-700' :
+                            f.aiStatus === 'Rejected' ? 'bg-red-100 text-red-700' :
+                            'bg-gray-100 text-gray-500'
+                          }`}>
+                            {f.aiStatus ?? 'Not scanned'}
+                          </span>
+                          <p className="text-sm font-medium text-gray-800 truncate">{f.fileName}</p>
+                        </div>
+                        <button
+                          onClick={() => setScanFile(f)}
+                          className="shrink-0 text-xs px-3 py-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 font-medium transition-colors"
+                        >
+                          {scanned ? 'Re-scan' : 'Scan with AI'}
+                        </button>
                       </div>
-                      <button onClick={() => deleteFollowUp(f.id)} className="text-gray-200 hover:text-red-400 transition-colors">✕</button>
+                      {f.aiStatus === 'Approved' && (
+                        <div className="mt-3 p-3 bg-white rounded-lg border border-gray-100">
+                          <p className="text-xs text-gray-400 italic">Open the scan panel to view detailed extraction results for this document.</p>
+                        </div>
+                      )}
                     </div>
                   )
                 })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Emails tab ──────────────────────────────────────────────────────── */}
+        {activeTab === 'emails' && (
+          <div className="space-y-5">
+            {steps.some(s => s.aiEmailEnabled) ? (
+              steps.filter(s => s.aiEmailEnabled).map(emailStep => (
+                <QuotationEmailPanel
+                  key={emailStep.id}
+                  caseItem={caseItem}
+                  step={emailStep}
+                  customerName={customer?.customerName ?? caseItem.customerName}
+                  documentUrl={caseDocs.find(f => f.fileDataUrl?.startsWith('http'))?.fileDataUrl}
+                />
+              ))
+            ) : (
+              <div className="card-section">
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <svg className="w-10 h-10 text-gray-200 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
+                  </svg>
+                  <p className="text-sm text-gray-400">No email-enabled steps configured for this workflow.</p>
+                  <p className="text-xs text-gray-300 mt-1">Email panels are set up per workflow step in Settings.</p>
+                </div>
               </div>
             )}
           </div>
@@ -659,7 +723,7 @@ export default function CaseDetailPage() {
               <DetailRow label="Last Updated"><span className="text-sm text-gray-700">{caseItem.updatedAt ? timeAgo(caseItem.updatedAt) : '—'}</span></DetailRow>
               <DetailRow label="Bond Expiry Date">
                 {caseItem.bondExpiryDate ? (() => {
-                  const days = Math.ceil((new Date(caseItem.bondExpiryDate).getTime() - Date.now()) / 86400000)
+                  const days = Math.ceil((new Date(caseItem.bondExpiryDate).getTime() - now) / 86400000)
                   const urgent = days <= 30 && caseItem.currentStatus !== 'Closed'
                   return <span className={`text-sm font-semibold ${urgent ? 'text-red-600' : 'text-gray-800'}`}>{urgent && '⚠ '}{formatDate(caseItem.bondExpiryDate)}{days >= 0 ? ` (${days}d)` : ' (expired)'}</span>
                 })() : <span className="text-sm text-gray-400">—</span>}
@@ -711,34 +775,106 @@ export default function CaseDetailPage() {
           </div>
         )}
 
-        {/* ── Notes tab ─────────────────────────────────────────────────────── */}
+        {/* ── Notes & Follow-Ups tab ─────────────────────────────────────────── */}
         {activeTab === 'notes' && (
-          <div className="card-section">
-            <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-5">Notes</h2>
-            <form onSubmit={submitNote} className="mb-6 space-y-3">
-              <textarea value={noteText} onChange={e => setNoteText(e.target.value)} placeholder="Write a note…" rows={3} className="input text-gray-900" />
-              <div className="flex gap-3 items-center">
-                <select value={notePic} onChange={e => setNotePic(e.target.value)} className="input w-44 shrink-0">
-                  {pics.map(p => <option key={p.name} value={p.name}>{p.name}</option>)}
-                </select>
-                <button type="submit" className="btn-primary">Add Note</button>
-              </div>
-            </form>
-            {notes.length === 0 ? (
-              <p className="text-sm text-gray-400">No notes yet.</p>
-            ) : (
-              <div className="space-y-3">
-                {notes.map(n => (
-                  <div key={n.id} className="bg-stone-50 rounded-xl p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-semibold text-gray-700">{n.createdBy}</span>
-                      <span className="text-xs text-gray-400">{timeAgo(n.createdAt)}</span>
+          <div className="space-y-5">
+            {/* Notes */}
+            <div className="card-section">
+              <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-5">Notes</h2>
+              <form onSubmit={submitNote} className="mb-6 space-y-3">
+                <textarea value={noteText} onChange={e => setNoteText(e.target.value)} placeholder="Write a note…" rows={3} className="input text-gray-900" />
+                <div className="flex gap-3 items-center">
+                  <select value={notePic} onChange={e => setNotePic(e.target.value)} className="input w-44 shrink-0">
+                    {pics.map(p => <option key={p.name} value={p.name}>{p.name}</option>)}
+                  </select>
+                  <button type="submit" className="btn-primary">Add Note</button>
+                </div>
+              </form>
+              {notes.length === 0 ? (
+                <p className="text-sm text-gray-400">No notes yet.</p>
+              ) : (
+                <div className="space-y-3">
+                  {notes.map(n => (
+                    <div key={n.id} className="bg-stone-50 rounded-xl p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-semibold text-gray-700">{n.createdBy}</span>
+                        <span className="text-xs text-gray-400">{timeAgo(n.createdAt)}</span>
+                      </div>
+                      <p className="text-sm text-gray-700 leading-relaxed">{n.content}</p>
                     </div>
-                    <p className="text-sm text-gray-700 leading-relaxed">{n.content}</p>
-                  </div>
-                ))}
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Follow-Ups */}
+            <div className="card-section">
+              <div className="flex items-center justify-between mb-5">
+                <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest">
+                  Follow-Ups <span className="text-gray-300">({openFollowUps.length} open)</span>
+                </h2>
+                <button
+                  onClick={() => {
+                    if (currentStep?.defaultFollowUpSuggestion) {
+                      setFuForm(prev => ({ ...prev, title: currentStep.defaultFollowUpSuggestion }))
+                    }
+                    setFollowUpModal(true)
+                  }}
+                  className="btn-xs bg-blue-50 text-blue-600 hover:bg-blue-100 font-semibold"
+                >
+                  + Add Follow-Up
+                </button>
               </div>
-            )}
+              {currentStep?.defaultFollowUpSuggestion && openFollowUps.length === 0 && (
+                <div className="mb-4">
+                  <p className="text-xs text-gray-400 mb-2">Suggested for current step:</p>
+                  <button
+                    onClick={() => { setFuForm(prev => ({ ...prev, title: currentStep.defaultFollowUpSuggestion })); setFollowUpModal(true) }}
+                    className="w-full text-left text-xs bg-blue-50 text-blue-700 rounded-xl px-3 py-2 hover:bg-blue-100 transition-colors"
+                  >
+                    + {currentStep.defaultFollowUpSuggestion}
+                  </button>
+                </div>
+              )}
+              {caseFollowUps.length === 0 ? (
+                <p className="text-sm text-gray-400">No follow-ups yet.</p>
+              ) : (
+                <div className="space-y-3">
+                  {caseFollowUps.map(f => {
+                    const d = getDaysUntil(f.dueDate)
+                    const isOD = d !== null && d < 0 && f.status === 'Open'
+                    return (
+                      <div key={f.id} className="flex items-start gap-3 p-3 rounded-xl bg-gray-50">
+                        <button
+                          onClick={() => {
+                            const wasOpen = f.status === 'Open'
+                            toggleFollowUp(f.id)
+                            if (wasOpen) {
+                              addActivityLog({ caseId: id, caseTitle: caseItem.caseTitle, actionType: 'FOLLOW_UP_COMPLETED', title: 'Follow-up completed', description: f.title, changedBy: currentUser?.fullName ?? 'Unknown' })
+                            }
+                          }}
+                          className={`mt-0.5 w-5 h-5 rounded-full border-2 shrink-0 flex items-center justify-center transition-colors ${
+                            f.status === 'Done' ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 hover:border-blue-400'
+                          }`}
+                        >
+                          {f.status === 'Done' && <span className="text-xs leading-none">✓</span>}
+                        </button>
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-sm font-medium ${f.status === 'Done' ? 'line-through text-gray-400' : isOD ? 'text-red-700' : 'text-gray-800'}`}>
+                            {f.title}
+                          </p>
+                          <p className="text-xs text-gray-400 mt-0.5">
+                            {f.personInCharge} · {f.dueDate ? formatDate(f.dueDate) : '—'}
+                            {isOD && <span className="ml-1 text-red-500 font-medium">overdue</span>}
+                          </p>
+                        </div>
+                        <button onClick={() => deleteFollowUp(f.id)} className="text-gray-200 hover:text-red-400 transition-colors">✕</button>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -937,7 +1073,7 @@ export default function CaseDetailPage() {
               placeholder="— Same as Main Contractor —"
             />
             <p className="text-xs text-gray-400 mt-1">
-              Select only if a <strong>sub-contractor</strong> is executing the works under the Main Contractor's name or licence. If left blank, the Main Contractor is assumed to be the Contractor.
+              Select only if a <strong>sub-contractor</strong> is executing the works under the Main Contractor&apos;s name or licence. If left blank, the Main Contractor is assumed to be the Contractor.
             </p>
           </div>
           <div className="grid grid-cols-2 gap-4">
@@ -967,7 +1103,7 @@ export default function CaseDetailPage() {
                   const pkg = productPackages.find(p => p.id === e.target.value)
                   if (pkg) {
                     const prods: CaseProduct[] = pkg.productIds
-                      .map(id => products.find(p => p.id === id))
+                      .map(pid => products.find(p => p.id === pid))
                       .filter(Boolean)
                       .map(p => ({ productId: p!.id, productName: p!.name, category: p!.category }))
                     setEditInfoForm(prev => ({ ...prev, selectedProducts: prods }))
@@ -1097,7 +1233,7 @@ import { getDaysUntil as daysUntil } from '@/lib/utils'
 
 function NextBestAction({
   missingDocs, followUps, nextStep, currentStep, allDone,
-  onGoToDocs, onGoToFollowUps, onAdvance, onSetResult,
+  onGoToDocs, onGoToFollowUps, onGoToEmails, onAdvance, onSetResult,
 }: {
   missingDocs: RequiredDocument[]
   followUps: FollowUp[]
@@ -1106,6 +1242,7 @@ function NextBestAction({
   allDone: boolean
   onGoToDocs: () => void
   onGoToFollowUps: () => void
+  onGoToEmails: () => void
   onAdvance: () => void
   onSetResult: () => void
 }) {
@@ -1129,9 +1266,9 @@ function NextBestAction({
     primary = { urgency: 'urgent', badge: 'Overdue', headline: f.title, detail: `${Math.abs(d!)} day${Math.abs(d!) !== 1 ? 's' : ''} past due — action needed immediately`, cta: 'View Follow-Ups', onClick: onGoToFollowUps }
   } else if (missingDocs.length > 0) {
     const names = missingDocs.slice(0, 2).map(d => d.name).join(', ') + (missingDocs.length > 2 ? ` + ${missingDocs.length - 2} more` : '')
-    primary = { urgency: 'urgent', badge: 'Documents Required', headline: missingDocs.length === 1 ? `Upload: ${missingDocs[0].name}` : `${missingDocs.length} required documents missing`, detail: names, cta: 'Go to Document Checklist', onClick: onGoToDocs }
+    primary = { urgency: 'urgent', badge: 'Documents Required', headline: missingDocs.length === 1 ? `Upload: ${missingDocs[0].name}` : `${missingDocs.length} required documents missing`, detail: names, cta: 'Go to Files', onClick: onGoToDocs }
   } else if (currentStep?.aiEmailEnabled) {
-    primary = { urgency: 'normal', badge: 'Ready to Send', headline: 'Send quotation email to insurers', detail: 'All documents are uploaded. Compose and send the quotation request to receive quotes.', cta: 'Open Email Panel', onClick: onGoToDocs }
+    primary = { urgency: 'normal', badge: 'Ready to Send', headline: 'Send quotation email to insurers', detail: 'All documents are uploaded. Compose and send the quotation request to receive quotes.', cta: 'Open Email Panel', onClick: onGoToEmails }
   } else if (dueSoonFollowUps.length > 0) {
     const f = dueSoonFollowUps[0]
     const d = daysUntil(f.dueDate)

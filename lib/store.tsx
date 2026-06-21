@@ -7,7 +7,7 @@ import type {
   User, CaseFile, ActivityLog, SettingsItem, SettingsCategory,
   WorkflowTemplate, RequiredDocument, WorkflowStep,
   Inquiry, InquiryQuotation, InquiryNote, InquiryDocument,
-  Product, ProductPackage,
+  Product, ProductPackage, SubmissionLetterTemplate,
 } from './types'
 import {
   mockPics, mockUsers, mockWorkflowTemplates,
@@ -15,6 +15,7 @@ import {
   mockSettingsFollowUpCategories, mockSettingsDocumentTypes,
   mockSettingsInquiryStatuses, mockSettingsQuotationStatuses,
   mockSettingsInsurers, mockProducts, mockProductPackages,
+  mockSubmissionLetterTemplates,
 } from './mock-data'
 import { generateId, nowIso } from './utils'
 import { getWorkflowTemplate } from './workflow'
@@ -110,6 +111,11 @@ type StoreCtx = {
   addInquiryDocument: (d: Omit<InquiryDocument, 'id' | 'uploadedAt'>) => void
   deleteInquiryDocument: (id: string) => void
   convertInquiryToCase: (inquiryId: string, caseData: Omit<Case, 'id' | 'createdAt'>) => string
+
+  submissionLetterTemplates: SubmissionLetterTemplate[]
+  addSubmissionLetterTemplate: (t: Omit<SubmissionLetterTemplate, 'id'>) => void
+  updateSubmissionLetterTemplate: (id: string, t: Partial<SubmissionLetterTemplate>) => void
+  deleteSubmissionLetterTemplate: (id: string) => void
 }
 
 // ─── DB row → TypeScript mappers ──────────────────────────────────────────────
@@ -299,6 +305,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [inquiryDocuments, setInquiryDocuments] = useState<InquiryDocument[]>([])
   const [products, setProducts] = useState<Product[]>(mockProducts)
   const [productPackages, setProductPackages] = useState<ProductPackage[]>(mockProductPackages)
+  const [submissionLetterTemplates, setSubmissionLetterTemplates] = useState<SubmissionLetterTemplate[]>(mockSubmissionLetterTemplates)
   const [settingsData] = useState<SettingsData>({
     caseTypes: mockSettingsCaseTypes,
     industries: mockSettingsIndustries,
@@ -881,6 +888,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const deleteProductPackage = (id: string) =>
     setProductPackages(prev => prev.filter(x => x.id !== id))
 
+  const addSubmissionLetterTemplate = (t: Omit<SubmissionLetterTemplate, 'id'>) =>
+    setSubmissionLetterTemplates(prev => [...prev, { ...t, id: generateId() }])
+  const updateSubmissionLetterTemplate = (id: string, t: Partial<SubmissionLetterTemplate>) =>
+    setSubmissionLetterTemplates(prev => prev.map(x => x.id === id ? { ...x, ...t } : x))
+  const deleteSubmissionLetterTemplate = (id: string) =>
+    setSubmissionLetterTemplates(prev => prev.filter(x => x.id !== id))
+
   const convertInquiryToCase = (inquiryId: string, caseData: Omit<Case, 'id' | 'createdAt'>): string => {
     const caseId = generateId()
     const now = nowIso()
@@ -921,6 +935,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       convertInquiryToCase,
       addProduct, updateProduct, deleteProduct,
       addProductPackage, updateProductPackage, deleteProductPackage,
+      submissionLetterTemplates,
+      addSubmissionLetterTemplate, updateSubmissionLetterTemplate, deleteSubmissionLetterTemplate,
     }}>
       {children}
     </StoreContext.Provider>

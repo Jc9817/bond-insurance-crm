@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { useStore } from '@/lib/store'
@@ -159,7 +159,7 @@ function CaseForm({ initial, customers, pics, onSave, onCancel }: {
           onChange={val => setForm(prev => ({ ...prev, bondPrincipal: val }))}
           placeholder="— Same as Main Contractor —"
         />
-        <p className="text-xs text-gray-400 mt-1">Select only if a sub-contractor is executing the works under the Main Contractor's name or licence.</p>
+        <p className="text-xs text-gray-400 mt-1">Select only if a sub-contractor is executing the works under the Main Contractor&apos;s name or licence.</p>
       </div>
 
       {/* ── Product selection ── */}
@@ -267,12 +267,8 @@ export default function CasesPage() {
   const [view, setView] = useState<'list' | 'board'>('list')
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('All')
-  const [principalFilter, setPrincipalFilter] = useState<string>('All')
-
-  useEffect(() => {
-    const p = searchParams.get('principal')
-    if (p) setPrincipalFilter(p)
-  }, [searchParams])
+  const [principalFilter, setPrincipalFilter] = useState<string>(() => searchParams.get('principal') ?? 'All')
+  const [now] = useState(Date.now)
   const [showArchived, setShowArchived] = useState(false)
   const [modal, setModal] = useState<'add' | 'edit' | null>(null)
   const [selected, setSelected] = useState<Case | null>(null)
@@ -371,7 +367,7 @@ export default function CasesPage() {
                 const required = getRequiredDocs(template)
                 const missing = getMissingRequiredDocs(c.id, template, caseFiles)
                 const uploaded = required.length - missing.length
-                const expiryDays = c.bondExpiryDate ? Math.ceil((new Date(c.bondExpiryDate).getTime() - Date.now()) / 86400000) : null
+                const expiryDays = c.bondExpiryDate ? Math.ceil((new Date(c.bondExpiryDate).getTime() - now) / 86400000) : null
                 const expiryUrgent = expiryDays !== null && expiryDays <= 30 && c.currentStatus !== 'Closed'
                 return (
                   <tr key={c.id} className="hover:bg-stone-50 transition-colors">

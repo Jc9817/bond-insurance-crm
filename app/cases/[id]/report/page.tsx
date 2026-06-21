@@ -47,13 +47,13 @@ function DetailRow({ label, value }: { label: string; value: React.ReactNode }) 
   )
 }
 
+function SubTitle({ children }: { children: React.ReactNode }) {
+  return <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-5 mb-2 first:mt-0">{children}</p>
+}
+
 function SSTDocSection({ file, data }: { file: CaseFile; data: AiExtractedData }) {
   const r = (data.raw ?? {}) as Record<string, unknown>
   const dlp = r.dlpBreakdown as Record<string, unknown> | null | undefined
-
-  const SubTitle = ({ children }: { children: React.ReactNode }) => (
-    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-5 mb-2 first:mt-0">{children}</p>
-  )
 
   return (
     <div className="mb-10 break-inside-avoid">

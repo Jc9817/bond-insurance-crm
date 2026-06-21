@@ -2,7 +2,7 @@
   Customer, Contact, Case, CaseNote, FollowUp, PicUser, User,
   CaseFile, ActivityLog, SettingsItem, WorkflowTemplate,
   Inquiry, InquiryQuotation, InquiryNote, InquiryDocument,
-  Product, ProductPackage,
+  Product, ProductPackage, SubmissionLetterTemplate,
 } from './types'
 
 export const mockPics: PicUser[] = [
@@ -820,6 +820,43 @@ export const mockProductPackages: ProductPackage[] = [
   { id: 'pkg7', name: 'Performance Bond + WC + TPL', description: 'Full government construction package — bond plus insurance cover', productIds: ['prod1', 'prod8', 'prod9'], isActive: true },
   { id: 'pkg8', name: 'CAR Package', description: 'Contractor All Risk with Third Party Liability', productIds: ['prod10', 'prod9'], isActive: true },
   { id: 'pkg9', name: 'Custom', description: 'Select products manually — for non-standard combinations', productIds: [], isActive: true },
+]
+
+// ─── Submission Letter Templates ─────────────────────────────────────────────
+
+export const mockSubmissionLetterTemplates: SubmissionLetterTemplate[] = [
+  {
+    id: 'slt1',
+    name: 'Performance Bond — Standard',
+    isActive: true,
+    subjectLine: 'REQUISITION OF PERFORMANCE BOND (INSURANCE GUARANTEE) OF {{bondAmount}}',
+    letterBody: `Dear Sir / Mdm
+
+The above Performance Bond (Insurance Guarantee) refers.
+
+We submit herewith the following documents for your processing.
+
+{{docList}}
+
+Kindly acknowledge the above documents by signing & returning the duplicate of this letter.
+
+Thank you.
+
+Yours faithfully`,
+    docItems: [
+      { id: 'di1', labelInForm: 'Proposal Form', textTemplate: 'Duly completed & Executed Contract Guarantee proposal form', defaultChecked: true },
+      { id: 'di2', labelInForm: 'Quotation for Performance Bond', textTemplate: 'Quotation for Performance Bond', defaultChecked: true },
+      { id: 'di3', labelInForm: 'Letter of Indemnity (Green)', textTemplate: 'Letter of Indemnity (Green) – {{contractor}}', defaultChecked: true },
+      { id: 'di4', labelInForm: 'Letter of Indemnity (White) – Director', textTemplate: 'Letter of Indemnity (White), Financial Statement & Copy of NRIC – {{directorName}}', defaultChecked: true, subFieldType: 'director' },
+      { id: 'di5', labelInForm: '3rd Party Guarantor LOI (White)', textTemplate: '3RD Party Guarantor - Letter of Indemnity (White), Financial Statement & Copy of NRIC – {{guarantorName}}', defaultChecked: true, subFieldType: 'guarantor' },
+      { id: 'di6', labelInForm: 'SSM Complete Set', textTemplate: 'SSM Complete set – {{contractor}}', defaultChecked: true },
+      { id: 'di7', labelInForm: 'Bank Statement', textTemplate: '{{contractor}} – {{bankName}} Statement – {{statementPeriod}}', defaultChecked: true, subFieldType: 'bank' },
+      { id: 'di8', labelInForm: 'CIDB Certificates', textTemplate: '{{contractor}} – CIDB Perakuan Pendaftaran, Sijil Perolehan Kerja Kerajaan, Bahagian Pembangunan Kontraktor Dan Usahawan, Sijil Akuan Pendaftaran Syarikat Bumiputra & Sijil Akuan Pendaftaran Syarikat', defaultChecked: true },
+      { id: 'di9', labelInForm: 'Company Profile', textTemplate: '{{contractor}} – Company Profile', defaultChecked: true },
+      { id: 'di10', labelInForm: 'Letter of Award', textTemplate: 'Letter of Award – {{principal}} to {{contractor}}', defaultChecked: true },
+      { id: 'di11', labelInForm: 'Payment of Premium', textTemplate: 'Payment of Premium {{premiumAmount}}', defaultChecked: true, subFieldType: 'premium' },
+    ],
+  },
 ]
 
 // ─── Workflow Templates ───────────────────────────────────────────────────────

@@ -348,6 +348,25 @@ export type WorkflowTemplate = {
   isActive: boolean
 }
 
+// ─── Submission Letter Templates ─────────────────────────────────────────────
+
+export type SubmissionLetterDocItem = {
+  id: string
+  labelInForm: string       // shown in form checkbox
+  textTemplate: string      // letter line, supports {{contractor}} {{principal}} etc.
+  defaultChecked: boolean
+  subFieldType?: 'director' | 'guarantor' | 'bank' | 'premium'
+}
+
+export type SubmissionLetterTemplate = {
+  id: string
+  name: string
+  isActive: boolean
+  subjectLine: string       // supports {{bondAmount}}; rendered bold above the header table
+  letterBody: string        // full letter text; use {{docList}} where the numbered list goes; supports all {{variables}}
+  docItems: SubmissionLetterDocItem[]
+}
+
 // ─── Inquiry ──────────────────────────────────────────────────────────────────
 
 export const INQUIRY_STATUSES = [

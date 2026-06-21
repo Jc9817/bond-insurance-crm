@@ -73,7 +73,7 @@ export default function HomePage() {
       .filter(l => l.caseId === c.id && l.actionType === 'WORKFLOW_STEP_CHANGED' && l.newValue === currentStep.name)
       .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())[0]
     const enteredAt = stepLog ? new Date(stepLog.timestamp).getTime() : new Date(c.createdAt).getTime()
-    const daysAt = Math.floor((Date.now() - enteredAt) / 86400000)
+    const daysAt = Math.floor((today.getTime() - enteredAt) / 86400000)
     return daysAt > currentStep.slaDays ? daysAt - currentStep.slaDays : 0
   }
 

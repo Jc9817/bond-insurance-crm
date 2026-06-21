@@ -622,6 +622,7 @@ type InsurerCardProps = {
 function InsurerCard({ name, cases, totalValue, avgDays, byStatus, onCopy }: InsurerCardProps) {
   const [expanded, setExpanded] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [now] = useState(Date.now)
 
   const handleCopy = () => {
     onCopy()
@@ -680,7 +681,7 @@ function InsurerCard({ name, cases, totalValue, avgDays, byStatus, onCopy }: Ins
       {/* Case list */}
       <div className="space-y-0">
         {(expanded ? cases : cases.slice(0, 5)).map((c, i) => {
-          const daysPending = Math.floor((Date.now() - new Date(c.updatedAt ?? c.createdAt).getTime()) / 86400000)
+          const daysPending = Math.floor((now - new Date(c.updatedAt ?? c.createdAt).getTime()) / 86400000)
           return (
             <div key={c.id} className="flex items-center gap-3 py-2.5 border-b border-gray-50 last:border-0">
               <span className="text-xs text-gray-300 w-4 shrink-0 font-medium">{i + 1}</span>

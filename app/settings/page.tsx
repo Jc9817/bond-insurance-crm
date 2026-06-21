@@ -4,18 +4,19 @@ import { useState } from 'react'
 import { useStore } from '@/lib/store'
 import { useAuth } from '@/lib/auth'
 import { USER_ROLES, USER_STATUSES, BUSINESS_TYPES, PRODUCT_CATEGORIES } from '@/lib/types'
-import type { SettingsCategory, User, UserRole, UserStatus, WorkflowTemplate, WorkflowStep, RequiredDocument, Product, ProductPackage, ProductCategory } from '@/lib/types'
+import type { SettingsCategory, User, UserRole, UserStatus, WorkflowTemplate, WorkflowStep, RequiredDocument, Product, ProductPackage, ProductCategory, SubmissionLetterTemplate, SubmissionLetterDocItem } from '@/lib/types'
 import PageHeader from '@/components/ui/PageHeader'
 import Modal from '@/components/ui/Modal'
 
 // ─── Tab type ─────────────────────────────────────────────────────────────────
 
-type Tab = 'users' | 'caseTypes' | 'industries' | 'contactTypes' | 'followUpCategories' | 'documentTypes' | 'pic' | 'workflowTemplates' | 'quotationWorkflow' | 'insurers' | 'productMaster' | 'productPackages'
+type Tab = 'users' | 'caseTypes' | 'industries' | 'contactTypes' | 'followUpCategories' | 'documentTypes' | 'pic' | 'workflowTemplates' | 'quotationWorkflow' | 'insurers' | 'productMaster' | 'productPackages' | 'submissionLetters'
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'users', label: 'Users' },
   { key: 'workflowTemplates', label: 'Workflow Templates' },
   { key: 'quotationWorkflow', label: 'Quotation Workflow' },
+  { key: 'submissionLetters', label: 'Letter Templates' },
   { key: 'productMaster', label: 'Product Master' },
   { key: 'productPackages', label: 'Product Packages' },
   { key: 'caseTypes', label: 'Case Types' },
@@ -339,7 +340,7 @@ function DocModal({ initial, steps, onSave, onClose, title }: {
               <option key={s.id} value={s.id}>{s.order}. {s.name}</option>
             ))}
           </select>
-          <p className="text-xs text-gray-400 mt-1">Assign to a step so this document only appears in that step's checklist.</p>
+          <p className="text-xs text-gray-400 mt-1">Assign to a step so this document only appears in that step&apos;s checklist.</p>
         </div>
         <div className="flex items-center gap-3">
           <input
@@ -1074,7 +1075,7 @@ function ProductPackagesTab() {
             </div>
             <div>
               <label className="label">Products included</label>
-              <p className="text-xs text-gray-400 mb-2">Leave all unchecked for "Custom" (user selects manually)</p>
+              <p className="text-xs text-gray-400 mb-2">Leave all unchecked for &quot;Custom&quot; (user selects manually)</p>
               <div className="space-y-1 max-h-56 overflow-y-auto border border-gray-100 rounded-xl p-3">
                 {['Bond', 'Insurance', 'Other'].map(cat => {
                   const catProducts = activeProducts.filter(p => p.category === cat)
@@ -1104,6 +1105,239 @@ function ProductPackagesTab() {
             <div className="flex gap-3 pt-1">
               <button type="button" onClick={closeModal} className="btn-secondary flex-1">Cancel</button>
               <button type="submit" className="btn-primary flex-1">{modal === 'add' ? 'Add Package' : 'Save Changes'}</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+    </div>
+  )
+}
+
+// ─── Submission Letter Templates tab ─────────────────────────────────────────
+
+const SUB_FIELD_LABELS: Record<NonNullable<SubmissionLetterDocItem['subFieldType']>, string> = {
+  director: 'Director name sub-field',
+  guarantor: 'Guarantor name sub-field',
+  bank: 'Bank name + period sub-fields',
+  premium: 'Premium amount sub-field',
+}
+
+const LETTER_VARS = ['{{contractor}}', '{{principal}}', '{{bondAmount}}', '{{contractSum}}', '{{projectName}}', '{{directorName}}', '{{guarantorName}}', '{{bankName}}', '{{statementPeriod}}', '{{premiumAmount}}']
+
+type SLTForm = Omit<SubmissionLetterTemplate, 'id'>
+
+function emptyTemplate(): SLTForm {
+  return {
+    name: '', isActive: true,
+    subjectLine: 'REQUISITION OF PERFORMANCE BOND (INSURANCE GUARANTEE) OF {{bondAmount}}',
+    letterBody: `Dear Sir / Mdm
+
+The above Performance Bond (Insurance Guarantee) refers.
+
+We submit herewith the following documents for your processing.
+
+{{docList}}
+
+Kindly acknowledge the above documents by signing & returning the duplicate of this letter.
+
+Thank you.
+
+Yours faithfully`,
+    docItems: [],
+  }
+}
+
+function SubmissionLettersTab() {
+  const { submissionLetterTemplates, addSubmissionLetterTemplate, updateSubmissionLetterTemplate, deleteSubmissionLetterTemplate } = useStore()
+  const [modal, setModal] = useState<'add' | 'edit' | null>(null)
+  const [selected, setSelected] = useState<SubmissionLetterTemplate | null>(null)
+  const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [form, setForm] = useState<SLTForm>(emptyTemplate())
+
+  const openAdd = () => { setForm(emptyTemplate()); setSelected(null); setModal('add') }
+  const openEdit = (t: SubmissionLetterTemplate) => {
+    setForm({ name: t.name, isActive: t.isActive, subjectLine: t.subjectLine, letterBody: t.letterBody, docItems: t.docItems.map(d => ({ ...d })) })
+    setSelected(t)
+    setModal('edit')
+  }
+  const closeModal = () => { setModal(null); setSelected(null) }
+
+  const addDocItem = () => {
+    const newItem: SubmissionLetterDocItem = { id: `di_${Date.now()}`, labelInForm: '', textTemplate: '', defaultChecked: true }
+    setForm(prev => ({ ...prev, docItems: [...prev.docItems, newItem] }))
+  }
+  const updateDocItem = (idx: number, patch: Partial<SubmissionLetterDocItem>) =>
+    setForm(prev => ({ ...prev, docItems: prev.docItems.map((d, i) => i === idx ? { ...d, ...patch } : d) }))
+  const removeDocItem = (idx: number) =>
+    setForm(prev => ({ ...prev, docItems: prev.docItems.filter((_, i) => i !== idx) }))
+  const moveDocItem = (idx: number, dir: -1 | 1) => {
+    const next = idx + dir
+    if (next < 0 || next >= form.docItems.length) return
+    const arr = [...form.docItems]
+    ;[arr[idx], arr[next]] = [arr[next], arr[idx]]
+    setForm(prev => ({ ...prev, docItems: arr }))
+  }
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!form.name.trim()) return
+    if (modal === 'add') addSubmissionLetterTemplate(form)
+    else if (modal === 'edit' && selected) updateSubmissionLetterTemplate(selected.id, form)
+    closeModal()
+  }
+
+  return (
+    <div className="card-section">
+      <div className="flex items-center justify-between mb-5">
+        <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Submission Letter Templates</h2>
+        <button onClick={openAdd} className="btn-primary text-xs px-4 py-2">+ New Template</button>
+      </div>
+      <p className="text-sm text-gray-500 mb-5">
+        Define the paragraph text and document checklist for submission letters. When creating a letter, staff select a template and the format is applied automatically.
+      </p>
+
+      <div className="space-y-2">
+        {submissionLetterTemplates.map(t => (
+          <div key={t.id} className="flex items-center justify-between gap-3 p-3 rounded-xl border border-gray-100 bg-gray-50">
+            <div className="flex items-center gap-3 min-w-0">
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${t.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-200 text-gray-500'}`}>
+                {t.isActive ? 'Active' : 'Inactive'}
+              </span>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-gray-800">{t.name}</p>
+                <p className="text-xs text-gray-400">{t.docItems.length} document item{t.docItems.length !== 1 ? 's' : ''}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button onClick={() => openEdit(t)} className="btn-xs bg-gray-100 hover:bg-gray-200 text-gray-700">Edit</button>
+              <button onClick={() => updateSubmissionLetterTemplate(t.id, { isActive: !t.isActive })} className={`btn-xs ${t.isActive ? 'bg-amber-50 text-amber-700 hover:bg-amber-100' : 'bg-green-50 text-green-700 hover:bg-green-100'}`}>
+                {t.isActive ? 'Deactivate' : 'Activate'}
+              </button>
+              {deleteId === t.id ? (
+                <>
+                  <button onClick={() => { deleteSubmissionLetterTemplate(t.id); setDeleteId(null) }} className="btn-xs bg-red-600 text-white hover:bg-red-700">Confirm</button>
+                  <button onClick={() => setDeleteId(null)} className="btn-xs bg-gray-100 text-gray-600">Cancel</button>
+                </>
+              ) : (
+                <button onClick={() => setDeleteId(t.id)} className="btn-xs bg-red-50 text-red-500 hover:bg-red-100">Delete</button>
+              )}
+            </div>
+          </div>
+        ))}
+        {submissionLetterTemplates.length === 0 && <p className="text-sm text-gray-400 py-4">No templates defined yet.</p>}
+      </div>
+
+      {(modal === 'add' || modal === 'edit') && (
+        <Modal isOpen onClose={closeModal} title={modal === 'add' ? 'New Letter Template' : 'Edit Letter Template'} maxWidth="lg">
+          <form onSubmit={submit} className="px-6 py-5 space-y-5 max-h-[80vh] overflow-y-auto">
+
+            {/* Name + active */}
+            <div className="flex gap-4">
+              <div className="flex-1">
+                <label className="label">Template Name *</label>
+                <input className="input" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Performance Bond — Standard" required autoFocus />
+              </div>
+              <div className="flex items-end pb-1">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={form.isActive} onChange={e => setForm(p => ({ ...p, isActive: e.target.checked }))} className="w-4 h-4 rounded border-gray-300 text-blue-600" />
+                  <span className="text-sm text-gray-700">Active</span>
+                </label>
+              </div>
+            </div>
+
+            {/* Variable hint */}
+            <div className="bg-blue-50 rounded-xl p-3">
+              <p className="text-xs font-semibold text-blue-700 mb-1.5">Available variables</p>
+              <div className="flex flex-wrap gap-1.5">
+                {LETTER_VARS.map(v => (
+                  <code key={v} className="text-[11px] bg-white text-blue-600 border border-blue-100 rounded px-1.5 py-0.5">{v}</code>
+                ))}
+              </div>
+            </div>
+
+            {/* Letter content */}
+            <div>
+              <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Letter Content</p>
+              <div className="space-y-3">
+                <div>
+                  <label className="label">Subject Line</label>
+                  <input className="input font-semibold" value={form.subjectLine} onChange={e => setForm(p => ({ ...p, subjectLine: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="label">
+                    Letter Body
+                    <span className="ml-2 text-[10px] font-normal text-gray-400 normal-case tracking-normal">Use blank lines to separate paragraphs. Place <code className="bg-gray-100 text-blue-600 px-1 rounded">{'{{docList}}'}</code> where the numbered document list should appear.</span>
+                  </label>
+                  <textarea
+                    className="input font-mono text-sm leading-relaxed"
+                    rows={14}
+                    value={form.letterBody}
+                    onChange={e => setForm(p => ({ ...p, letterBody: e.target.value }))}
+                    placeholder={`Dear Sir / Mdm\n\nThe above Performance Bond (Insurance Guarantee) refers.\n\n{{docList}}\n\nThank you.\n\nYours faithfully`}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Document items */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Document Items</p>
+                <button type="button" onClick={addDocItem} className="btn-xs bg-blue-50 text-blue-600 hover:bg-blue-100 font-semibold">+ Add Item</button>
+              </div>
+              {form.docItems.length === 0 && (
+                <p className="text-sm text-gray-400 italic py-2">No items yet. Add items to build the document checklist.</p>
+              )}
+              <div className="space-y-3">
+                {form.docItems.map((item, idx) => (
+                  <div key={item.id} className="p-3 rounded-xl border border-gray-200 bg-gray-50">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="flex flex-col gap-0.5">
+                        <button type="button" onClick={() => moveDocItem(idx, -1)} disabled={idx === 0} className="text-gray-300 hover:text-gray-500 disabled:opacity-20 leading-none text-xs">▲</button>
+                        <button type="button" onClick={() => moveDocItem(idx, 1)} disabled={idx === form.docItems.length - 1} className="text-gray-300 hover:text-gray-500 disabled:opacity-20 leading-none text-xs">▼</button>
+                      </div>
+                      <span className="text-xs font-bold text-gray-400 w-5 shrink-0">{idx + 1}.</span>
+                      <div className="flex-1 min-w-0">
+                        <input
+                          className="input text-sm"
+                          placeholder="Label in form (e.g. Proposal Form)"
+                          value={item.labelInForm}
+                          onChange={e => updateDocItem(idx, { labelInForm: e.target.value })}
+                        />
+                      </div>
+                      <label className="flex items-center gap-1.5 shrink-0 text-xs text-gray-600 cursor-pointer">
+                        <input type="checkbox" checked={item.defaultChecked} onChange={e => updateDocItem(idx, { defaultChecked: e.target.checked })} className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600" />
+                        Default on
+                      </label>
+                      <button type="button" onClick={() => removeDocItem(idx)} className="text-gray-300 hover:text-red-400 transition-colors shrink-0">✕</button>
+                    </div>
+                    <textarea
+                      className="input text-sm"
+                      rows={2}
+                      placeholder="Letter text (use {{contractor}}, {{principal}}, etc.)"
+                      value={item.textTemplate}
+                      onChange={e => updateDocItem(idx, { textTemplate: e.target.value })}
+                    />
+                    <div className="mt-2">
+                      <select
+                        className="input text-xs w-auto"
+                        value={item.subFieldType ?? ''}
+                        onChange={e => updateDocItem(idx, { subFieldType: (e.target.value as SubmissionLetterDocItem['subFieldType']) || undefined })}
+                      >
+                        <option value="">No sub-field</option>
+                        {(Object.keys(SUB_FIELD_LABELS) as Array<keyof typeof SUB_FIELD_LABELS>).map(k => (
+                          <option key={k} value={k}>{SUB_FIELD_LABELS[k]}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex gap-3 pt-1">
+              <button type="button" onClick={closeModal} className="btn-secondary flex-1">Cancel</button>
+              <button type="submit" className="btn-primary flex-1">{modal === 'add' ? 'Create Template' : 'Save Changes'}</button>
             </div>
           </form>
         </Modal>
@@ -1328,6 +1562,8 @@ export default function SettingsPage() {
       )}
 
       {/* ── Person in Charge tab ───────────────────────────────────────────── */}
+      {tab === 'submissionLetters' && <SubmissionLettersTab />}
+
       {tab === 'pic' && (
         <div className="card-section">
           <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-5">Person in Charge</h2>
