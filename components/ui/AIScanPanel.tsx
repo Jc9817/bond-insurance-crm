@@ -283,8 +283,18 @@ function formatKeyLabel(key: string): string {
 }
 
 function CustomRawFields({ raw, onChange }: { raw: Record<string, unknown>; onChange: (key: string, value: string) => void }) {
+  // Guard: raw may be a string if a previous scan failed and stored error text instead of JSON
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    return (
+      <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-3 text-xs text-amber-700 space-y-1">
+        <p className="font-semibold">Previous scan data is corrupted.</p>
+        <p>Close this panel and click <strong>Re-scan</strong> to extract the data again.</p>
+      </div>
+    )
+  }
+
   const entries = Object.entries(raw).filter(([k]) => !SKIP_KEYS.has(k))
-  if (entries.length === 0) return <p className="text-xs text-gray-400">No extracted fields found.</p>
+  if (entries.length === 0) return <p className="text-xs text-gray-400">No extracted fields found. Try re-scanning.</p>
 
   const multilineKeys = new Set(['company_address', 'projectName', 'project_name'])
 
