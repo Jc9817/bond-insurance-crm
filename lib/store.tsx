@@ -647,7 +647,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           documentType: file.documentType, aiPrompt: file.aiPrompt,
         }),
       }))
-      .then(res => res.json())
+      .then(async res => {
+        const data = await res.json()
+        if (!res.ok || data.error) throw new Error(data.error ?? `AI scan failed (${res.status})`)
+        return data
+      })
       .then(data => {
         setCaseFiles(prev => prev.map(x => x.id === id
           ? { ...x, aiStatus: 'Ready for Review', aiScanned: true, aiExtractedData: data } : x
@@ -656,9 +660,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           ai_status: 'Ready for Review', ai_scanned: true, ai_extracted_data: data,
         }).eq('id', id).then()
       })
-      .catch(() => {
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : 'AI scan failed'
         setCaseFiles(prev => prev.map(x => x.id === id ? { ...x, aiStatus: 'Not Scanned' } : x))
         createClient().from('case_files').update({ ai_status: 'Not Scanned' }).eq('id', id).then()
+        alert(`AI Scan failed: ${msg}`)
       })
   }
 

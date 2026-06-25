@@ -213,8 +213,14 @@ Return only the JSON object, no markdown, no explanation.`
     return NextResponse.json({ error: `Empty response from Anthropic (stop_reason: ${response.stop_reason})` }, { status: 500 })
   }
 
-  // Strip markdown code fences if Claude wrapped the JSON
-  const jsonText = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim()
+  // Extract JSON object from response — handles code fences, preamble text, etc.
+  const jsonMatch = text.match(/\{[\s\S]*\}/)
+  const jsonText = jsonMatch ? jsonMatch[0] : ''
+
+  if (!jsonText) {
+    console.error('[ai-scan] No JSON object found in response:', text.slice(0, 300))
+    return NextResponse.json({ error: 'No JSON found in AI response', raw: text.slice(0, 300) }, { status: 500 })
+  }
 
   try {
     const extracted = JSON.parse(jsonText)
