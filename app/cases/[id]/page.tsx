@@ -206,9 +206,11 @@ export default function CaseDetailPage() {
     setClosingModal(false)
   }
 
+  const aiPendingCount = caseDocs.filter(f => f.aiStatus === 'Ready for Review').length
+
   const TABS = [
     { key: 'files' as const, label: `Files${caseDocs.length > 0 ? ` (${caseDocs.length})` : ''}` },
-    { key: 'ai' as const, label: 'AI Data' },
+    { key: 'ai' as const, label: `AI Data${aiPendingCount > 0 ? ` (${aiPendingCount})` : ''}` },
     { key: 'emails' as const, label: 'Emails' },
     { key: 'info' as const, label: 'Case Info' },
     { key: 'notes' as const, label: `Notes${notes.length + openFollowUps.length > 0 ? ` (${notes.length + openFollowUps.length})` : ''}` },
