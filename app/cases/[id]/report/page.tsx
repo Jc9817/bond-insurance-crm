@@ -8,7 +8,25 @@ import type { CaseFile, AiExtractedData } from '@/lib/types'
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const STANDARD_KEYS = new Set(['customerName', 'projectName', 'caseType', 'amount', 'bondValue', 'expiryDate', 'notes', 'raw'])
+// Old camelCase SST keys (legacy)
 const SST_KEYS = new Set(['thirdPartyLiability', 'workStartDate', 'workEndDate', 'dlpEndDate', 'workInsuranceValue', 'sebuthargaNo', 'sstNo', 'issuingAgency', 'latePenaltyRate', 'bondValidUntil', 'dlpBreakdown', 'bonPelaksanaan'])
+// Custom prompt snake_case SST keys
+const CUSTOM_SST_KEYS = new Set(['sebut_harga_no', 'performance_bond_value', 'company_name', 'third_party_liability', 'public_liability', 'site_possession_date', 'completion_date', 'defect_liability_period'])
+
+const CUSTOM_FIELD_LABELS: Record<string, string> = {
+  company_name: 'Kontraktor / Nama Syarikat',
+  project_name: 'Skop Kerja / Tajuk Projek',
+  sebut_harga_no: 'No. Sebut Harga',
+  ssm_number: 'No. Pendaftaran SSM / MOF',
+  company_address: 'Alamat Syarikat',
+  contract_value: 'Harga Kontrak',
+  performance_bond_value: 'Bon Pelaksanaan (5%)',
+  third_party_liability: 'Insurans Kerja (Third Party Liability)',
+  public_liability: 'Tanggungan Awam (Public Liability)',
+  site_possession_date: 'Tarikh Milikan Tapak',
+  completion_date: 'Tarikh Siap',
+  defect_liability_period: 'Tempoh Liabiliti Kecacatan (DLP)',
+}
 
 function formatLabel(key: string): string {
   return key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
@@ -122,10 +140,69 @@ function SSTDocSection({ file, data }: { file: CaseFile; data: AiExtractedData }
   )
 }
 
+function CustomSSTDocSection({ file, data }: { file: CaseFile; data: AiExtractedData }) {
+  const r = (data.raw ?? {}) as Record<string, unknown>
+  const label = (key: string) => CUSTOM_FIELD_LABELS[key] ?? formatLabel(key)
+  const val = (key: string) => r[key] != null ? String(r[key]) : null
+
+  return (
+    <div className="mb-10 break-inside-avoid">
+      <div className="flex items-center gap-3 mb-4">
+        <div className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
+        <div>
+          <p className="text-sm font-bold text-gray-800">{file.documentType}</p>
+          <p className="text-xs text-gray-400">{file.fileName} &nbsp;·&nbsp; Approved {formatDate(file.uploadedAt)}</p>
+        </div>
+      </div>
+
+      <div className="pl-5 border-l-2 border-green-200 space-y-0">
+        <SubTitle>Maklumat Kontraktor</SubTitle>
+        <div className="bg-gray-50 rounded-lg p-4 space-y-0">
+          {val('company_name') && <DetailRow label={label('company_name')} value={<span className="font-semibold">{val('company_name')}</span>} />}
+          {val('ssm_number') && <DetailRow label={label('ssm_number')} value={<span className="font-mono text-sm">{val('ssm_number')}</span>} />}
+          {val('company_address') && <DetailRow label={label('company_address')} value={val('company_address')} />}
+        </div>
+
+        <SubTitle>Maklumat Projek</SubTitle>
+        <div className="bg-gray-50 rounded-lg p-4 space-y-0">
+          {val('project_name') && <DetailRow label={label('project_name')} value={val('project_name')} />}
+          {val('sebut_harga_no') && <DetailRow label={label('sebut_harga_no')} value={<span className="font-mono text-sm">{val('sebut_harga_no')}</span>} />}
+        </div>
+
+        <SubTitle>Nilai Kontrak & Insurans</SubTitle>
+        <div className="bg-gray-50 rounded-lg p-4 space-y-0">
+          {(val('contract_value') || data.amount) && (
+            <DetailRow label={label('contract_value')} value={<span className="font-bold">{val('contract_value') ?? data.amount}</span>} />
+          )}
+          {(val('performance_bond_value') || data.bondValue) && (
+            <DetailRow label={label('performance_bond_value')} value={<span className="font-bold text-violet-700">{val('performance_bond_value') ?? data.bondValue}</span>} />
+          )}
+          {val('third_party_liability') && (
+            <DetailRow label={label('third_party_liability')} value={<span className="font-semibold">{val('third_party_liability')}</span>} />
+          )}
+          {val('public_liability') && (
+            <DetailRow label={label('public_liability')} value={<span className="font-semibold">{val('public_liability')}</span>} />
+          )}
+        </div>
+
+        <SubTitle>Tarikh Penting</SubTitle>
+        <div className="bg-gray-50 rounded-lg p-4 space-y-0">
+          {val('site_possession_date') && <DetailRow label={label('site_possession_date')} value={formatDate(val('site_possession_date')!)} />}
+          {val('completion_date') && <DetailRow label={label('completion_date')} value={<span className="font-semibold">{formatDate(val('completion_date')!)}</span>} />}
+          {val('defect_liability_period') && <DetailRow label={label('defect_liability_period')} value={val('defect_liability_period')} />}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function ExtractedDocSection({ file }: { file: CaseFile }) {
   const data = file.aiExtractedData as AiExtractedData
-  const isSSTDoc = data.raw && Object.keys(data.raw).some(k => SST_KEYS.has(k))
+  const r = (data.raw ?? {}) as Record<string, unknown>
+  const isCustomSST = Object.keys(r).some(k => CUSTOM_SST_KEYS.has(k))
+  const isSSTDoc = !isCustomSST && data.raw && Object.keys(data.raw).some(k => SST_KEYS.has(k))
 
+  if (isCustomSST) return <CustomSSTDocSection file={file} data={data} />
   if (isSSTDoc) return <SSTDocSection file={file} data={data} />
 
   const extras = data.raw ? Object.entries(data.raw).filter(([k]) => !STANDARD_KEYS.has(k)) : []
