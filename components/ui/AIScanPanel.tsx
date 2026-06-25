@@ -11,7 +11,16 @@ type Props = {
   onClose: () => void
 }
 
-const SST_KEYS = new Set(['thirdPartyLiability', 'workStartDate', 'workEndDate', 'dlpEndDate', 'workInsuranceValue', 'sebuthargaNo', 'sstNo', 'issuingAgency', 'latePenaltyRate', 'bondValidUntil', 'dlpBreakdown', 'bonPelaksanaan', 'defectLiabilityPeriod'])
+const SST_KEYS = new Set([
+  // camelCase keys (older prompts)
+  'thirdPartyLiability', 'workStartDate', 'workEndDate', 'dlpEndDate', 'workInsuranceValue',
+  'sebuthargaNo', 'sstNo', 'issuingAgency', 'latePenaltyRate', 'bondValidUntil',
+  'dlpBreakdown', 'bonPelaksanaan', 'defectLiabilityPeriod',
+  // snake_case keys (new SST prompt)
+  'sebut_harga_no', 'site_possession_date', 'completion_date', 'defect_liability_period',
+  'performance_bond_value', 'third_party_liability', 'public_liability',
+  'company_address', 'ssm_number',
+])
 
 const INPUT_CLS = 'w-full text-sm font-medium text-gray-800 bg-white border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400'
 
@@ -246,8 +255,12 @@ function SSTEditFields({ raw, onChange }: { raw: Record<string, unknown>; onChan
   )
 
   const hasDate = raw.workStartDate != null || raw.workEndDate != null || raw.dlpEndDate != null || raw.bondValidUntil != null || raw.defectLiabilityPeriod != null
+    || raw.site_possession_date != null || raw.completion_date != null || raw.defect_liability_period != null
   const hasInsurance = raw.workInsuranceValue != null || raw.thirdPartyLiability != null || raw.bonPelaksanaan != null
+    || raw.third_party_liability != null || raw.public_liability != null || raw.performance_bond_value != null
   const hasRef = raw.sstNo != null || raw.sebuthargaNo != null || raw.issuingAgency != null
+    || raw.sebut_harga_no != null || raw.ssm_number != null
+  const hasAddress = raw.company_address != null
 
   return (
     <div className="space-y-3 pt-3 border-t border-gray-100">
@@ -257,11 +270,14 @@ function SSTEditFields({ raw, onChange }: { raw: Record<string, unknown>; onChan
         <div>
           <p className="text-xs text-gray-400 mb-1.5">Key Dates</p>
           <div className="grid grid-cols-2 gap-2">
+            {raw.site_possession_date != null && <Chip label="Site Possession Date" fieldKey="site_possession_date" />}
             {raw.workStartDate != null && <Chip label="Work Start Date" fieldKey="workStartDate" />}
+            {raw.completion_date != null && <Chip label="Completion Date" fieldKey="completion_date" accent="bg-amber-50" />}
             {raw.workEndDate != null && <Chip label="Work End Date" fieldKey="workEndDate" accent="bg-amber-50" />}
+            {raw.defect_liability_period != null && <Chip label="Defect Liability Period (DLP)" fieldKey="defect_liability_period" accent="bg-orange-50" />}
+            {raw.defectLiabilityPeriod != null && <Chip label="Defect Liability Period" fieldKey="defectLiabilityPeriod" accent="bg-orange-50" />}
             {raw.dlpEndDate != null && <Chip label="DLP End Date" fieldKey="dlpEndDate" accent="bg-orange-50" />}
             {raw.bondValidUntil != null && <Chip label="Bond Valid Until" fieldKey="bondValidUntil" accent="bg-violet-50" />}
-            {raw.defectLiabilityPeriod != null && <Chip label="Defect Liability Period" fieldKey="defectLiabilityPeriod" accent="bg-orange-50" />}
           </div>
         </div>
       )}
@@ -270,9 +286,12 @@ function SSTEditFields({ raw, onChange }: { raw: Record<string, unknown>; onChan
         <div>
           <p className="text-xs text-gray-400 mb-1.5">Bond &amp; Insurance Values</p>
           <div className="grid grid-cols-2 gap-2">
+            {raw.performance_bond_value != null && <Chip label="Bon Pelaksanaan (5%)" fieldKey="performance_bond_value" accent="bg-violet-50" />}
             {raw.bonPelaksanaan != null && <Chip label="Bon Pelaksanaan (5%)" fieldKey="bonPelaksanaan" accent="bg-violet-50" />}
+            {raw.third_party_liability != null && <Chip label="Insurans Kerja (Third Party)" fieldKey="third_party_liability" accent="bg-blue-50" />}
+            {raw.thirdPartyLiability != null && <Chip label="Third Party Liability" fieldKey="thirdPartyLiability" accent="bg-blue-50" />}
+            {raw.public_liability != null && <Chip label="Tanggungan Awam (Public Liability)" fieldKey="public_liability" accent="bg-blue-50" />}
             {raw.workInsuranceValue != null && <Chip label="WC (Workmanship Insurance)" fieldKey="workInsuranceValue" accent="bg-blue-50" />}
-            {raw.thirdPartyLiability != null && <Chip label="Third Party Value" fieldKey="thirdPartyLiability" accent="bg-blue-50" />}
           </div>
         </div>
       )}
@@ -281,10 +300,19 @@ function SSTEditFields({ raw, onChange }: { raw: Record<string, unknown>; onChan
         <div>
           <p className="text-xs text-gray-400 mb-1.5">References</p>
           <div className="space-y-1.5">
-            {raw.sstNo != null && <Chip label="SST / Contract No." fieldKey="sstNo" />}
+            {raw.sebut_harga_no != null && <Chip label="No. Sebut Harga" fieldKey="sebut_harga_no" />}
             {raw.sebuthargaNo != null && <Chip label="No. Sebutharga / Tender" fieldKey="sebuthargaNo" />}
+            {raw.sstNo != null && <Chip label="SST / Contract No." fieldKey="sstNo" />}
+            {raw.ssm_number != null && <Chip label="No. Pendaftaran SSM / MOF" fieldKey="ssm_number" />}
             {raw.issuingAgency != null && <Chip label="Issuing Agency" fieldKey="issuingAgency" />}
           </div>
+        </div>
+      )}
+
+      {hasAddress && (
+        <div>
+          <p className="text-xs text-gray-400 mb-1.5">Company Details</p>
+          <Chip label="Company Address" fieldKey="company_address" />
         </div>
       )}
 

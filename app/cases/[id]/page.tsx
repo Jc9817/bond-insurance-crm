@@ -607,10 +607,20 @@ export default function CaseDetailPage() {
                               {d.amount && <AiField label="Contract Value" value={d.amount} />}
                               {d.bondValue && <AiField label="Bond Value" value={d.bondValue} />}
                               {d.expiryDate && <AiField label="Expiry Date" value={d.expiryDate} />}
+                              {raw.sebut_harga_no != null && <AiField label="No. Sebut Harga" value={String(raw.sebut_harga_no)} />}
+                              {raw.sebuthargaNo != null && <AiField label="No. Sebutharga" value={String(raw.sebuthargaNo)} />}
+                              {raw.ssm_number != null && <AiField label="SSM / MOF No." value={String(raw.ssm_number)} />}
+                              {raw.site_possession_date != null && <AiField label="Site Possession Date" value={String(raw.site_possession_date)} />}
+                              {raw.completion_date != null && <AiField label="Completion Date" value={String(raw.completion_date)} />}
+                              {raw.defect_liability_period != null && <AiField label="DLP" value={String(raw.defect_liability_period)} />}
+                              {raw.performance_bond_value != null && <AiField label="Bon Pelaksanaan" value={String(raw.performance_bond_value)} />}
+                              {raw.third_party_liability != null && <AiField label="Insurans Kerja" value={String(raw.third_party_liability)} />}
+                              {raw.public_liability != null && <AiField label="Tanggungan Awam" value={String(raw.public_liability)} />}
                               {raw.thirdPartyLiability != null && <AiField label="Third Party Liability" value={String(raw.thirdPartyLiability)} />}
                               {raw.workInsuranceValue != null && <AiField label="WC Insurance" value={String(raw.workInsuranceValue)} />}
                               {raw.sstNo != null && <AiField label="SST / Contract No." value={String(raw.sstNo)} />}
                               {raw.issuingAgency != null && <AiField label="Issuing Agency" value={String(raw.issuingAgency)} />}
+                              {raw.company_address != null && <AiField label="Company Address" value={String(raw.company_address)} wide />}
                               {d.notes && <AiField label="Notes / References" value={d.notes} wide />}
                             </div>
                           </div>

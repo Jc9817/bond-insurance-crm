@@ -21,7 +21,8 @@ function mapCustomResponse(data: Record<string, unknown>) {
   const cd = (data.cover_duration ?? {}) as Record<string, unknown>
 
   const customerName = String(
-    data.customerName ?? data.contractor_name ?? data.customer_name ?? data.insured ?? ''
+    data.customerName ?? data.contractor_name ?? data.customer_name ??
+    data.company_name ?? data.insured ?? ''
   )
   const projectName = String(
     data.projectName ?? data.project_name ?? data.scope_of_works ?? data.description_of_works ?? ''
@@ -30,41 +31,45 @@ function mapCustomResponse(data: Record<string, unknown>) {
     data.caseType ?? data.case_type ?? data.bond_type ?? data.insurance_type ?? ''
   )
 
-  // amount / bondValue may come as raw numbers (SST prompt) or pre-formatted RM strings.
-  // New LOA prompt uses ContractValue / BondValue (capital first letters).
+  // amount / bondValue may come as raw numbers or pre-formatted RM strings.
   const amount = data.amount != null
     ? (typeof data.amount === 'number' ? formatRM(data.amount) : String(data.amount))
     : data.ContractValue != null
     ? (typeof data.ContractValue === 'number' ? formatRM(data.ContractValue) : String(data.ContractValue))
     : formatRM(data.contract_value)
+
   const bondValue = data.bondValue != null
     ? (typeof data.bondValue === 'number' ? formatRM(data.bondValue) : String(data.bondValue))
     : data.BondValue != null
     ? (typeof data.BondValue === 'number' ? formatRM(data.BondValue) : String(data.BondValue))
     : data.bond_value != null ? formatRM(data.bond_value)
+    : data.performance_bond_value != null ? (typeof data.performance_bond_value === 'number' ? formatRM(data.performance_bond_value) : String(data.performance_bond_value))
     : data.bonPelaksanaan != null ? formatRM(data.bonPelaksanaan) : ''
 
-  // expiryDate: SST prompt uses workEndDate; older prompts use expiryDate / expiry_date
+  // expiryDate: prefer completion_date from SST prompts, fall back to other keys
   const expiryDate = String(
     data.expiryDate ?? data.expiry_date ??
+    data.completion_date ??
     data.workEndDate ?? data.work_end_date ??
     cd.work_insurance_end ?? cd.public_liability_end ?? ''
   )
 
-  // notes: SST prompt splits into sstNo / sebuthargaNo / issuingAgency
+  // notes: assemble from whichever reference fields are present
   const noteParts = [
+    data.sebut_harga_no ? `Sebut Harga: ${data.sebut_harga_no}` : '',
     data.sstNo ? `SST: ${data.sstNo}` : '',
     data.sebuthargaNo ? `Sebutharga: ${data.sebuthargaNo}` : '',
+    data.ssm_number ? `SSM: ${data.ssm_number}` : '',
     data.issuingAgency ? `Agency: ${data.issuingAgency}` : '',
     data.notes ? String(data.notes) : '',
   ].filter(Boolean)
   const notes = noteParts.join(' | ')
 
-  // Pre-format monetary and date fields that appear in the extended SST panel,
-  // so they display as "RM x,xxx.xx" instead of raw numbers.
+  // Pre-format all monetary fields so they display as "RM x,xxx.xx" not raw numbers
   const MONETARY_RAW_KEYS = [
     'thirdPartyLiability', 'workInsuranceValue', 'bonPelaksanaan',
     'third_party_liability', 'work_insurance_value', 'bon_pelaksanaan',
+    'performance_bond_value', 'public_liability',
   ]
   const formattedRaw = { ...data }
   for (const key of MONETARY_RAW_KEYS) {
