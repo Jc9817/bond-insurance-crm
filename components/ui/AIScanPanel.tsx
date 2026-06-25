@@ -122,39 +122,46 @@ export default function AIScanPanel({ file, onClose }: Props) {
             )}
 
             <div className="space-y-3 mb-6">
-              <EditField label="Principal">
-                <input className={INPUT_CLS} value={form.customerName} onChange={e => setField('customerName', e.target.value)} />
-              </EditField>
-              <EditField label="Project Title / Description of Works">
-                <textarea className={`${INPUT_CLS} resize-none`} rows={2} value={form.projectName} onChange={e => setField('projectName', e.target.value)} />
-              </EditField>
-              <EditField label="Bond / Insurance Type">
-                <input className={INPUT_CLS} value={form.caseType} onChange={e => setField('caseType', e.target.value)} />
-              </EditField>
-              <div className="grid grid-cols-2 gap-3">
-                <EditField label="Contract Value">
-                  <input className={INPUT_CLS} value={form.amount} onChange={e => setField('amount', e.target.value)} />
-                </EditField>
-                <EditField label="Bond Value">
-                  <input className={INPUT_CLS} value={form.bondValue} onChange={e => setField('bondValue', e.target.value)} />
-                </EditField>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <EditField label="Third Party Value">
-                  <input className={INPUT_CLS} value={String(raw.thirdPartyLiability ?? '')} onChange={e => setRaw('thirdPartyLiability', e.target.value)} placeholder="e.g. RM 200,000.00" />
-                </EditField>
-                <EditField label="WC (Workmanship Insurance)">
-                  <input className={INPUT_CLS} value={String(raw.workInsuranceValue ?? '')} onChange={e => setRaw('workInsuranceValue', e.target.value)} placeholder="e.g. RM 46,598.00" />
-                </EditField>
-              </div>
-              <EditField label="Bond / Policy Expiry (YYYY-MM-DD)">
-                <input className={INPUT_CLS} value={form.expiryDate} onChange={e => setField('expiryDate', e.target.value)} />
-              </EditField>
-              <EditField label="Reference / Notes">
-                <input className={INPUT_CLS} value={form.notes} onChange={e => setField('notes', e.target.value)} />
-              </EditField>
-
-              {isSSTDoc && <SSTEditFields raw={raw} onChange={setRaw} />}
+              {file.aiPrompt ? (
+                // Custom prompt — show raw extracted fields directly, no remapping confusion
+                <CustomRawFields raw={raw} onChange={setRaw} />
+              ) : (
+                // Default generic form
+                <>
+                  <EditField label="Principal">
+                    <input className={INPUT_CLS} value={form.customerName} onChange={e => setField('customerName', e.target.value)} />
+                  </EditField>
+                  <EditField label="Project Title / Description of Works">
+                    <textarea className={`${INPUT_CLS} resize-none`} rows={2} value={form.projectName} onChange={e => setField('projectName', e.target.value)} />
+                  </EditField>
+                  <EditField label="Bond / Insurance Type">
+                    <input className={INPUT_CLS} value={form.caseType} onChange={e => setField('caseType', e.target.value)} />
+                  </EditField>
+                  <div className="grid grid-cols-2 gap-3">
+                    <EditField label="Contract Value">
+                      <input className={INPUT_CLS} value={form.amount} onChange={e => setField('amount', e.target.value)} />
+                    </EditField>
+                    <EditField label="Bond Value">
+                      <input className={INPUT_CLS} value={form.bondValue} onChange={e => setField('bondValue', e.target.value)} />
+                    </EditField>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <EditField label="Third Party Value">
+                      <input className={INPUT_CLS} value={String(raw.thirdPartyLiability ?? '')} onChange={e => setRaw('thirdPartyLiability', e.target.value)} placeholder="e.g. RM 200,000.00" />
+                    </EditField>
+                    <EditField label="WC (Workmanship Insurance)">
+                      <input className={INPUT_CLS} value={String(raw.workInsuranceValue ?? '')} onChange={e => setRaw('workInsuranceValue', e.target.value)} placeholder="e.g. RM 46,598.00" />
+                    </EditField>
+                  </div>
+                  <EditField label="Bond / Policy Expiry (YYYY-MM-DD)">
+                    <input className={INPUT_CLS} value={form.expiryDate} onChange={e => setField('expiryDate', e.target.value)} />
+                  </EditField>
+                  <EditField label="Reference / Notes">
+                    <input className={INPUT_CLS} value={form.notes} onChange={e => setField('notes', e.target.value)} />
+                  </EditField>
+                  {isSSTDoc && <SSTEditFields raw={raw} onChange={setRaw} />}
+                </>
+              )}
             </div>
 
             {!isEditMode && (
@@ -233,6 +240,77 @@ function EditField({ label, children }: { label: string; children: React.ReactNo
     <div>
       <label className="block text-xs text-gray-400 mb-0.5">{label}</label>
       {children}
+    </div>
+  )
+}
+
+// ─── Custom prompt: show all raw fields directly ─────────────────────────────
+
+const FIELD_LABELS: Record<string, string> = {
+  project_name: 'Project Name / Description of Works',
+  sebut_harga_no: 'No. Sebut Harga',
+  contract_value: 'Contract Value (Harga Kontrak)',
+  site_possession_date: 'Site Possession Date',
+  completion_date: 'Completion Date',
+  defect_liability_period: 'Defect Liability Period (DLP)',
+  performance_bond_value: 'Bon Pelaksanaan (5%)',
+  third_party_liability: 'Insurans Kerja (Third Party Liability)',
+  public_liability: 'Tanggungan Awam (Public Liability)',
+  company_name: 'Contractor / Company Name',
+  company_address: 'Company Address',
+  ssm_number: 'No. Pendaftaran SSM / MOF',
+  // camelCase fallbacks
+  customerName: 'Principal',
+  projectName: 'Project Name',
+  caseType: 'Bond / Insurance Type',
+  amount: 'Contract Value',
+  bondValue: 'Bond Value',
+  expiryDate: 'Expiry Date',
+  notes: 'Notes / References',
+  bonPelaksanaan: 'Bon Pelaksanaan',
+  thirdPartyLiability: 'Third Party Liability',
+  workInsuranceValue: 'WC Insurance',
+  sebuthargaNo: 'No. Sebutharga',
+  sstNo: 'SST No.',
+  issuingAgency: 'Issuing Agency',
+}
+
+// Keys that are internal/derived and shouldn't be shown as editable fields
+const SKIP_KEYS = new Set(['raw'])
+
+function formatKeyLabel(key: string): string {
+  return FIELD_LABELS[key] ?? key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+}
+
+function CustomRawFields({ raw, onChange }: { raw: Record<string, unknown>; onChange: (key: string, value: string) => void }) {
+  const entries = Object.entries(raw).filter(([k]) => !SKIP_KEYS.has(k))
+  if (entries.length === 0) return <p className="text-xs text-gray-400">No extracted fields found.</p>
+
+  const multilineKeys = new Set(['company_address', 'projectName', 'project_name'])
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-gray-400 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
+        Fields shown exactly as extracted by your custom prompt — what you see is what gets saved.
+      </p>
+      {entries.map(([key, value]) => (
+        <EditField key={key} label={formatKeyLabel(key)}>
+          {multilineKeys.has(key) ? (
+            <textarea
+              className={`${INPUT_CLS} resize-none`}
+              rows={2}
+              value={String(value ?? '')}
+              onChange={e => onChange(key, e.target.value)}
+            />
+          ) : (
+            <input
+              className={INPUT_CLS}
+              value={String(value ?? '')}
+              onChange={e => onChange(key, e.target.value)}
+            />
+          )}
+        </EditField>
+      ))}
     </div>
   )
 }
