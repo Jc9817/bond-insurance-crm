@@ -5,7 +5,7 @@ import { useStore } from '@/lib/store'
 import { useAuth } from '@/lib/auth'
 import { createClient } from '@/utils/supabase/client'
 import type { WorkflowTemplate, CaseFile } from '@/lib/types'
-import { getActiveDocs, getUploadedFileForDoc, getUnassignedFiles, getDocsForStep } from '@/lib/workflow'
+import { getActiveDocs, getUploadedFileForDoc, getUnassignedFiles, getDocsForStep, getActiveSteps } from '@/lib/workflow'
 import { formatFileSize, timeAgo } from '@/lib/utils'
 
 const STORAGE_BUCKET = 'case-files'
@@ -169,6 +169,8 @@ export default function DocumentChecklist({ caseId, caseTitle, template, caseFil
   const docs = filterStepId !== undefined ? getDocsForStep(template, filterStepId) : getActiveDocs(template)
   const requiredDocs = docs.filter(d => d.required)
   const optionalDocs = docs.filter(d => !d.required)
+  const templateSteps = getActiveSteps(template)
+  const stepNameMap: Record<string, string> = Object.fromEntries(templateSteps.map(s => [s.id, s.name]))
   const unassignedFiles = getUnassignedFiles(caseId, template, caseFiles)
 
   const uploadedRequiredCount = requiredDocs.filter(doc => getUploadedFileForDoc(doc.id, caseId, caseFiles)).length
@@ -363,6 +365,7 @@ export default function DocumentChecklist({ caseId, caseTitle, template, caseFil
                   docName={doc.name}
                   description={doc.description}
                   required={doc.required}
+                  stepName={doc.workflowStepId ? stepNameMap[doc.workflowStepId] : undefined}
                   uploaded={uploaded}
                   previousVersions={previousVersions}
                   isUploading={isUploading}
@@ -419,6 +422,7 @@ export default function DocumentChecklist({ caseId, caseTitle, template, caseFil
                   docName={doc.name}
                   description={doc.description}
                   required={doc.required}
+                  stepName={doc.workflowStepId ? stepNameMap[doc.workflowStepId] : undefined}
                   uploaded={uploaded}
                   isUploading={isUploading}
                   isDropTarget={isDropTarget}
@@ -532,6 +536,7 @@ type DocRowProps = {
   docName: string
   description: string
   required: boolean
+  stepName?: string
   uploaded: CaseFile | undefined
   previousVersions?: CaseFile[]
   isUploading: boolean
@@ -554,7 +559,7 @@ type DocRowProps = {
 }
 
 function DocRow({
-  docId, docName, description, required, uploaded, previousVersions = [], isUploading,
+  docId, docName, description, required, stepName, uploaded, previousVersions = [], isUploading,
   isDropTarget, isDragging, readOnly,
   deleteConfirmId, setDeleteConfirmId,
   fileInputRef, onUploadClick, onFileChange, onDelete, onScan, onReview, onView, onDownload,
@@ -607,6 +612,11 @@ function DocRow({
           }`}>
             {required ? 'Required' : 'Optional'}
           </span>
+          {stepName && (
+            <span className="text-xs rounded-full px-2 py-0.5 font-medium bg-blue-50 text-blue-500 border border-blue-100">
+              {stepName}
+            </span>
+          )}
         </div>
         {!uploaded && !isDropTarget && (
           <p className="text-xs text-gray-400 mt-0.5">{description}</p>

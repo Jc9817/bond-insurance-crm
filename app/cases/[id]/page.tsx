@@ -467,40 +467,6 @@ export default function CaseDetailPage() {
           <div className="space-y-5">
             {/* Document checklist section */}
             <div className="card-section">
-              {steps.length > 0 && (
-                <div className="flex items-center gap-2 mb-4 flex-wrap">
-                  <span className="text-xs text-gray-400 font-medium">Filter by step:</span>
-                  {steps.map((step, idx) => {
-                    const isViewing = effectiveViewingStepId === step.id
-                    const sIdx = steps.findIndex(s => s.id === caseItem.currentWorkflowStepId)
-                    const isDone = idx < sIdx
-                    const isCurrent = idx === sIdx
-                    return (
-                      <button
-                        key={step.id}
-                        onClick={() => setViewingStepId(step.id)}
-                        className={`text-xs px-3 py-1 rounded-full border transition-colors font-medium ${
-                          isViewing ? 'bg-blue-600 text-white border-blue-600' :
-                          isDone ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200' :
-                          isCurrent ? 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100' :
-                          'bg-gray-100 text-gray-500 border-gray-200 hover:bg-gray-200'
-                        }`}
-                      >
-                        {isDone ? '✓ ' : ''}{step.name}
-                      </button>
-                    )
-                  })}
-                  <button
-                    onClick={() => setViewingStepId(null)}
-                    className={`text-xs px-3 py-1 rounded-full border transition-colors ${
-                      effectiveViewingStepId === null ? 'bg-gray-700 text-white border-gray-700' : 'bg-gray-100 text-gray-500 border-gray-200 hover:bg-gray-200'
-                    }`}
-                  >
-                    All
-                  </button>
-                </div>
-              )}
-
               {viewingStep?.aiEmailEnabled ? (
                 <QuotationDocumentPanel
                   caseId={id}
@@ -511,7 +477,7 @@ export default function CaseDetailPage() {
                 <>
                   <div className="flex items-center justify-between mb-4">
                     <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest">
-                      {viewingStep ? `${viewingStep.name} — Checklist` : 'All Documents'}
+                      Document Checklist
                     </h2>
                     {unassignedDocs.length > 0 && (
                       <span className="text-xs font-semibold rounded-full px-2.5 py-1 bg-amber-100 text-amber-700">
@@ -524,8 +490,6 @@ export default function CaseDetailPage() {
                     caseTitle={caseItem.caseTitle}
                     template={template}
                     caseFiles={caseDocs}
-                    filterStepId={effectiveViewingStepId}
-                    readOnly={viewingIdx !== currentIdx}
                     onScanReady={file => setScanFile(file)}
                   />
                 </>
@@ -604,32 +568,69 @@ export default function CaseDetailPage() {
                 </button>
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-4">
                 {caseDocs.map(f => {
                   const scanned = f.aiStatus === 'Approved' || f.aiStatus === 'Rejected'
+                  const d = f.aiExtractedData
+                  const raw = (d?.raw ?? {}) as Record<string, unknown>
                   return (
-                    <div key={f.id} className="p-4 rounded-xl border border-gray-100 bg-gray-50">
-                      <div className="flex items-center justify-between gap-3">
+                    <div key={f.id} className={`rounded-xl border ${f.aiStatus === 'Approved' ? 'border-emerald-100 bg-emerald-50/30' : 'border-gray-100 bg-gray-50'}`}>
+                      <div className="flex items-center justify-between gap-3 px-4 py-3">
                         <div className="flex items-center gap-2.5 min-w-0">
                           <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${
                             f.aiStatus === 'Approved' ? 'bg-emerald-100 text-emerald-700' :
                             f.aiStatus === 'Rejected' ? 'bg-red-100 text-red-700' :
+                            f.aiStatus === 'Processing' ? 'bg-amber-100 text-amber-700' :
+                            f.aiStatus === 'Ready for Review' ? 'bg-blue-100 text-blue-700' :
                             'bg-gray-100 text-gray-500'
                           }`}>
-                            {f.aiStatus ?? 'Not scanned'}
+                            {f.aiStatus ?? 'Not Scanned'}
                           </span>
                           <p className="text-sm font-medium text-gray-800 truncate">{f.fileName}</p>
+                          <span className="text-xs text-gray-400 shrink-0">{f.documentType}</span>
                         </div>
                         <button
                           onClick={() => setScanFile(f)}
                           className="shrink-0 text-xs px-3 py-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 font-medium transition-colors"
                         >
-                          {scanned ? 'Re-scan' : 'Scan with AI'}
+                          {scanned ? 'Edit / Re-scan' : f.aiStatus === 'Processing' ? 'Scanning…' : f.aiStatus === 'Ready for Review' ? 'Review AI' : 'Scan with AI'}
                         </button>
                       </div>
-                      {f.aiStatus === 'Approved' && (
-                        <div className="mt-3 p-3 bg-white rounded-lg border border-gray-100">
-                          <p className="text-xs text-gray-400 italic">Open the scan panel to view detailed extraction results for this document.</p>
+
+                      {f.aiStatus === 'Approved' && d && (
+                        <div className="px-4 pb-4">
+                          <div className="bg-white rounded-xl border border-emerald-100 p-4">
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-3">
+                              {d.customerName && <AiField label="Principal" value={d.customerName} />}
+                              {d.projectName && <AiField label="Project / Works" value={d.projectName} wide />}
+                              {d.caseType && <AiField label="Bond / Insurance Type" value={d.caseType} />}
+                              {d.amount && <AiField label="Contract Value" value={d.amount} />}
+                              {d.bondValue && <AiField label="Bond Value" value={d.bondValue} />}
+                              {d.expiryDate && <AiField label="Expiry Date" value={d.expiryDate} />}
+                              {raw.thirdPartyLiability != null && <AiField label="Third Party Liability" value={String(raw.thirdPartyLiability)} />}
+                              {raw.workInsuranceValue != null && <AiField label="WC Insurance" value={String(raw.workInsuranceValue)} />}
+                              {raw.sstNo != null && <AiField label="SST / Contract No." value={String(raw.sstNo)} />}
+                              {raw.issuingAgency != null && <AiField label="Issuing Agency" value={String(raw.issuingAgency)} />}
+                              {d.notes && <AiField label="Notes / References" value={d.notes} wide />}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {f.aiStatus === 'Ready for Review' && (
+                        <div className="px-4 pb-3">
+                          <button
+                            onClick={() => setScanFile(f)}
+                            className="w-full text-xs bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded-lg transition-colors"
+                          >
+                            Review & approve extracted data →
+                          </button>
+                        </div>
+                      )}
+
+                      {f.aiStatus === 'Rejected' && (
+                        <div className="px-4 pb-3">
+                          <p className="text-xs text-red-500">Extraction was rejected. Re-scan to try again.</p>
                         </div>
                       )}
                     </div>
@@ -1222,6 +1223,15 @@ function DetailRow({ label, children }: { label: string; children: React.ReactNo
     <div>
       <p className="text-xs text-gray-400 mb-0.5">{label}</p>
       {children}
+    </div>
+  )
+}
+
+function AiField({ label, value, wide }: { label: string; value: string; wide?: boolean }) {
+  return (
+    <div className={wide ? 'col-span-2 md:col-span-3' : ''}>
+      <p className="text-[10px] text-gray-400 uppercase tracking-widest mb-0.5">{label}</p>
+      <p className="text-sm font-semibold text-gray-800">{value}</p>
     </div>
   )
 }
