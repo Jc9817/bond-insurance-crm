@@ -92,6 +92,37 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'No file data provided' }, { status: 400 })
   }
 
+  // ── Mock mode ── set AI_MOCK=true in .env.local to skip Anthropic calls during dev
+  if (process.env.AI_MOCK === 'true') {
+    const useCustom = Boolean(aiPrompt?.trim())
+    if (useCustom) {
+      const mockRaw = {
+        company_name: '[MOCK] Syarikat Contoh Sdn Bhd (0123456-X)',
+        project_name: '[MOCK] Kerja-kerja Menaik Taraf Jalan Raya',
+        sebut_harga_no: '[MOCK] JKR/SH/2024/001',
+        contract_value: 'RM 534,700.00',
+        site_possession_date: '2024-03-01',
+        completion_date: '2025-02-28',
+        defect_liability_period: '24 bulan',
+        performance_bond_value: 'RM 26,735.00',
+        third_party_liability: 'RM 200,000.00',
+        public_liability: 'RM 500,000.00',
+        company_address: '[MOCK] No. 12, Jalan Contoh, 50000 Kuala Lumpur',
+        ssm_number: '[MOCK] MOF/2024/12345',
+      }
+      return NextResponse.json(mapCustomResponse(mockRaw))
+    }
+    return NextResponse.json({
+      customerName: '[MOCK] ABC Construction Sdn Bhd',
+      projectName: '[MOCK] Supply and Install Works at Site',
+      caseType: 'Performance Bond',
+      amount: 'RM 500,000.00',
+      bondValue: 'RM 25,000.00',
+      expiryDate: '2026-12-31',
+      notes: '[MOCK] Ref: TENDER/2024/001',
+    })
+  }
+
   const commaIdx = fileDataUrl.indexOf(',')
   const header = fileDataUrl.slice(0, commaIdx)
   const base64Data = fileDataUrl.slice(commaIdx + 1)
