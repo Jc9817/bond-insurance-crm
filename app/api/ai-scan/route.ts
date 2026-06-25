@@ -185,21 +185,33 @@ Return only the JSON object, no markdown, no explanation.`
         source: { type: 'base64', media_type: mimeType, data: base64Data } as ImageSource,
       }
 
-  const response = await client.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 1024,
-    messages: [
-      {
-        role: 'user',
-        content: [
-          contentBlock,
-          { type: 'text', text: prompt },
-        ],
-      },
-    ],
-  })
+  let response
+  try {
+    response = await client.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 2048,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            contentBlock,
+            { type: 'text', text: prompt },
+          ],
+        },
+      ],
+    })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error('[ai-scan] Anthropic API error:', msg)
+    return NextResponse.json({ error: `Anthropic API error: ${msg}` }, { status: 500 })
+  }
 
-  const text = response.content[0].type === 'text' ? response.content[0].text : ''
+  const text = response.content[0]?.type === 'text' ? response.content[0].text : ''
+
+  if (!text) {
+    console.error('[ai-scan] Empty response from Anthropic. Stop reason:', response.stop_reason)
+    return NextResponse.json({ error: `Empty response from Anthropic (stop_reason: ${response.stop_reason})` }, { status: 500 })
+  }
 
   // Strip markdown code fences if Claude wrapped the JSON
   const jsonText = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim()
@@ -221,6 +233,10 @@ Return only the JSON object, no markdown, no explanation.`
       notes: extracted.notes ?? '',
     })
   } catch {
-    return NextResponse.json({ error: 'Failed to parse AI response' }, { status: 500 })
+    console.error('[ai-scan] JSON parse failed. Raw text from Claude:', text.slice(0, 500))
+    return NextResponse.json({
+      error: 'Failed to parse AI response',
+      raw: text.slice(0, 500),
+    }, { status: 500 })
   }
 }
