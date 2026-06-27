@@ -17,7 +17,8 @@ try { keyRole = JSON.parse(Buffer.from(supabaseKey.split('.')[1], 'base64').toSt
 console.log('[telegram-webhook] key role:', keyRole, '| service_role env set:', !!serviceRoleKey)
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  supabaseKey
+  supabaseKey,
+  { auth: { autoRefreshToken: false, persistSession: false } }
 )
 
 // ── Session state per Telegram user ──────────────────────────────────────────
