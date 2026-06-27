@@ -12,7 +12,9 @@ const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`
 // Service role key bypasses RLS — required for bot to create customers/cases/files
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 const supabaseKey = serviceRoleKey ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-console.log('[telegram-webhook] key check — service role present:', !!serviceRoleKey, '| using key prefix:', supabaseKey.slice(0, 30))
+let keyRole = 'unknown'
+try { keyRole = JSON.parse(Buffer.from(supabaseKey.split('.')[1], 'base64').toString()).role } catch {}
+console.log('[telegram-webhook] key role:', keyRole, '| service_role env set:', !!serviceRoleKey)
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   supabaseKey
