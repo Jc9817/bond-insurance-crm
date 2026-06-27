@@ -10,9 +10,12 @@ const APP_URL = (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, '')
 const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`
 
 // Service role key bypasses RLS — required for bot to create customers/cases/files
+const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+const supabaseKey = serviceRoleKey ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+console.log('[telegram-webhook] key check — service role present:', !!serviceRoleKey, '| using key prefix:', supabaseKey.slice(0, 30))
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  supabaseKey
 )
 
 // ── Session state per Telegram user ──────────────────────────────────────────
