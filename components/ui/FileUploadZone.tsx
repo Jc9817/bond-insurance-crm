@@ -49,15 +49,13 @@ export default function FileUploadZone({ caseId, documentTypes, onScanReady }: P
 
   const files = caseFiles.filter(f => f.caseId === caseId)
 
-  const processFile = (file: File, documentType: string) => {
-    const fileType = ACCEPTED_TYPES[file.type]
+  const processFile = (rawFile: File, documentType: string) => {
+    const fileType = ACCEPTED_TYPES[rawFile.type]
     if (!fileType) return
 
-    const tempId = `uploading-${Date.now()}`
-    setUploading(file.name)
+    setUploading(rawFile.name)
     setUploadProgress(0)
 
-    // Simulate upload progress
     const interval = setInterval(() => {
       setUploadProgress(p => {
         if (p >= 90) { clearInterval(interval); return 90 }
@@ -65,31 +63,56 @@ export default function FileUploadZone({ caseId, documentTypes, onScanReady }: P
       })
     }, 200)
 
-    setTimeout(() => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const fileDataUrl = reader.result as string
       clearInterval(interval)
       setUploadProgress(100)
       setTimeout(() => {
         addCaseFile({
           caseId,
-          fileName: file.name,
-          fileSize: file.size,
+          fileName: rawFile.name,
+          fileSize: rawFile.size,
           fileType,
           documentType,
           uploadedBy: currentUser?.fullName ?? 'Unknown',
           aiScanned: false,
           aiStatus: 'Not Scanned',
           aiExtractedData: null,
+          fileDataUrl,
         })
         addActivityLog({
           actionType: 'DOCUMENT_UPLOADED',
           title: 'File uploaded',
-          description: `${file.name} uploaded`,
+          description: `${rawFile.name} uploaded`,
           changedBy: currentUser?.fullName ?? 'Unknown',
         })
         setUploading(null)
         setUploadProgress(0)
       }, 300)
-    }, 1200)
+    }
+    reader.readAsDataURL(rawFile)
+  }
+
+  const handleView = (file: CaseFile) => {
+    const url = file.fileDataUrl
+    if (!url) return
+    if (url.startsWith('http')) {
+      window.open(url, '_blank')
+    } else {
+      try {
+        const [header, data] = url.split(',')
+        const mime = header.match(/:(.*?);/)?.[1] ?? 'application/octet-stream'
+        const bytes = atob(data)
+        const arr = new Uint8Array(bytes.length)
+        for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i)
+        const blobUrl = URL.createObjectURL(new Blob([arr], { type: mime }))
+        window.open(blobUrl, '_blank')
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 30000)
+      } catch {
+        window.open(url, '_blank')
+      }
+    }
   }
 
   const handleDrop = (e: DragEvent<HTMLDivElement>) => {
@@ -192,6 +215,14 @@ export default function FileUploadZone({ caseId, documentTypes, onScanReady }: P
                 </span>
               </div>
               <div className="flex items-center gap-1.5 shrink-0">
+                {file.fileDataUrl && (
+                  <button
+                    onClick={() => handleView(file)}
+                    className="btn-xs bg-blue-50 text-blue-600 hover:bg-blue-100"
+                  >
+                    View
+                  </button>
+                )}
                 {(file.aiStatus === 'Not Scanned' || file.aiStatus === 'Rejected') && (
                   <button
                     onClick={() => handleScan(file)}
