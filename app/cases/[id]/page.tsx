@@ -19,6 +19,8 @@ import DocumentChecklist from '@/components/ui/DocumentChecklist'
 import AIScanPanel from '@/components/ui/AIScanPanel'
 import StagePipeline from '@/components/ui/StagePipeline'
 import QuotationEmailPanel from '@/components/ui/QuotationEmailPanel'
+import CustomerEmailPanel from '@/components/ui/CustomerEmailPanel'
+import OpsNotifyPanel from '@/components/ui/OpsNotifyPanel'
 import QuotationDocumentPanel from '@/components/ui/QuotationDocumentPanel'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 
@@ -656,6 +658,12 @@ export default function CaseDetailPage() {
         {/* ── Emails tab ──────────────────────────────────────────────────────── */}
         {activeTab === 'emails' && (
           <div className="space-y-5">
+            <OpsNotifyPanel caseItem={caseItem} />
+            <CustomerEmailPanel
+              caseItem={caseItem}
+              customerName={customer?.customerName ?? caseItem.customerName}
+              defaultToEmail={customer?.mainEmail ?? ''}
+            />
             {steps.some(s => s.aiEmailEnabled) ? (
               steps.filter(s => s.aiEmailEnabled).map(emailStep => (
                 <QuotationEmailPanel

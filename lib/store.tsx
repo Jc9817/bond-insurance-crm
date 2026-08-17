@@ -7,7 +7,7 @@ import type {
   User, CaseFile, ActivityLog, SettingsItem, SettingsCategory,
   WorkflowTemplate, RequiredDocument, WorkflowStep,
   Inquiry, InquiryQuotation, InquiryNote, InquiryDocument,
-  Product, ProductPackage, SubmissionLetterTemplate,
+  Product, ProductPackage, SubmissionLetterTemplate, EmailTemplate, CaseEmailLog,
 } from './types'
 import {
   mockPics, mockUsers, mockWorkflowTemplates,
@@ -40,6 +40,8 @@ type StoreCtx = {
   inquiryDocuments: InquiryDocument[]
   products: Product[]
   productPackages: ProductPackage[]
+  emailTemplates: EmailTemplate[]
+  caseEmails: CaseEmailLog[]
   loading: boolean
 
   addCustomer: (c: Omit<Customer, 'id' | 'createdAt'>) => void
@@ -116,6 +118,12 @@ type StoreCtx = {
   addSubmissionLetterTemplate: (t: Omit<SubmissionLetterTemplate, 'id'>) => void
   updateSubmissionLetterTemplate: (id: string, t: Partial<SubmissionLetterTemplate>) => void
   deleteSubmissionLetterTemplate: (id: string) => void
+
+  addEmailTemplate: (t: Omit<EmailTemplate, 'id'>) => void
+  updateEmailTemplate: (id: string, t: Partial<EmailTemplate>) => void
+  deleteEmailTemplate: (id: string) => void
+  sendCaseEmail: (data: { caseId: string; templateName?: string; toEmail: string; subject: string; body: string }) => Promise<void>
+  notifyOpsTeam: (caseItem: Case) => Promise<void>
 }
 
 // ─── DB row → TypeScript mappers ──────────────────────────────────────────────
@@ -181,6 +189,25 @@ const toCase = (c: Case) => ({
   workflow_template_id: c.workflowTemplateId ?? null,
   request_type: c.requestType ?? null,
   selected_products: c.selectedProducts ?? null,
+})
+
+const fromEmailTemplate = (r: Row): EmailTemplate => ({
+  id: r.id, name: r.name ?? '', isActive: r.is_active ?? true,
+  subject: r.subject ?? '', body: r.body ?? '',
+})
+const toEmailTemplate = (t: EmailTemplate) => ({
+  id: t.id, name: t.name, subject: t.subject, body: t.body, is_active: t.isActive,
+})
+
+const fromCaseEmailLog = (r: Row): CaseEmailLog => ({
+  id: r.id, caseId: r.case_id ?? '', templateName: r.template_name ?? undefined,
+  toEmail: r.to_email ?? '', subject: r.subject ?? '', body: r.body ?? '',
+  status: r.status ?? 'sent', errorMessage: r.error_message ?? undefined, sentAt: r.sent_at,
+})
+const toCaseEmailLog = (l: CaseEmailLog) => ({
+  id: l.id, case_id: l.caseId, template_name: l.templateName ?? null,
+  to_email: l.toEmail, subject: l.subject, body: l.body,
+  status: l.status, error_message: l.errorMessage ?? null, sent_at: l.sentAt,
 })
 
 const fromCaseNote = (r: Row): CaseNote => ({
@@ -306,6 +333,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [products, setProducts] = useState<Product[]>(mockProducts)
   const [productPackages, setProductPackages] = useState<ProductPackage[]>(mockProductPackages)
   const [submissionLetterTemplates, setSubmissionLetterTemplates] = useState<SubmissionLetterTemplate[]>(mockSubmissionLetterTemplates)
+  const [emailTemplates, setEmailTemplates] = useState<EmailTemplate[]>([])
+  const [caseEmails, setCaseEmails] = useState<CaseEmailLog[]>([])
   const [settingsData] = useState<SettingsData>({
     caseTypes: mockSettingsCaseTypes,
     industries: mockSettingsIndustries,
@@ -352,6 +381,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       { data: iqRows },
       { data: inRows },
       { data: idRows },
+      { data: templateRows },
+      { data: caseEmailRows },
     ] = await Promise.all([
       sb.from('customers').select('*').order('created_at', { ascending: false }),
       sb.from('contacts').select('*'),
@@ -367,6 +398,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       sb.from('inquiry_quotations').select('*').order('created_at'),
       sb.from('inquiry_notes').select('*').order('created_at', { ascending: false }),
       sb.from('inquiry_documents').select('*').order('uploaded_at', { ascending: false }),
+      sb.from('email_templates').select('*').order('created_at'),
+      sb.from('case_emails').select('*').order('sent_at', { ascending: false }),
     ])
 
     if (custErr) console.error('[Supabase] customers load error:', custErr.message)
@@ -389,6 +422,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       documentType: r.document_type ?? '', uploadedBy: r.uploaded_by ?? '',
       fileDataUrl: r.file_data_url ?? '', uploadedAt: r.uploaded_at,
     })))
+    if (caseEmailRows) setCaseEmails(caseEmailRows.map(fromCaseEmailLog))
+    if (templateRows) {
+      setEmailTemplates(templateRows.map(fromEmailTemplate))
+      if (templateRows.length === 0) seedEmailTemplates(sb)
+    }
 
     // Build nested workflow templates
     if (templates) {
@@ -407,6 +445,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
 
     setLoading(false)
+  }
+
+  async function seedEmailTemplates(sb: ReturnType<typeof createClient>) {
+    const row: EmailTemplate = {
+      id: generateId(),
+      name: 'Quotation Sent to Customer',
+      isActive: true,
+      subject: 'Your Quotation – {{caseTitle}}',
+      body: `dear testing, \n\n{{customerName}}, {{caseTitle}}\n\nregards \ntesting`,
+    }
+    const { error } = await sb.from('email_templates').insert(toEmailTemplate(row))
+    if (!error) setEmailTemplates([row])
   }
 
   async function seedWorkflowTemplates(sb: ReturnType<typeof createClient>) {
@@ -502,6 +552,103 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setCases(prev => prev.map(x => x.id === id ? { ...x, ...updated } : x))
     createClient().from('cases').update(toCase({ ...updated, id } as Case)).eq('id', id).then()
   }
+
+  // ─── Email Templates (customer-facing, sent manually from a case) ──────────
+
+  const addEmailTemplate = (t: Omit<EmailTemplate, 'id'>) => {
+    const row: EmailTemplate = { ...t, id: generateId() }
+    setEmailTemplates(prev => [...prev, row])
+    createClient().from('email_templates').insert(toEmailTemplate(row)).then(({ error }) => {
+      if (error) console.error('[Supabase] addEmailTemplate failed:', error.message)
+    })
+  }
+  const updateEmailTemplate = (id: string, t: Partial<EmailTemplate>) => {
+    setEmailTemplates(prev => prev.map(x => x.id === id ? { ...x, ...t } : x))
+    createClient().from('email_templates').update(toEmailTemplate({ ...emailTemplates.find(x => x.id === id), ...t, id } as EmailTemplate)).eq('id', id).then()
+  }
+  const deleteEmailTemplate = (id: string) => {
+    setEmailTemplates(prev => prev.filter(x => x.id !== id))
+    createClient().from('email_templates').delete().eq('id', id).then()
+  }
+
+  // ─── Case Emails (sent manually from the case's Emails tab) ────────────────
+
+  const sendCaseEmail = async (data: { caseId: string; templateName?: string; toEmail: string; subject: string; body: string }) => {
+    let status: 'sent' | 'failed' = 'sent'
+    let errorMessage: string | undefined
+
+    try {
+      const res = await fetch('/api/send-graph-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ emailTo: data.toEmail, emailSubject: data.subject, emailBody: data.body }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        status = 'failed'
+        errorMessage = err.error ?? 'Failed to send email'
+      }
+    } catch (err) {
+      status = 'failed'
+      errorMessage = err instanceof Error ? err.message : 'Network error'
+    }
+
+    const row: CaseEmailLog = {
+      id: generateId(), caseId: data.caseId, templateName: data.templateName,
+      toEmail: data.toEmail, subject: data.subject, body: data.body,
+      status, errorMessage, sentAt: nowIso(),
+    }
+    setCaseEmails(prev => [row, ...prev])
+    createClient().from('case_emails').insert(toCaseEmailLog(row)).then()
+
+    if (status === 'failed') throw new Error(errorMessage)
+  }
+
+  // ─── Ops notification (manual test trigger — "new case received") ─────────
+
+  const notifyOpsTeam = async (caseItem: Case) => {
+    let status: 'sent' | 'failed' = 'sent'
+    let errorMessage: string | undefined
+    let toEmail = 'operations team'
+    let subject = `New Case Received – ${caseItem.caseTitle} (${caseItem.customerName})`
+
+    try {
+      const res = await fetch('/api/notify-ops', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          caseId: caseItem.id,
+          caseTitle: caseItem.caseTitle,
+          customerName: caseItem.customerName,
+          caseType: caseItem.caseType,
+          amount: caseItem.amount,
+          personInCharge: caseItem.personInCharge,
+          currentStatus: caseItem.currentStatus,
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        status = 'failed'
+        errorMessage = data.error ?? 'Failed to send notification'
+      } else {
+        toEmail = data.to ?? toEmail
+        subject = data.subject ?? subject
+      }
+    } catch (err) {
+      status = 'failed'
+      errorMessage = err instanceof Error ? err.message : 'Network error'
+    }
+
+    const row: CaseEmailLog = {
+      id: generateId(), caseId: caseItem.id, templateName: 'Ops Notification (test)',
+      toEmail, subject, body: '', status, errorMessage, sentAt: nowIso(),
+    }
+    setCaseEmails(prev => [row, ...prev])
+    createClient().from('case_emails').insert(toCaseEmailLog(row)).then()
+
+    if (status === 'failed') throw new Error(errorMessage)
+  }
+
   const deleteCase = (id: string) => {
     // Remove from memory immediately
     setCases(prev => prev.filter(x => x.id !== id))
@@ -921,7 +1068,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       customers, contacts, cases, caseNotes, followUps, pics,
       users, caseFiles, activityLogs, settingsData: settingsState, workflowTemplates,
       inquiries, inquiryQuotations, inquiryNotes, inquiryDocuments,
-      products, productPackages, loading,
+      products, productPackages, emailTemplates, caseEmails, loading,
       addCustomer, updateCustomer, deleteCustomer,
       addContact, updateContact, deleteContact, setPrimaryContact,
       addCase, updateCase, deleteCase, archiveCase, restoreCase,
@@ -943,6 +1090,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       addProductPackage, updateProductPackage, deleteProductPackage,
       submissionLetterTemplates,
       addSubmissionLetterTemplate, updateSubmissionLetterTemplate, deleteSubmissionLetterTemplate,
+      addEmailTemplate, updateEmailTemplate, deleteEmailTemplate, sendCaseEmail, notifyOpsTeam,
     }}>
       {children}
     </StoreContext.Provider>

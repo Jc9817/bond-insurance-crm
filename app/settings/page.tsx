@@ -4,19 +4,20 @@ import { useState } from 'react'
 import { useStore } from '@/lib/store'
 import { useAuth } from '@/lib/auth'
 import { USER_ROLES, USER_STATUSES, BUSINESS_TYPES, PRODUCT_CATEGORIES } from '@/lib/types'
-import type { SettingsCategory, User, UserRole, UserStatus, WorkflowTemplate, WorkflowStep, RequiredDocument, Product, ProductPackage, ProductCategory, SubmissionLetterTemplate, SubmissionLetterDocItem } from '@/lib/types'
+import type { SettingsCategory, User, UserRole, UserStatus, WorkflowTemplate, WorkflowStep, RequiredDocument, Product, ProductPackage, ProductCategory, SubmissionLetterTemplate, SubmissionLetterDocItem, EmailTemplate } from '@/lib/types'
 import PageHeader from '@/components/ui/PageHeader'
 import Modal from '@/components/ui/Modal'
 
 // ─── Tab type ─────────────────────────────────────────────────────────────────
 
-type Tab = 'users' | 'caseTypes' | 'industries' | 'contactTypes' | 'followUpCategories' | 'documentTypes' | 'pic' | 'workflowTemplates' | 'quotationWorkflow' | 'insurers' | 'productMaster' | 'productPackages' | 'submissionLetters'
+type Tab = 'users' | 'caseTypes' | 'industries' | 'contactTypes' | 'followUpCategories' | 'documentTypes' | 'pic' | 'workflowTemplates' | 'quotationWorkflow' | 'insurers' | 'productMaster' | 'productPackages' | 'submissionLetters' | 'emailTemplates'
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'users', label: 'Users' },
   { key: 'workflowTemplates', label: 'Workflow Templates' },
   { key: 'quotationWorkflow', label: 'Quotation Workflow' },
   { key: 'submissionLetters', label: 'Letter Templates' },
+  { key: 'emailTemplates', label: 'Email Templates' },
   { key: 'productMaster', label: 'Product Master' },
   { key: 'productPackages', label: 'Product Packages' },
   { key: 'caseTypes', label: 'Case Types' },
@@ -1346,6 +1347,134 @@ function SubmissionLettersTab() {
   )
 }
 
+// ─── Email Templates tab ──────────────────────────────────────────────────────
+
+const EMAIL_TEMPLATE_VARS = ['{{customerName}}', '{{caseTitle}}', '{{amount}}', '{{personInCharge}}']
+
+type ETForm = Omit<EmailTemplate, 'id'>
+
+function emptyEmailTemplate(): ETForm {
+  return {
+    name: '', isActive: true,
+    subject: 'Your Quotation – {{caseTitle}}',
+    body: `Dear {{customerName}},\n\nPlease find your quotation for {{caseTitle}} attached.\n\nRegards`,
+  }
+}
+
+function EmailTemplatesTab() {
+  const { emailTemplates, addEmailTemplate, updateEmailTemplate, deleteEmailTemplate } = useStore()
+  const [modal, setModal] = useState<'add' | 'edit' | null>(null)
+  const [selected, setSelected] = useState<EmailTemplate | null>(null)
+  const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [form, setForm] = useState<ETForm>(emptyEmailTemplate())
+
+  const openAdd = () => { setForm(emptyEmailTemplate()); setSelected(null); setModal('add') }
+  const openEdit = (t: EmailTemplate) => {
+    setForm({ name: t.name, isActive: t.isActive, subject: t.subject, body: t.body })
+    setSelected(t)
+    setModal('edit')
+  }
+  const closeModal = () => { setModal(null); setSelected(null) }
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!form.name.trim()) return
+    if (modal === 'add') addEmailTemplate(form)
+    else if (modal === 'edit' && selected) updateEmailTemplate(selected.id, form)
+    closeModal()
+  }
+
+  return (
+    <div className="card-section">
+      <div className="flex items-center justify-between mb-5">
+        <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Email Templates</h2>
+        <button onClick={openAdd} className="btn-primary text-xs px-4 py-2">+ New Template</button>
+      </div>
+      <p className="text-sm text-gray-500 mb-5">
+        Customer-facing email templates. Staff pick one from a case&apos;s Emails tab, review the filled-in draft, and send it manually.
+      </p>
+
+      <div className="space-y-2">
+        {emailTemplates.map(t => (
+          <div key={t.id} className="flex items-center justify-between gap-3 p-3 rounded-xl border border-gray-100 bg-gray-50">
+            <div className="flex items-center gap-3 min-w-0">
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${t.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-200 text-gray-500'}`}>
+                {t.isActive ? 'Active' : 'Inactive'}
+              </span>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-gray-800">{t.name}</p>
+                <p className="text-xs text-gray-400 truncate">{t.subject}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button onClick={() => openEdit(t)} className="btn-xs bg-gray-100 hover:bg-gray-200 text-gray-700">Edit</button>
+              <button onClick={() => updateEmailTemplate(t.id, { isActive: !t.isActive })} className={`btn-xs ${t.isActive ? 'bg-amber-50 text-amber-700 hover:bg-amber-100' : 'bg-green-50 text-green-700 hover:bg-green-100'}`}>
+                {t.isActive ? 'Deactivate' : 'Activate'}
+              </button>
+              {deleteId === t.id ? (
+                <>
+                  <button onClick={() => { deleteEmailTemplate(t.id); setDeleteId(null) }} className="btn-xs bg-red-600 text-white hover:bg-red-700">Confirm</button>
+                  <button onClick={() => setDeleteId(null)} className="btn-xs bg-gray-100 text-gray-600">Cancel</button>
+                </>
+              ) : (
+                <button onClick={() => setDeleteId(t.id)} className="btn-xs bg-red-50 text-red-500 hover:bg-red-100">Delete</button>
+              )}
+            </div>
+          </div>
+        ))}
+        {emailTemplates.length === 0 && <p className="text-sm text-gray-400 py-4">No templates defined yet.</p>}
+      </div>
+
+      {(modal === 'add' || modal === 'edit') && (
+        <Modal isOpen onClose={closeModal} title={modal === 'add' ? 'New Email Template' : 'Edit Email Template'} maxWidth="lg">
+          <form onSubmit={submit} className="px-6 py-5 space-y-5 max-h-[80vh] overflow-y-auto">
+            <div className="flex gap-4">
+              <div className="flex-1">
+                <label className="label">Template Name *</label>
+                <input className="input" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Quotation Sent to Customer" required autoFocus />
+              </div>
+              <div className="flex items-end pb-1">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={form.isActive} onChange={e => setForm(p => ({ ...p, isActive: e.target.checked }))} className="w-4 h-4 rounded border-gray-300 text-blue-600" />
+                  <span className="text-sm text-gray-700">Active</span>
+                </label>
+              </div>
+            </div>
+
+            <div className="bg-blue-50 rounded-xl p-3">
+              <p className="text-xs font-semibold text-blue-700 mb-1.5">Available variables</p>
+              <div className="flex flex-wrap gap-1.5">
+                {EMAIL_TEMPLATE_VARS.map(v => (
+                  <code key={v} className="text-[11px] bg-white text-blue-600 border border-blue-100 rounded px-1.5 py-0.5">{v}</code>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="label">Subject</label>
+              <input className="input font-semibold" value={form.subject} onChange={e => setForm(p => ({ ...p, subject: e.target.value }))} />
+            </div>
+            <div>
+              <label className="label">Body</label>
+              <textarea
+                className="input font-mono text-sm leading-relaxed"
+                rows={12}
+                value={form.body}
+                onChange={e => setForm(p => ({ ...p, body: e.target.value }))}
+              />
+            </div>
+
+            <div className="flex gap-3 pt-1">
+              <button type="button" onClick={closeModal} className="btn-secondary flex-1">Cancel</button>
+              <button type="submit" className="btn-primary flex-1">{modal === 'add' ? 'Create Template' : 'Save Changes'}</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+    </div>
+  )
+}
+
 // ─── Main settings page ───────────────────────────────────────────────────────
 
 export default function SettingsPage() {
@@ -1563,6 +1692,7 @@ export default function SettingsPage() {
 
       {/* ── Person in Charge tab ───────────────────────────────────────────── */}
       {tab === 'submissionLetters' && <SubmissionLettersTab />}
+      {tab === 'emailTemplates' && <EmailTemplatesTab />}
 
       {tab === 'pic' && (
         <div className="card-section">

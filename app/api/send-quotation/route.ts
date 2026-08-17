@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import nodemailer from 'nodemailer'
 
 export async function POST(req: NextRequest) {
   try {
@@ -24,16 +23,15 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const smtpUser = process.env.EMAIL_SMTP_USER
-    const smtpPass = process.env.EMAIL_SMTP_PASS
-
-    if (!smtpUser || !smtpPass) {
+    const apiKey = process.env.RESEND_API_KEY
+    if (!apiKey) {
       return NextResponse.json(
-        { error: 'Email not configured — set EMAIL_SMTP_USER and EMAIL_SMTP_PASS in Vercel environment variables' },
+        { error: 'Email not configured — set RESEND_API_KEY in environment variables' },
         { status: 500 }
       )
     }
 
+    const from = process.env.EMAIL_FROM ?? 'Bond Insurance <onboarding@resend.dev>'
     const coverNotesStr = Array.isArray(coverNotes)
       ? coverNotes.filter(Boolean).join(', ')
       : (coverNotes ?? '')
@@ -53,8 +51,10 @@ Thanks
 Regards
 ${senderName ?? ''}`
 
+    const ccList: string[] = Array.isArray(ccEmails) ? ccEmails.filter(Boolean) : []
+
     // Fetch document attachment if provided
-    type Attachment = { filename: string; content: Buffer; contentType: string }
+    type Attachment = { filename: string; content: string }
     const attachments: Attachment[] = []
     let attachmentWarning: string | null = null
 
@@ -65,8 +65,7 @@ ${senderName ?? ''}`
           const buffer = Buffer.from(await docRes.arrayBuffer())
           const rawName = decodeURIComponent(documentUrl.split('/').pop()?.split('?')[0] ?? 'document.pdf')
           const filename = rawName.replace(/^\d+_/, '')
-          const contentType = filename.endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream'
-          attachments.push({ filename, content: buffer, contentType })
+          attachments.push({ filename, content: buffer.toString('base64') })
         } else {
           attachmentWarning = `Document unavailable (HTTP ${docRes.status}) — email sent without attachment`
         }
@@ -75,23 +74,24 @@ ${senderName ?? ''}`
       }
     }
 
-    const ccList: string[] = Array.isArray(ccEmails) ? ccEmails.filter(Boolean) : []
-
-    const transporter = nodemailer.createTransport({
-      host: 'smtp-mail.outlook.com',
-      port: 587,
-      secure: false,
-      auth: { user: smtpUser, pass: smtpPass },
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        from,
+        to: [recipientEmail],
+        ...(ccList.length > 0 ? { cc: ccList } : {}),
+        subject,
+        text: bodyText,
+        ...(attachments.length > 0 ? { attachments } : {}),
+      }),
     })
 
-    await transporter.sendMail({
-      from: `Bond Insurance <${smtpUser}>`,
-      to: recipientEmail,
-      ...(ccList.length > 0 ? { cc: ccList.join(', ') } : {}),
-      subject,
-      text: bodyText,
-      ...(attachments.length > 0 ? { attachments } : {}),
-    })
+    if (!res.ok) {
+      const err = await res.text()
+      console.error('[send-quotation] Resend error:', res.status, err)
+      return NextResponse.json({ error: `Email delivery failed: ${err}` }, { status: 502 })
+    }
 
     // Log to Supabase (non-fatal)
     try {

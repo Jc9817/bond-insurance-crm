@@ -151,6 +151,33 @@ export type CaseNote = {
   createdBy: string
 }
 
+// ─── Email Templates ─────────────────────────────────────────────────────────
+// Reusable customer-facing email templates, picked manually from a case's Emails tab.
+// Supports {{customerName}}, {{caseTitle}}, {{amount}}, {{personInCharge}}.
+
+export type EmailTemplate = {
+  id: string
+  name: string
+  isActive: boolean
+  subject: string
+  body: string
+}
+
+export const CASE_EMAIL_STATUSES = ['sent', 'failed'] as const
+export type CaseEmailStatus = (typeof CASE_EMAIL_STATUSES)[number]
+
+export type CaseEmailLog = {
+  id: string
+  caseId: string
+  templateName?: string
+  toEmail: string
+  subject: string
+  body: string
+  status: CaseEmailStatus
+  errorMessage?: string
+  sentAt: string
+}
+
 // ─── Follow-Up ───────────────────────────────────────────────────────────────
 
 export const FOLLOW_UP_STATUSES = ['Open', 'Done'] as const
