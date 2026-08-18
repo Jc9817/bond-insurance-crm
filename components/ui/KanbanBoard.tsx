@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
 import { Case, CaseFile, FollowUp, WorkflowTemplate, CASE_STATUSES, CaseStatus } from '@/lib/types'
 import { formatCurrency, getDaysUntil } from '@/lib/utils'
@@ -15,17 +16,37 @@ type Props = {
 }
 
 export default function KanbanBoard({ cases, caseFiles, followUps, workflowTemplates, onStatusChange }: Props) {
+  const [draggedId, setDraggedId] = useState<string | null>(null)
+  const [dragOverStatus, setDragOverStatus] = useState<CaseStatus | null>(null)
+
+  const handleDrop = (status: CaseStatus, e: React.DragEvent) => {
+    e.preventDefault()
+    setDragOverStatus(null)
+    const caseId = e.dataTransfer.getData('caseId')
+    if (!caseId) return
+    const dragged = cases.find(c => c.id === caseId)
+    if (dragged && dragged.currentStatus !== status) onStatusChange(caseId, status)
+    setDraggedId(null)
+  }
+
   return (
     <div className="flex gap-3 overflow-x-auto pb-6">
       {CASE_STATUSES.map(status => {
         const col = cases.filter(c => c.currentStatus === status)
+        const isDropTarget = dragOverStatus === status
         return (
-          <div key={status} className="shrink-0 w-64">
+          <div
+            key={status}
+            className="shrink-0 w-64"
+            onDragOver={(e) => { e.preventDefault(); setDragOverStatus(status) }}
+            onDragLeave={() => setDragOverStatus(prev => prev === status ? null : prev)}
+            onDrop={(e) => handleDrop(status, e)}
+          >
             <div className="flex items-center justify-between mb-2.5 px-1">
               <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{status}</h3>
               <span className="text-xs bg-gray-100 text-gray-500 rounded-full px-2 py-0.5 font-medium">{col.length}</span>
             </div>
-            <div className="space-y-2 min-h-16">
+            <div className={`space-y-2 min-h-16 rounded-xl transition-colors border-2 ${isDropTarget ? 'bg-blue-50 border-dashed border-blue-300' : 'border-transparent'}`}>
               {col.map(c => {
                 const template = getWorkflowTemplate(c.caseType, workflowTemplates)
                 const readiness = getCaseReadiness(c, template, caseFiles, followUps)
@@ -38,11 +59,23 @@ export default function KanbanBoard({ cases, caseFiles, followUps, workflowTempl
                 const isHealthy = readiness >= 70 && !hasWarning
 
                 return (
-                  <div key={c.id} className={`bg-white rounded-xl border shadow-sm p-3.5 hover:shadow-md transition-shadow ${
-                    overdueFollowUps.length > 0 ? 'border-red-200' :
-                    missing.length > 0 ? 'border-amber-200' :
-                    'border-gray-100'
-                  }`}>
+                  <div
+                    key={c.id}
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData('caseId', c.id)
+                      e.dataTransfer.effectAllowed = 'move'
+                      setDraggedId(c.id)
+                    }}
+                    onDragEnd={() => { setDraggedId(null); setDragOverStatus(null) }}
+                    className={`bg-white rounded-xl border shadow-sm p-3.5 hover:shadow-md transition-shadow cursor-grab active:cursor-grabbing ${
+                      draggedId === c.id ? 'opacity-40' : ''
+                    } ${
+                      overdueFollowUps.length > 0 ? 'border-red-200' :
+                      missing.length > 0 ? 'border-amber-200' :
+                      'border-gray-100'
+                    }`}
+                  >
                     <Link href={`/cases/${c.id}`}>
                       <p className="text-sm font-semibold text-gray-900 leading-snug line-clamp-2 hover:text-blue-600">
                         {c.caseTitle}
