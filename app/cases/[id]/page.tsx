@@ -499,60 +499,6 @@ export default function CaseDetailPage() {
                 </>
               )}
             </div>
-
-            {/* All attached files */}
-            {caseDocs.length > 0 && (
-              <div className="card-section">
-                <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">
-                  All Attached Files
-                  <span className="ml-1.5 text-[10px] font-bold bg-gray-100 text-gray-500 rounded-full px-2 py-0.5">{caseDocs.length}</span>
-                </h2>
-                <div className="space-y-1.5">
-                  {[...caseDocs]
-                    .sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime())
-                    .map(f => {
-                      const ext = f.fileName.split('.').pop()?.toUpperCase() ?? 'FILE'
-                      const isPdf = f.fileType === 'application/pdf'
-                      const isImg = f.fileType.startsWith('image/')
-                      const bytes = f.fileSize
-                      const size = bytes < 1024 ? `${bytes} B`
-                        : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB`
-                        : `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-                      return (
-                        <div key={f.id} className="flex items-start gap-2.5 p-2.5 rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors group">
-                          <div className={`shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-[9px] font-bold tracking-tight ${isPdf ? 'bg-red-100 text-red-600' : isImg ? 'bg-blue-100 text-blue-600' : 'bg-gray-200 text-gray-500'}`}>
-                            {ext.slice(0, 4)}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            {f.fileDataUrl ? (
-                              <a href={f.fileDataUrl} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-blue-600 hover:underline truncate block leading-snug">{f.fileName}</a>
-                            ) : (
-                              <p className="text-sm font-medium text-gray-700 truncate leading-snug">{f.fileName}</p>
-                            )}
-                            <div className="flex items-center gap-1 mt-0.5 flex-wrap">
-                              <span className="text-xs text-gray-400">{f.documentType}</span>
-                              <span className="text-gray-300 text-xs">·</span>
-                              <span className="text-xs text-gray-400">{size}</span>
-                              <span className="text-gray-300 text-xs">·</span>
-                              <span className="text-xs text-gray-400">{timeAgo(f.uploadedAt)}</span>
-                              {f.aiStatus === 'Approved' && <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 rounded-full px-1.5 py-0.5">AI ✓</span>}
-                              {f.requiredDocumentId && <span className="text-[10px] font-medium text-blue-600 bg-blue-50 rounded-full px-1.5 py-0.5">Checklist</span>}
-                            </div>
-                          </div>
-                          {f.aiStatus !== 'Approved' && (
-                            <button
-                              onClick={() => setScanFile(f)}
-                              className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-xs px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 font-medium"
-                            >
-                              Scan
-                            </button>
-                          )}
-                        </div>
-                      )
-                    })}
-                </div>
-              </div>
-            )}
           </div>
         )}
 
