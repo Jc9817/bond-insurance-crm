@@ -1,11 +1,11 @@
 'use client'
 
-import { useRef, useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { useStore } from '@/lib/store'
 import { useAuth } from '@/lib/auth'
 import { createClient } from '@/utils/supabase/client'
 import type { WorkflowTemplate, CaseFile } from '@/lib/types'
-import { getActiveDocs, getUploadedFileForDoc, getUnassignedFiles, getDocsForStep, getActiveSteps } from '@/lib/workflow'
+import { getActiveDocs, getActiveSteps } from '@/lib/workflow'
 import { formatFileSize, timeAgo } from '@/lib/utils'
 
 const STORAGE_BUCKET = 'case-files'
@@ -151,30 +151,39 @@ type Props = {
   caseTitle?: string
   template: WorkflowTemplate | null
   caseFiles: CaseFile[]
-  filterStepId?: string | null    // if provided, shows only docs for that step
-  readOnly?: boolean              // hide upload/scan/delete actions
   onScanReady: (file: CaseFile) => void
 }
 
-export default function DocumentChecklist({ caseId, caseTitle, template, caseFiles, filterStepId, readOnly, onScanReady }: Props) {
+type FilterKey = 'all' | 'untagged' | string
+
+export default function DocumentChecklist({ caseId, caseTitle, template, caseFiles, onScanReady }: Props) {
   const { addCaseFile, deleteCaseFile, updateCaseFile, startAiScan, addActivityLog, sendCaseFileToInbox } = useStore()
   const { currentUser } = useAuth()
-  const [uploadingDocId, setUploadingDocId] = useState<string | null>(null)
+  const [uploading, setUploading] = useState(false)
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
-  const [dragOverDocId, setDragOverDocId] = useState<string | null>(null)
-  const [draggedFileId, setDraggedFileId] = useState<string | null>(null)
   const [viewingFile, setViewingFile] = useState<CaseFile | null>(null)
-  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
+  const [filter, setFilter] = useState<FilterKey>('all')
 
-  const docs = filterStepId !== undefined ? getDocsForStep(template, filterStepId) : getActiveDocs(template)
+  const docs = getActiveDocs(template)
   const requiredDocs = docs.filter(d => d.required)
   const optionalDocs = docs.filter(d => !d.required)
+  const docIds = new Set(docs.map(d => d.id))
   const templateSteps = getActiveSteps(template)
   const stepNameMap: Record<string, string> = Object.fromEntries(templateSteps.map(s => [s.id, s.name]))
-  const unassignedFiles = getUnassignedFiles(caseId, template, caseFiles)
 
-  const uploadedRequiredCount = requiredDocs.filter(doc => getUploadedFileForDoc(doc.id, caseId, caseFiles)).length
-  const stepCompleteness = requiredDocs.length > 0 ? Math.round((uploadedRequiredCount / requiredDocs.length) * 100) : 100
+  // Superseded files are legacy leftovers from the old per-slot upload model — hide them from the live list.
+  const activeFiles = caseFiles.filter(f => f.caseId === caseId && !f.supersededBy)
+  const isTagged = (f: CaseFile) => !!f.requiredDocumentId && docIds.has(f.requiredDocumentId)
+  const untaggedFiles = activeFiles.filter(f => !isTagged(f))
+
+  const uploadedRequiredCount = requiredDocs.filter(doc => activeFiles.some(f => f.requiredDocumentId === doc.id)).length
+  const overallCompleteness = requiredDocs.length > 0 ? Math.round((uploadedRequiredCount / requiredDocs.length) * 100) : 100
+
+  const filteredFiles = activeFiles.filter(f => {
+    if (filter === 'all') return true
+    if (filter === 'untagged') return !isTagged(f)
+    return f.requiredDocumentId === filter
+  })
 
   const uploadToStorage = async (file: File, caseId: string): Promise<string> => {
     const sb = createClient()
@@ -186,11 +195,9 @@ export default function DocumentChecklist({ caseId, caseTitle, template, caseFil
     return data.publicUrl
   }
 
-  const handleAssignFile = (fileId: string, docId: string | null, docName: string) => {
-    const file = caseFiles.find(f => f.id === fileId)
-    if (!file) return
+  const handleRetag = (file: CaseFile, docId: string | null, docName: string) => {
     const oldDoc = file.requiredDocumentId ? docs.find(d => d.id === file.requiredDocumentId) : null
-    updateCaseFile(fileId, {
+    updateCaseFile(file.id, {
       requiredDocumentId: docId ?? undefined,
       documentType: docId ? docName : 'Supporting Document',
     })
@@ -198,66 +205,18 @@ export default function DocumentChecklist({ caseId, caseTitle, template, caseFil
       caseId,
       caseTitle,
       actionType: 'DOCUMENT_ASSIGNED',
-      title: docId ? 'Document assigned' : 'Document unassigned',
+      title: docId ? 'Document tagged' : 'Document untagged',
       oldValue: oldDoc?.name,
       newValue: docId ? docName : undefined,
       description: docId
-        ? `${file.fileName} assigned to "${docName}"`
-        : `${file.fileName} unassigned from "${oldDoc?.name ?? 'slot'}"`,
+        ? `${file.fileName} tagged as "${docName}"`
+        : `${file.fileName} untagged from "${oldDoc?.name ?? 'category'}"`,
       changedBy: currentUser?.fullName ?? 'Unknown',
     })
   }
 
-  const handleFileSelect = async (docId: string, file: File, docName: string, aiPrompt?: string) => {
-    setUploadingDocId(docId)
-    try {
-      const existingFile = getUploadedFileForDoc(docId, caseId, caseFiles)
-
-      // Clear the old file's slot in Supabase BEFORE inserting the new one.
-      // Without this await, both records race to own the same required_document_id → 409 Conflict.
-      if (existingFile) {
-        await createClient()
-          .from('case_files')
-          .update({ required_document_id: null })
-          .eq('id', existingFile.id)
-      }
-
-      const fileDataUrl = await uploadToStorage(file, caseId)
-      const newId = addCaseFile({
-        caseId,
-        fileName: file.name,
-        fileSize: file.size,
-        fileType: file.name.split('.').pop()?.toUpperCase() ?? 'FILE',
-        documentType: docName,
-        requiredDocumentId: docId,
-        uploadedBy: currentUser?.fullName ?? 'Unknown',
-        aiScanned: false,
-        aiStatus: 'Not Scanned',
-        aiExtractedData: null,
-        fileDataUrl,
-        aiPrompt,
-      })
-      if (existingFile) {
-        updateCaseFile(existingFile.id, { supersededBy: newId, requiredDocumentId: undefined })
-      }
-      addActivityLog({
-        caseId,
-        caseTitle,
-        actionType: 'DOCUMENT_UPLOADED',
-        title: existingFile ? 'Document replaced (v2+)' : 'Document uploaded',
-        newValue: docName,
-        description: `${file.name} uploaded${existingFile ? ` — replaced ${existingFile.fileName}` : ''}`,
-        changedBy: currentUser?.fullName ?? 'Unknown',
-      })
-    } catch (err) {
-      console.error('[Storage] Upload failed:', err)
-      alert('File upload failed. Please check your Supabase storage bucket is set up and try again.')
-    }
-    setUploadingDocId(null)
-  }
-
-  const handleGeneralFileSelect = async (file: File) => {
-    setUploadingDocId('general')
+  const handleUpload = async (file: File) => {
+    setUploading(true)
     try {
       const fileDataUrl = await uploadToStorage(file, caseId)
       addCaseFile({
@@ -284,601 +243,280 @@ export default function DocumentChecklist({ caseId, caseTitle, template, caseFil
       console.error('[Storage] Upload failed:', err)
       alert('File upload failed. Please check your Supabase storage bucket is set up and try again.')
     }
-    setUploadingDocId(null)
+    setUploading(false)
   }
 
-  const handleDocDrop = (docId: string, docName: string, e: React.DragEvent) => {
-    e.preventDefault()
-    setDragOverDocId(null)
-    const fileId = e.dataTransfer.getData('fileId')
-    if (!fileId) return
-    const existing = getUploadedFileForDoc(docId, caseId, caseFiles)
-    if (existing) return // slot occupied — do nothing
-    handleAssignFile(fileId, docId, docName)
-    setDraggedFileId(null)
-  }
-
-  if (!template) {
-    return (
-      <div className="text-center py-10">
-        <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
-          <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-          </svg>
-        </div>
-        <p className="text-sm font-medium text-gray-600">No workflow template</p>
-        <p className="text-xs text-gray-400 mt-1">Set a case type to see required documents</p>
-        {unassignedFiles.length > 0 && (
-          <div className="mt-4 text-left">
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2">Uploaded Files</p>
-            <div className="space-y-1.5">
-              {unassignedFiles.map(f => (
-                <UnassignedFileCard
-                  key={f.id}
-                  file={f}
-                  docs={[]}
-                  deleteConfirmId={deleteConfirmId}
-                  setDeleteConfirmId={setDeleteConfirmId}
-                  onAssign={() => {}}
-                  onDragStart={() => setDraggedFileId(f.id)}
-                  onDelete={() => { deleteCaseFile(f.id); setDeleteConfirmId(null) }}
-                  onView={() => setViewingFile(f)}
-                  onDownload={() => downloadFile(f)}
-                  onSendToInbox={() => sendCaseFileToInbox(f)}
-                />
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-    )
-  }
+  const filterLabel = filter === 'all' ? 'All Files' : filter === 'untagged' ? 'Untagged' : docs.find(d => d.id === filter)?.name ?? 'Files'
 
   return (
     <div className="space-y-4">
-      {/* Required documents */}
-      {requiredDocs.length > 0 && (
+      {docs.length === 0 ? (
+        <p className="text-xs text-gray-400">No workflow template — set a case type to see document categories.</p>
+      ) : (
         <div>
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Required Documents</p>
-            <div className="flex items-center gap-2">
-              <div className="w-24 bg-gray-200 rounded-full h-1.5 overflow-hidden">
-                <div
-                  className={`h-full rounded-full transition-all ${stepCompleteness >= 100 ? 'bg-green-500' : stepCompleteness >= 60 ? 'bg-amber-400' : 'bg-red-400'}`}
-                  style={{ width: `${stepCompleteness}%` }}
-                />
+          {requiredDocs.length > 0 && (
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Required Documents</p>
+              <div className="flex items-center gap-2">
+                <div className="w-24 bg-gray-200 rounded-full h-1.5 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${overallCompleteness >= 100 ? 'bg-green-500' : overallCompleteness >= 60 ? 'bg-amber-400' : 'bg-red-400'}`}
+                    style={{ width: `${overallCompleteness}%` }}
+                  />
+                </div>
+                <span className={`text-xs font-bold ${overallCompleteness >= 100 ? 'text-green-600' : overallCompleteness >= 60 ? 'text-amber-600' : 'text-red-500'}`}>
+                  {uploadedRequiredCount}/{requiredDocs.length}
+                </span>
               </div>
-              <span className={`text-xs font-bold ${stepCompleteness >= 100 ? 'text-green-600' : stepCompleteness >= 60 ? 'text-amber-600' : 'text-red-500'}`}>
-                {uploadedRequiredCount}/{requiredDocs.length}
-              </span>
             </div>
-          </div>
-          <div className="space-y-2">
+          )}
+
+          <div className="flex flex-wrap gap-1.5 mb-4">
+            <FilterChip label="All" count={activeFiles.length} active={filter === 'all'} onClick={() => setFilter('all')} />
             {requiredDocs.map(doc => {
-              const uploaded = getUploadedFileForDoc(doc.id, caseId, caseFiles)
-              const previousVersions = caseFiles.filter(f => f.caseId === caseId && f.supersededBy != null && caseFiles.some(f2 => f2.requiredDocumentId === doc.id && f.supersededBy === f2.id || (uploaded && f.supersededBy === uploaded.id)))
-              const isUploading = uploadingDocId === doc.id
-              const isDropTarget = dragOverDocId === doc.id && !uploaded && !readOnly
+              const count = activeFiles.filter(f => f.requiredDocumentId === doc.id).length
               return (
-                <DocRow
+                <FilterChip
                   key={doc.id}
-                  docId={doc.id}
-                  docName={doc.name}
-                  description={doc.description}
-                  required={doc.required}
-                  stepName={doc.workflowStepId ? stepNameMap[doc.workflowStepId] : undefined}
-                  uploaded={uploaded}
-                  previousVersions={previousVersions}
-                  isUploading={isUploading}
-                  isDropTarget={isDropTarget}
-                  isDragging={!!draggedFileId && !readOnly}
-                  readOnly={readOnly}
-                  deleteConfirmId={deleteConfirmId}
-                  setDeleteConfirmId={setDeleteConfirmId}
-                  fileInputRef={(el) => { fileInputRefs.current[doc.id] = el }}
-                  onUploadClick={() => fileInputRefs.current[doc.id]?.click()}
-                  onFileChange={(e) => {
-                    const file = e.target.files?.[0]
-                    if (file) handleFileSelect(doc.id, file, doc.name, doc.aiPrompt)
-                  }}
-                  onDelete={() => {
-                    if (uploaded) {
-                      deleteCaseFile(uploaded.id)
-                      addActivityLog({ caseId, caseTitle, actionType: 'DOCUMENT_DELETED', title: 'Document deleted', description: `${uploaded.fileName} removed`, changedBy: currentUser?.fullName ?? 'Unknown' })
-                      setDeleteConfirmId(null)
-                    }
-                  }}
-                  onScan={() => {
-                    if (uploaded) {
-                      startAiScan(uploaded.id)
-                      addActivityLog({ caseId, caseTitle, actionType: 'AI_SCAN_STARTED', title: 'AI scan started', description: `AI scanning ${uploaded.fileName}`, changedBy: currentUser?.fullName ?? 'Unknown' })
-                    }
-                  }}
-                  onReview={() => { if (uploaded) onScanReady(uploaded) }}
-                  onView={() => { if (uploaded) setViewingFile(uploaded) }}
-                  onDownload={() => { if (uploaded) downloadFile(uploaded) }}
-                  onDragOver={(e) => { if (!uploaded && !readOnly) { e.preventDefault(); setDragOverDocId(doc.id) } }}
-                  onDragLeave={() => setDragOverDocId(null)}
-                  onDrop={(e) => { if (!readOnly) handleDocDrop(doc.id, doc.name, e) }}
+                  label={doc.name}
+                  count={count}
+                  required
+                  satisfied={count > 0}
+                  active={filter === doc.id}
+                  title={doc.workflowStepId ? stepNameMap[doc.workflowStepId] : undefined}
+                  onClick={() => setFilter(doc.id)}
                 />
               )
             })}
+            {optionalDocs.map(doc => {
+              const count = activeFiles.filter(f => f.requiredDocumentId === doc.id).length
+              return (
+                <FilterChip
+                  key={doc.id}
+                  label={doc.name}
+                  count={count}
+                  active={filter === doc.id}
+                  title={doc.workflowStepId ? stepNameMap[doc.workflowStepId] : undefined}
+                  onClick={() => setFilter(doc.id)}
+                />
+              )
+            })}
+            {untaggedFiles.length > 0 && (
+              <FilterChip label="Untagged" count={untaggedFiles.length} amber active={filter === 'untagged'} onClick={() => setFilter('untagged')} />
+            )}
           </div>
         </div>
       )}
 
-      {/* Optional documents */}
-      {optionalDocs.length > 0 && (
-        <div>
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">Optional Documents</p>
-          <div className="space-y-2">
-            {optionalDocs.map(doc => {
-              const uploaded = getUploadedFileForDoc(doc.id, caseId, caseFiles)
-              const isUploading = uploadingDocId === doc.id
-              const isDropTarget = dragOverDocId === doc.id && !uploaded && !readOnly
-              return (
-                <DocRow
-                  key={doc.id}
-                  docId={doc.id}
-                  docName={doc.name}
-                  description={doc.description}
-                  required={doc.required}
-                  stepName={doc.workflowStepId ? stepNameMap[doc.workflowStepId] : undefined}
-                  uploaded={uploaded}
-                  isUploading={isUploading}
-                  isDropTarget={isDropTarget}
-                  isDragging={!!draggedFileId && !readOnly}
-                  readOnly={readOnly}
-                  deleteConfirmId={deleteConfirmId}
-                  setDeleteConfirmId={setDeleteConfirmId}
-                  fileInputRef={(el) => { fileInputRefs.current[doc.id] = el }}
-                  onUploadClick={() => fileInputRefs.current[doc.id]?.click()}
-                  onFileChange={(e) => {
-                    const file = e.target.files?.[0]
-                    if (file) handleFileSelect(doc.id, file, doc.name, doc.aiPrompt)
-                  }}
-                  onDelete={() => {
-                    if (uploaded) {
-                      deleteCaseFile(uploaded.id)
-                      addActivityLog({ caseId, caseTitle, actionType: 'DOCUMENT_DELETED', title: 'Document deleted', description: `${uploaded.fileName} removed`, changedBy: currentUser?.fullName ?? 'Unknown' })
-                      setDeleteConfirmId(null)
-                    }
-                  }}
-                  onScan={() => {
-                    if (uploaded) {
-                      startAiScan(uploaded.id)
-                      addActivityLog({ caseId, caseTitle, actionType: 'AI_SCAN_STARTED', title: 'AI scan started', description: `AI scanning ${uploaded.fileName}`, changedBy: currentUser?.fullName ?? 'Unknown' })
-                    }
-                  }}
-                  onReview={() => { if (uploaded) onScanReady(uploaded) }}
-                  onView={() => { if (uploaded) setViewingFile(uploaded) }}
-                  onDownload={() => { if (uploaded) downloadFile(uploaded) }}
-                  onDragOver={(e) => { if (!uploaded && !readOnly) { e.preventDefault(); setDragOverDocId(doc.id) } }}
-                  onDragLeave={() => setDragOverDocId(null)}
-                  onDrop={(e) => { if (!readOnly) handleDocDrop(doc.id, doc.name, e) }}
-                />
-              )
-            })}
-          </div>
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest">
+          {filterLabel} <span className="normal-case font-normal text-gray-300">({filteredFiles.length})</span>
+        </p>
+        <label className="btn-xs bg-gray-100 hover:bg-gray-200 text-gray-700 cursor-pointer">
+          + Upload Document
+          <input
+            type="file"
+            className="sr-only"
+            accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              if (file) handleUpload(file)
+              e.target.value = ''
+            }}
+          />
+        </label>
+      </div>
+
+      {uploading && (
+        <div className="flex items-center gap-2 py-2 px-3 bg-blue-50 rounded-xl">
+          <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin shrink-0" />
+          <span className="text-xs text-blue-600">Uploading…</span>
+        </div>
+      )}
+
+      {filteredFiles.length === 0 ? (
+        <p className="text-xs text-gray-400">
+          {filter === 'all' ? 'No files uploaded yet.' : 'No files tagged under this category yet.'}
+        </p>
+      ) : (
+        <div className="space-y-1.5">
+          {filteredFiles.map(f => (
+            <FileRow
+              key={f.id}
+              file={f}
+              docs={docs}
+              deleteConfirmId={deleteConfirmId}
+              setDeleteConfirmId={setDeleteConfirmId}
+              onRetag={(docId, docName) => handleRetag(f, docId, docName)}
+              onDelete={() => {
+                deleteCaseFile(f.id)
+                addActivityLog({ caseId, caseTitle, actionType: 'DOCUMENT_DELETED', title: 'File deleted', description: `${f.fileName} removed`, changedBy: currentUser?.fullName ?? 'Unknown' })
+                setDeleteConfirmId(null)
+              }}
+              onScan={() => {
+                startAiScan(f.id)
+                addActivityLog({ caseId, caseTitle, actionType: 'AI_SCAN_STARTED', title: 'AI scan started', description: `AI scanning ${f.fileName}`, changedBy: currentUser?.fullName ?? 'Unknown' })
+              }}
+              onReview={() => onScanReady(f)}
+              onView={() => setViewingFile(f)}
+              onDownload={() => downloadFile(f)}
+              onSendToInbox={() => sendCaseFileToInbox(f)}
+            />
+          ))}
         </div>
       )}
 
       {viewingFile && <FileViewerModal file={viewingFile} onClose={() => setViewingFile(null)} />}
-
-      {/* Unassigned / additional files — hidden in read-only mode */}
-      {!readOnly && <div className="pt-3 border-t border-gray-100">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Other Files</p>
-            {unassignedFiles.length > 0 && (
-              <span className="text-xs bg-amber-100 text-amber-700 rounded-full px-2 py-0.5 font-medium">
-                {unassignedFiles.length} unassigned
-              </span>
-            )}
-          </div>
-          <label className="btn-xs bg-gray-100 hover:bg-gray-200 text-gray-700 cursor-pointer">
-            + Upload File
-            <input
-              type="file"
-              className="sr-only"
-              accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
-              onChange={(e) => {
-                const file = e.target.files?.[0]
-                if (file) handleGeneralFileSelect(file)
-                e.target.value = ''
-              }}
-            />
-          </label>
-        </div>
-        {uploadingDocId === 'general' && (
-          <div className="flex items-center gap-2 py-2 px-3 bg-blue-50 rounded-xl mb-2">
-            <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin shrink-0" />
-            <span className="text-xs text-blue-600">Uploading…</span>
-          </div>
-        )}
-        {unassignedFiles.length === 0 && uploadingDocId !== 'general' ? (
-          <p className="text-xs text-gray-400">No additional files uploaded.</p>
-        ) : (
-          <div className="space-y-1.5">
-            {unassignedFiles.length > 0 && docs.length > 0 && (
-              <p className="text-xs text-amber-600 mb-2">
-                Drag a file onto a document slot above, or use "Assign to" to link it.
-              </p>
-            )}
-            {unassignedFiles.map(f => (
-              <UnassignedFileCard
-                key={f.id}
-                file={f}
-                docs={docs}
-                deleteConfirmId={deleteConfirmId}
-                setDeleteConfirmId={setDeleteConfirmId}
-                onAssign={(docId, docName) => handleAssignFile(f.id, docId, docName)}
-                onDragStart={() => setDraggedFileId(f.id)}
-                onDelete={() => {
-                  deleteCaseFile(f.id)
-                  addActivityLog({ caseId, caseTitle, actionType: 'DOCUMENT_DELETED', title: 'File deleted', description: `${f.fileName} removed`, changedBy: currentUser?.fullName ?? 'Unknown' })
-                  setDeleteConfirmId(null)
-                }}
-                onView={() => setViewingFile(f)}
-                onDownload={() => downloadFile(f)}
-                onSendToInbox={() => sendCaseFileToInbox(f)}
-              />
-            ))}
-          </div>
-        )}
-      </div>}
     </div>
   )
 }
 
-// ─── Individual document row (also a drop zone) ───────────────────────────────
+// ─── Filter chip ────────────────────────────────────────────────────────────
 
-type DocRowProps = {
-  docId: string
-  docName: string
-  description: string
-  required: boolean
-  stepName?: string
-  uploaded: CaseFile | undefined
-  previousVersions?: CaseFile[]
-  isUploading: boolean
-  isDropTarget: boolean
-  isDragging: boolean
-  readOnly?: boolean
+function FilterChip({ label, count, required, satisfied, amber, active, title, onClick }: {
+  label: string
+  count: number
+  required?: boolean
+  satisfied?: boolean
+  amber?: boolean
+  active: boolean
+  title?: string
+  onClick: () => void
+}) {
+  const variant = active
+    ? 'bg-blue-600 border-blue-600 text-white'
+    : amber
+    ? 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100'
+    : required && !satisfied
+    ? 'bg-red-50 border-red-100 text-red-600 hover:bg-red-100'
+    : required && satisfied
+    ? 'bg-green-50 border-green-100 text-green-700 hover:bg-green-100'
+    : 'bg-gray-50 border-gray-100 text-gray-600 hover:bg-gray-100'
+
+  return (
+    <button onClick={onClick} title={title} className={`text-xs font-medium rounded-full px-2.5 py-1 border transition-colors ${variant}`}>
+      {required && satisfied && !active && '✓ '}
+      {label}
+      <span className="opacity-70"> ({count})</span>
+    </button>
+  )
+}
+
+// ─── File row ───────────────────────────────────────────────────────────────
+
+type FileRowProps = {
+  file: CaseFile
+  docs: { id: string; name: string; required: boolean }[]
   deleteConfirmId: string | null
   setDeleteConfirmId: (id: string | null) => void
-  fileInputRef: (el: HTMLInputElement | null) => void
-  onUploadClick: () => void
-  onFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void
+  onRetag: (docId: string | null, docName: string) => void
   onDelete: () => void
   onScan: () => void
   onReview: () => void
   onView: () => void
   onDownload: () => void
-  onDragOver: (e: React.DragEvent) => void
-  onDragLeave: () => void
-  onDrop: (e: React.DragEvent) => void
+  onSendToInbox: () => void
 }
 
-function DocRow({
-  docId, docName, description, required, stepName, uploaded, previousVersions = [], isUploading,
-  isDropTarget, isDragging, readOnly,
-  deleteConfirmId, setDeleteConfirmId,
-  fileInputRef, onUploadClick, onFileChange, onDelete, onScan, onReview, onView, onDownload,
-  onDragOver, onDragLeave, onDrop,
-}: DocRowProps) {
-  const canDrop = !uploaded && isDragging
-
-  return (
-    <div
-      className={`flex items-start gap-3 rounded-xl px-3.5 py-3 border transition-colors ${
-        isDropTarget ? 'bg-blue-50 border-blue-300 border-dashed' :
-        uploaded ? 'bg-green-50 border-green-100' :
-        required ? 'bg-red-50 border-red-100' :
-        canDrop ? 'border-dashed border-gray-300' :
-        'bg-gray-50 border-gray-100'
-      }`}
-      onDragOver={onDragOver}
-      onDragLeave={onDragLeave}
-      onDrop={onDrop}
-    >
-      {/* Status icon */}
-      <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
-        uploaded ? 'bg-green-500' : isDropTarget ? 'bg-blue-200' : required ? 'bg-red-200' : 'bg-gray-200'
-      }`}>
-        {uploaded ? (
-          <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-          </svg>
-        ) : isDropTarget ? (
-          <svg className="w-3 h-3 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-          </svg>
-        ) : (
-          <div className={`w-2 h-2 rounded-full ${required ? 'bg-red-500' : 'bg-gray-400'}`} />
-        )}
-      </div>
-
-      {/* Document info */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className={`text-sm font-medium ${
-            isDropTarget ? 'text-blue-700' :
-            uploaded ? 'text-green-800' :
-            required ? 'text-red-900' : 'text-gray-700'
-          }`}>
-            {docName}
-          </span>
-          <span className={`text-xs rounded-full px-2 py-0.5 font-medium ${
-            required ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-500'
-          }`}>
-            {required ? 'Required' : 'Optional'}
-          </span>
-          {stepName && (
-            <span className="text-xs rounded-full px-2 py-0.5 font-medium bg-blue-50 text-blue-500 border border-blue-100">
-              {stepName}
-            </span>
-          )}
-        </div>
-        {!uploaded && !isDropTarget && (
-          <p className="text-xs text-gray-400 mt-0.5">{description}</p>
-        )}
-        {!uploaded && isDropTarget && (
-          <p className="text-xs text-blue-500 mt-0.5">Drop file here to assign</p>
-        )}
-        {uploaded && (
-          <div className="flex items-center gap-2 mt-1 flex-wrap">
-            <button
-              onClick={onView}
-              className="text-xs text-green-700 font-medium truncate max-w-[200px] hover:underline text-left"
-            >
-              {uploaded.fileName}
-            </button>
-            <span className="text-xs text-gray-400">{formatFileSize(uploaded.fileSize)}</span>
-            <span className="text-xs text-gray-400">· {timeAgo(uploaded.uploadedAt)}</span>
-            {uploaded.aiStatus === 'Approved' && (
-              <span className="text-xs bg-green-100 text-green-700 rounded-full px-2 py-0.5 font-medium">AI Verified</span>
-            )}
-            {uploaded.aiStatus === 'Rejected' && (
-              <span className="text-xs bg-red-100 text-red-600 rounded-full px-2 py-0.5 font-medium">Rejected</span>
-            )}
-          </div>
-        )}
-        {isUploading && (
-          <div className="flex items-center gap-1.5 mt-1">
-            <div className="w-2.5 h-2.5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-            <span className="text-xs text-blue-600">Uploading…</span>
-          </div>
-        )}
-      </div>
-
-      {/* Actions */}
-      <div className="flex items-center gap-1.5 shrink-0">
-        {!readOnly && !uploaded && !isUploading && (
-          <>
-            <button
-              onClick={onUploadClick}
-              className="btn-xs bg-white border border-gray-200 hover:bg-gray-50 text-gray-700"
-            >
-              Upload
-            </button>
-            <input
-              type="file"
-              className="sr-only"
-              ref={fileInputRef}
-              accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
-              onChange={(e) => { onFileChange(e); e.target.value = '' }}
-            />
-          </>
-        )}
-        {uploaded && (
-          <>
-            <button
-              onClick={uploaded.fileDataUrl ? onView : undefined}
-              disabled={!uploaded.fileDataUrl}
-              title={uploaded.fileDataUrl ? 'View file' : 'File preview not available — re-upload to enable'}
-              className={`btn-xs flex items-center gap-1 ${
-                uploaded.fileDataUrl
-                  ? 'bg-white border border-gray-200 hover:bg-blue-50 text-gray-600 hover:text-blue-700'
-                  : 'bg-gray-50 border border-gray-100 text-gray-300 cursor-not-allowed'
-              }`}
-            >
-              <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-              </svg>
-              View
-            </button>
-            <button
-              onClick={uploaded.fileDataUrl ? onDownload : undefined}
-              disabled={!uploaded.fileDataUrl}
-              title={uploaded.fileDataUrl ? 'Download file' : 'File not available for download — re-upload to enable'}
-              className={`btn-xs flex items-center gap-1 ${
-                uploaded.fileDataUrl
-                  ? 'bg-white border border-gray-200 hover:bg-green-50 text-gray-600 hover:text-green-700'
-                  : 'bg-gray-50 border border-gray-100 text-gray-300 cursor-not-allowed'
-              }`}
-            >
-              <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-              </svg>
-              Download
-            </button>
-            {!readOnly && uploaded.aiStatus === 'Not Scanned' && (
-              <button onClick={onScan} className="btn-xs bg-white border border-gray-200 hover:bg-violet-50 text-violet-700">
-                AI Scan
-              </button>
-            )}
-            {uploaded.aiStatus === 'Processing' && (
-              <span className="text-xs text-amber-600 font-medium">Scanning…</span>
-            )}
-            {uploaded.aiStatus === 'Ready for Review' && (
-              <span className="text-xs font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded-full px-2 py-0.5">
-                Review in AI Data →
-              </span>
-            )}
-            {uploaded.aiStatus === 'Approved' && (
-              <span className="text-xs font-semibold text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5">
-                AI Verified ✓
-              </span>
-            )}
-            {uploaded.aiStatus === 'Rejected' && (
-              <span className="text-xs font-semibold text-red-600 bg-red-50 border border-red-100 rounded-full px-2 py-0.5">
-                Rejected
-              </span>
-            )}
-            {!readOnly && (
-              deleteConfirmId === uploaded.id ? (
-                <>
-                  <button onClick={onDelete} className="btn-xs bg-red-600 text-white">Confirm</button>
-                  <button onClick={() => setDeleteConfirmId(null)} className="btn-xs bg-white border border-gray-200 text-gray-600">Cancel</button>
-                </>
-              ) : (
-                <button onClick={() => setDeleteConfirmId(uploaded.id)} className="btn-xs text-gray-300 hover:text-red-400">✕</button>
-              )
-            )}
-          </>
-        )}
-      </div>
-
-      {previousVersions.length > 0 && (
-        <details className="mt-2 col-span-full" style={{ gridColumn: '1 / -1' }}>
-          <summary className="text-xs text-gray-400 cursor-pointer hover:text-gray-600 select-none ml-8">
-            {previousVersions.length} previous version{previousVersions.length > 1 ? 's' : ''}
-          </summary>
-          <div className="mt-1 space-y-1 ml-8">
-            {previousVersions.map(pv => (
-              <div key={pv.id} className="flex items-center gap-2 text-xs text-gray-400 pl-2 border-l-2 border-gray-100">
-                <span className="truncate max-w-[200px]">{pv.fileName}</span>
-                <span>{timeAgo(pv.uploadedAt)}</span>
-                {pv.fileDataUrl && (
-                  <button
-                    onClick={() => downloadFile(pv)}
-                    className="text-gray-300 hover:text-blue-500 transition-colors"
-                    title="Download this version"
-                  >
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                    </svg>
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-        </details>
-      )}
-    </div>
-  )
-}
-
-// ─── Unassigned / other file card (draggable) ─────────────────────────────────
-
-type UnassignedFileCardProps = {
-  file: CaseFile
-  docs: { id: string; name: string }[]
-  deleteConfirmId: string | null
-  setDeleteConfirmId: (id: string | null) => void
-  onAssign: (docId: string | null, docName: string) => void
-  onDragStart: () => void
-  onDelete: () => void
-  onView: () => void
-  onDownload: () => void
-  onSendToInbox?: () => void
-}
-
-function UnassignedFileCard({
+function FileRow({
   file, docs, deleteConfirmId, setDeleteConfirmId,
-  onAssign, onDragStart, onDelete, onView, onDownload, onSendToInbox,
-}: UnassignedFileCardProps) {
-  const isOrphaned = !!file.requiredDocumentId
+  onRetag, onDelete, onScan, onReview, onView, onDownload, onSendToInbox,
+}: FileRowProps) {
   const fromTelegram = file.documentType === 'Uploaded via Telegram'
+  const isTagged = !!file.requiredDocumentId && docs.some(d => d.id === file.requiredDocumentId)
 
   return (
-    <div
-      draggable={docs.length > 0}
-      onDragStart={(e) => {
-        e.dataTransfer.setData('fileId', file.id)
-        e.dataTransfer.effectAllowed = 'move'
-        onDragStart()
-      }}
-      className={`flex items-center justify-between gap-3 rounded-xl px-3 py-2.5 border transition-colors ${
-        isOrphaned
-          ? 'bg-amber-50 border-amber-100'
-          : 'bg-gray-50 border-gray-100'
-      } ${docs.length > 0 ? 'cursor-grab active:cursor-grabbing' : ''}`}
-    >
-      <div className="flex items-center gap-2 min-w-0 flex-1">
-        {docs.length > 0 && (
-          <svg className="w-3.5 h-3.5 text-gray-300 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
-          </svg>
-        )}
-        <span className="text-xs font-medium text-gray-400 bg-white border border-gray-200 rounded px-1.5 py-0.5 shrink-0">{file.fileType}</span>
-        <div className="min-w-0">
-          <button onClick={onView} className="text-sm text-gray-800 truncate block hover:text-blue-600 hover:underline text-left">
-            {file.fileName}
-          </button>
-          {isOrphaned && (
-            <span className="text-xs text-amber-600">Unassigned — template changed</span>
-          )}
-        </div>
-        <span className="text-xs text-gray-400 shrink-0">{formatFileSize(file.fileSize)}</span>
+    <div className={`flex items-center gap-3 rounded-xl px-3.5 py-2.5 border transition-colors ${isTagged ? 'bg-green-50 border-green-100' : 'bg-amber-50 border-amber-100'}`}>
+      <span className="text-xs font-medium text-gray-400 bg-white border border-gray-200 rounded px-1.5 py-0.5 shrink-0">{file.fileType}</span>
+
+      <div className="min-w-0 flex-1">
+        <button onClick={onView} className="text-sm font-medium text-gray-800 truncate block hover:text-blue-600 hover:underline text-left">
+          {file.fileName}
+        </button>
+        <p className="text-xs text-gray-400 truncate">
+          {formatFileSize(file.fileSize)} · {timeAgo(file.uploadedAt)} · {file.uploadedBy}
+        </p>
       </div>
+
+      {file.aiStatus === 'Approved' && (
+        <span className="text-xs bg-green-100 text-green-700 rounded-full px-2 py-0.5 font-medium shrink-0">AI Verified</span>
+      )}
+      {file.aiStatus === 'Rejected' && (
+        <span className="text-xs bg-red-100 text-red-600 rounded-full px-2 py-0.5 font-medium shrink-0">Rejected</span>
+      )}
+      {file.aiStatus === 'Processing' && (
+        <span className="text-xs text-amber-600 font-medium shrink-0">Scanning…</span>
+      )}
+      {file.aiStatus === 'Ready for Review' && (
+        <button onClick={onReview} className="text-xs font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded-full px-2 py-0.5 shrink-0">
+          Review in AI Data →
+        </button>
+      )}
+      {file.aiStatus === 'Not Scanned' && (
+        <button onClick={onScan} className="btn-xs bg-white border border-gray-200 hover:bg-violet-50 text-violet-700 shrink-0">
+          AI Scan
+        </button>
+      )}
+
+      {/* Tag dropdown */}
+      <select
+        className={`text-xs border rounded-lg px-2 py-1.5 shrink-0 max-w-[160px] focus:outline-none focus:ring-1 focus:ring-blue-400 ${
+          isTagged ? 'border-gray-200 text-gray-700 bg-white' : 'border-amber-300 text-amber-700 bg-amber-50 font-medium'
+        }`}
+        value={isTagged ? file.requiredDocumentId : ''}
+        onChange={(e) => {
+          const val = e.target.value
+          const doc = docs.find(d => d.id === val)
+          onRetag(val || null, doc?.name ?? '')
+        }}
+      >
+        <option value="">— Untagged —</option>
+        {docs.map(d => (
+          <option key={d.id} value={d.id}>{d.name}{d.required ? ' *' : ''}</option>
+        ))}
+      </select>
+
       <div className="flex gap-1.5 shrink-0 items-center">
-        {file.fileDataUrl && (
-          <>
-            <button onClick={onView} className="btn-xs bg-white border border-gray-200 hover:bg-blue-50 text-gray-600 hover:text-blue-700 flex items-center gap-1">
-              <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-              </svg>
-              View
-            </button>
-            <button onClick={onDownload} className="btn-xs bg-white border border-gray-200 hover:bg-green-50 text-gray-600 hover:text-green-700 flex items-center gap-1">
-              <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-              </svg>
-              Download
-            </button>
-          </>
-        )}
-        {fromTelegram && onSendToInbox && (
+        <button
+          onClick={file.fileDataUrl ? onView : undefined}
+          disabled={!file.fileDataUrl}
+          title={file.fileDataUrl ? 'View file' : 'File preview not available'}
+          className={`btn-xs flex items-center gap-1 ${
+            file.fileDataUrl
+              ? 'bg-white border border-gray-200 hover:bg-blue-50 text-gray-600 hover:text-blue-700'
+              : 'bg-gray-50 border border-gray-100 text-gray-300 cursor-not-allowed'
+          }`}
+        >
+          View
+        </button>
+        <button
+          onClick={file.fileDataUrl ? onDownload : undefined}
+          disabled={!file.fileDataUrl}
+          title={file.fileDataUrl ? 'Download file' : 'File not available for download'}
+          className={`btn-xs flex items-center gap-1 ${
+            file.fileDataUrl
+              ? 'bg-white border border-gray-200 hover:bg-green-50 text-gray-600 hover:text-green-700'
+              : 'bg-gray-50 border border-gray-100 text-gray-300 cursor-not-allowed'
+          }`}
+        >
+          Download
+        </button>
+        {fromTelegram && (
           <button
             onClick={onSendToInbox}
             title="Move this file back to the Unassigned Inbox — use this if it was attached to the wrong case"
-            className="btn-xs bg-white border border-gray-200 hover:bg-amber-50 text-gray-600 hover:text-amber-700 flex items-center gap-1"
+            className="btn-xs bg-white border border-gray-200 hover:bg-amber-50 text-gray-600 hover:text-amber-700"
           >
-            <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M11 17l-5-5m0 0l5-5m-5 5h12" />
-            </svg>
             Back to Inbox
           </button>
-        )}
-        {/* Assign-to dropdown */}
-        {docs.length > 0 && (
-          <select
-            className="text-xs border border-gray-200 rounded-lg px-2 py-1 text-gray-600 bg-white hover:border-blue-300 focus:outline-none focus:ring-1 focus:ring-blue-400"
-            value=""
-            onChange={(e) => {
-              const val = e.target.value
-              if (!val) return
-              const doc = docs.find(d => d.id === val)
-              if (doc) onAssign(doc.id, doc.name)
-            }}
-          >
-            <option value="">Assign to…</option>
-            {docs.map(d => (
-              <option key={d.id} value={d.id}>{d.name}</option>
-            ))}
-          </select>
         )}
         {deleteConfirmId === file.id ? (
           <>
             <button onClick={onDelete} className="btn-xs bg-red-600 text-white">Confirm</button>
-            <button onClick={() => setDeleteConfirmId(null)} className="btn-xs bg-gray-100 text-gray-600">Cancel</button>
+            <button onClick={() => setDeleteConfirmId(null)} className="btn-xs bg-white border border-gray-200 text-gray-600">Cancel</button>
           </>
         ) : (
-          <button onClick={() => setDeleteConfirmId(file.id)} className="btn-xs text-gray-400 hover:text-red-500">✕</button>
+          <button onClick={() => setDeleteConfirmId(file.id)} className="btn-xs text-gray-300 hover:text-red-400">✕</button>
         )}
       </div>
     </div>
