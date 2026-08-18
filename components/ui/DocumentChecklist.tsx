@@ -5,7 +5,7 @@ import { useStore } from '@/lib/store'
 import { useAuth } from '@/lib/auth'
 import { createClient } from '@/utils/supabase/client'
 import type { WorkflowTemplate, CaseFile } from '@/lib/types'
-import { getActiveDocs, getActiveSteps } from '@/lib/workflow'
+import { getActiveDocs } from '@/lib/workflow'
 import { formatFileSize, timeAgo } from '@/lib/utils'
 
 const STORAGE_BUCKET = 'case-files'
@@ -154,36 +154,21 @@ type Props = {
   onScanReady: (file: CaseFile) => void
 }
 
-type FilterKey = 'all' | 'untagged' | string
-
 export default function DocumentChecklist({ caseId, caseTitle, template, caseFiles, onScanReady }: Props) {
   const { addCaseFile, deleteCaseFile, updateCaseFile, startAiScan, addActivityLog, sendCaseFileToInbox } = useStore()
   const { currentUser } = useAuth()
   const [uploading, setUploading] = useState(false)
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
   const [viewingFile, setViewingFile] = useState<CaseFile | null>(null)
-  const [filter, setFilter] = useState<FilterKey>('all')
 
   const docs = getActiveDocs(template)
   const requiredDocs = docs.filter(d => d.required)
-  const optionalDocs = docs.filter(d => !d.required)
-  const docIds = new Set(docs.map(d => d.id))
-  const templateSteps = getActiveSteps(template)
-  const stepNameMap: Record<string, string> = Object.fromEntries(templateSteps.map(s => [s.id, s.name]))
 
   // Superseded files are legacy leftovers from the old per-slot upload model — hide them from the live list.
   const activeFiles = caseFiles.filter(f => f.caseId === caseId && !f.supersededBy)
-  const isTagged = (f: CaseFile) => !!f.requiredDocumentId && docIds.has(f.requiredDocumentId)
-  const untaggedFiles = activeFiles.filter(f => !isTagged(f))
 
   const uploadedRequiredCount = requiredDocs.filter(doc => activeFiles.some(f => f.requiredDocumentId === doc.id)).length
   const overallCompleteness = requiredDocs.length > 0 ? Math.round((uploadedRequiredCount / requiredDocs.length) * 100) : 100
-
-  const filteredFiles = activeFiles.filter(f => {
-    if (filter === 'all') return true
-    if (filter === 'untagged') return !isTagged(f)
-    return f.requiredDocumentId === filter
-  })
 
   const uploadToStorage = async (file: File, caseId: string): Promise<string> => {
     const sb = createClient()
@@ -246,71 +231,30 @@ export default function DocumentChecklist({ caseId, caseTitle, template, caseFil
     setUploading(false)
   }
 
-  const filterLabel = filter === 'all' ? 'All Files' : filter === 'untagged' ? 'Untagged' : docs.find(d => d.id === filter)?.name ?? 'Files'
-
   return (
     <div className="space-y-4">
       {docs.length === 0 ? (
         <p className="text-xs text-gray-400">No workflow template — set a case type to see document categories.</p>
-      ) : (
-        <div>
-          {requiredDocs.length > 0 && (
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Required Documents</p>
-              <div className="flex items-center gap-2">
-                <div className="w-24 bg-gray-200 rounded-full h-1.5 overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all ${overallCompleteness >= 100 ? 'bg-green-500' : overallCompleteness >= 60 ? 'bg-amber-400' : 'bg-red-400'}`}
-                    style={{ width: `${overallCompleteness}%` }}
-                  />
-                </div>
-                <span className={`text-xs font-bold ${overallCompleteness >= 100 ? 'text-green-600' : overallCompleteness >= 60 ? 'text-amber-600' : 'text-red-500'}`}>
-                  {uploadedRequiredCount}/{requiredDocs.length}
-                </span>
-              </div>
+      ) : requiredDocs.length > 0 && (
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Required Documents</p>
+          <div className="flex items-center gap-2">
+            <div className="w-24 bg-gray-200 rounded-full h-1.5 overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all ${overallCompleteness >= 100 ? 'bg-green-500' : overallCompleteness >= 60 ? 'bg-amber-400' : 'bg-red-400'}`}
+                style={{ width: `${overallCompleteness}%` }}
+              />
             </div>
-          )}
-
-          <div className="flex flex-wrap gap-1.5 mb-4">
-            <FilterChip label="All" count={activeFiles.length} active={filter === 'all'} onClick={() => setFilter('all')} />
-            {requiredDocs.map(doc => {
-              const count = activeFiles.filter(f => f.requiredDocumentId === doc.id).length
-              return (
-                <FilterChip
-                  key={doc.id}
-                  label={doc.name}
-                  count={count}
-                  required
-                  satisfied={count > 0}
-                  active={filter === doc.id}
-                  title={doc.workflowStepId ? stepNameMap[doc.workflowStepId] : undefined}
-                  onClick={() => setFilter(doc.id)}
-                />
-              )
-            })}
-            {optionalDocs.map(doc => {
-              const count = activeFiles.filter(f => f.requiredDocumentId === doc.id).length
-              return (
-                <FilterChip
-                  key={doc.id}
-                  label={doc.name}
-                  count={count}
-                  active={filter === doc.id}
-                  title={doc.workflowStepId ? stepNameMap[doc.workflowStepId] : undefined}
-                  onClick={() => setFilter(doc.id)}
-                />
-              )
-            })}
-            {untaggedFiles.length > 0 && (
-              <FilterChip label="Untagged" count={untaggedFiles.length} amber active={filter === 'untagged'} onClick={() => setFilter('untagged')} />
-            )}
+            <span className={`text-xs font-bold ${overallCompleteness >= 100 ? 'text-green-600' : overallCompleteness >= 60 ? 'text-amber-600' : 'text-red-500'}`}>
+              {uploadedRequiredCount}/{requiredDocs.length}
+            </span>
           </div>
         </div>
       )}
 
       <div className="flex items-center justify-between">
         <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest">
-          {filterLabel} <span className="normal-case font-normal text-gray-300">({filteredFiles.length})</span>
+          All Files <span className="normal-case font-normal text-gray-300">({activeFiles.length})</span>
         </p>
         <label className="btn-xs bg-gray-100 hover:bg-gray-200 text-gray-700 cursor-pointer">
           + Upload Document
@@ -334,13 +278,11 @@ export default function DocumentChecklist({ caseId, caseTitle, template, caseFil
         </div>
       )}
 
-      {filteredFiles.length === 0 ? (
-        <p className="text-xs text-gray-400">
-          {filter === 'all' ? 'No files uploaded yet.' : 'No files tagged under this category yet.'}
-        </p>
+      {activeFiles.length === 0 ? (
+        <p className="text-xs text-gray-400">No files uploaded yet.</p>
       ) : (
         <div className="space-y-1.5">
-          {filteredFiles.map(f => (
+          {activeFiles.map(f => (
             <FileRow
               key={f.id}
               file={f}
@@ -368,37 +310,6 @@ export default function DocumentChecklist({ caseId, caseTitle, template, caseFil
 
       {viewingFile && <FileViewerModal file={viewingFile} onClose={() => setViewingFile(null)} />}
     </div>
-  )
-}
-
-// ─── Filter chip ────────────────────────────────────────────────────────────
-
-function FilterChip({ label, count, required, satisfied, amber, active, title, onClick }: {
-  label: string
-  count: number
-  required?: boolean
-  satisfied?: boolean
-  amber?: boolean
-  active: boolean
-  title?: string
-  onClick: () => void
-}) {
-  const variant = active
-    ? 'bg-blue-600 border-blue-600 text-white'
-    : amber
-    ? 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100'
-    : required && !satisfied
-    ? 'bg-red-50 border-red-100 text-red-600 hover:bg-red-100'
-    : required && satisfied
-    ? 'bg-green-50 border-green-100 text-green-700 hover:bg-green-100'
-    : 'bg-gray-50 border-gray-100 text-gray-600 hover:bg-gray-100'
-
-  return (
-    <button onClick={onClick} title={title} className={`text-xs font-medium rounded-full px-2.5 py-1 border transition-colors ${variant}`}>
-      {required && satisfied && !active && '✓ '}
-      {label}
-      <span className="opacity-70"> ({count})</span>
-    </button>
   )
 }
 
