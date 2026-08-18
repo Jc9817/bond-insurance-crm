@@ -5,8 +5,8 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useStore } from '@/lib/store'
 import { useAuth } from '@/lib/auth'
-import type { CaseFile, WorkflowStep, CaseProduct } from '@/lib/types'
-import { WAITING_FOR_OPTIONS, REQUEST_TYPES } from '@/lib/types'
+import type { CaseFile, WorkflowStep, CaseProduct, CaseStatus } from '@/lib/types'
+import { WAITING_FOR_OPTIONS, REQUEST_TYPES, CASE_STATUSES } from '@/lib/types'
 import {
   resolveTemplate, getWorkflowTemplate, getActiveSteps, getCaseReadiness, getDocumentCompleteness,
   getMissingRequiredDocs, getCurrentStep, getNextStep, getUnassignedFiles, getNextRecommendedAction,
@@ -21,6 +21,12 @@ import CustomerEmailPanel from '@/components/ui/CustomerEmailPanel'
 import OpsNotifyPanel from '@/components/ui/OpsNotifyPanel'
 import QuotationDocumentPanel from '@/components/ui/QuotationDocumentPanel'
 import SearchableSelect from '@/components/ui/SearchableSelect'
+
+const statusSelectStyle: Record<CaseStatus, string> = {
+  Created: 'border-gray-200 text-gray-700 bg-gray-100',
+  'In Progress': 'border-blue-200 text-blue-700 bg-blue-50',
+  Done: 'border-green-200 text-green-700 bg-green-50',
+}
 
 export default function CaseDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -206,6 +212,13 @@ export default function CaseDetailPage() {
           <div className="min-w-0">
             <h1 className="text-xl font-bold text-gray-900 tracking-tight leading-tight">{caseItem.caseTitle}</h1>
             <div className="flex items-center gap-3 mt-1.5 flex-wrap text-sm text-gray-500">
+              <select
+                value={caseItem.currentStatus}
+                onChange={e => updateCase(id, { currentStatus: e.target.value as CaseStatus })}
+                className={`text-xs font-semibold border rounded-full pl-2.5 pr-1.5 py-1 focus:outline-none focus:ring-1 focus:ring-blue-400 ${statusSelectStyle[caseItem.currentStatus]}`}
+              >
+                {CASE_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
               {customer
                 ? <Link href={`/customers/${customer.id}`} className="text-blue-600 hover:underline font-medium">{customer.customerName}</Link>
                 : <span className="font-medium text-gray-700">{caseItem.customerName}</span>}
@@ -308,11 +321,9 @@ export default function CaseDetailPage() {
 
       {/* ── Next Best Action card ────────────────────────────────────────────── */}
       <NextBestAction
-        missingDocs={missingDocs}
         followUps={caseFollowUps}
         nextStep={nextStep}
         currentStep={currentStep}
-        onGoToDocs={() => setActiveTab('files')}
         onGoToFollowUps={() => setActiveTab('notes')}
         onGoToEmails={() => setActiveTab('emails')}
         onAdvance={() => setActiveTab('milestones')}
@@ -1071,19 +1082,17 @@ function AiField({ label, value, wide }: { label: string; value: string; wide?: 
 
 // ─── What To Do Now Card ──────────────────────────────────────────────────────
 
-import type { RequiredDocument, FollowUp, WorkflowStep as WStep } from '@/lib/types'
+import type { FollowUp, WorkflowStep as WStep } from '@/lib/types'
 import { getDaysUntil as daysUntil } from '@/lib/utils'
 
 function NextBestAction({
-  missingDocs, followUps, nextStep, currentStep, allDone,
-  onGoToDocs, onGoToFollowUps, onGoToEmails, onAdvance, onSetResult,
+  followUps, nextStep, currentStep, allDone,
+  onGoToFollowUps, onGoToEmails, onAdvance, onSetResult,
 }: {
-  missingDocs: RequiredDocument[]
   followUps: FollowUp[]
   nextStep: WStep | null
   currentStep: WStep | null
   allDone: boolean
-  onGoToDocs: () => void
   onGoToFollowUps: () => void
   onGoToEmails: () => void
   onAdvance: () => void
@@ -1107,9 +1116,6 @@ function NextBestAction({
     const f = overdueFollowUps[0]
     const d = daysUntil(f.dueDate)
     primary = { urgency: 'urgent', badge: 'Overdue', headline: f.title, detail: `${Math.abs(d!)} day${Math.abs(d!) !== 1 ? 's' : ''} past due — action needed immediately`, cta: 'View Follow-Ups', onClick: onGoToFollowUps }
-  } else if (missingDocs.length > 0) {
-    const names = missingDocs.slice(0, 2).map(d => d.name).join(', ') + (missingDocs.length > 2 ? ` + ${missingDocs.length - 2} more` : '')
-    primary = { urgency: 'urgent', badge: 'Documents Required', headline: missingDocs.length === 1 ? `Upload: ${missingDocs[0].name}` : `${missingDocs.length} required documents missing`, detail: names, cta: 'Go to Files', onClick: onGoToDocs }
   } else if (currentStep?.aiEmailEnabled) {
     primary = { urgency: 'normal', badge: 'Ready to Send', headline: 'Send quotation email to insurers', detail: 'All documents are uploaded. Compose and send the quotation request to receive quotes.', cta: 'Open Email Panel', onClick: onGoToEmails }
   } else if (dueSoonFollowUps.length > 0) {

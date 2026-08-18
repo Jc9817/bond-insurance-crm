@@ -7,6 +7,12 @@ import { formatCurrency, getDaysUntil } from '@/lib/utils'
 import { getWorkflowTemplate, getCaseReadiness, getMissingRequiredDocs } from '@/lib/workflow'
 import StatusBadge from './StatusBadge'
 
+const statusSelectStyle: Record<CaseStatus, string> = {
+  Created: 'border-gray-200 text-gray-700 bg-gray-100',
+  'In Progress': 'border-blue-200 text-blue-700 bg-blue-50',
+  Done: 'border-green-200 text-green-700 bg-green-50',
+}
+
 type Props = {
   cases: Case[]
   caseFiles: CaseFile[]
@@ -76,7 +82,7 @@ export default function KanbanBoard({ cases, caseFiles, followUps, workflowTempl
                       'border-gray-100'
                     }`}
                   >
-                    <Link href={`/cases/${c.id}`}>
+                    <Link href={`/cases/${c.id}`} draggable={false}>
                       <p className="text-sm font-semibold text-gray-900 leading-snug line-clamp-2 hover:text-blue-600">
                         {c.caseTitle}
                       </p>
@@ -126,7 +132,7 @@ export default function KanbanBoard({ cases, caseFiles, followUps, workflowTempl
                         value={c.currentStatus}
                         onChange={e => onStatusChange(c.id, e.target.value as CaseStatus)}
                         onClick={e => e.stopPropagation()}
-                        className="w-full text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-600 bg-gray-50 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                        className={`w-full text-xs font-medium border rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-400 ${statusSelectStyle[c.currentStatus]}`}
                       >
                         {CASE_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
                       </select>
