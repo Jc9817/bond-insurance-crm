@@ -7,7 +7,7 @@ import type {
   User, CaseFile, ActivityLog, SettingsItem, SettingsCategory,
   WorkflowTemplate, RequiredDocument, WorkflowStep,
   Inquiry, InquiryQuotation, InquiryNote, InquiryDocument,
-  Product, ProductPackage, SubmissionLetterTemplate, EmailTemplate, CaseEmailLog,
+  Product, ProductPackage, SubmissionLetterTemplate, EmailTemplate, CaseEmailLog, TelegramUpload,
 } from './types'
 import {
   mockPics, mockUsers, mockWorkflowTemplates,
@@ -42,9 +42,10 @@ type StoreCtx = {
   productPackages: ProductPackage[]
   emailTemplates: EmailTemplate[]
   caseEmails: CaseEmailLog[]
+  telegramUploads: TelegramUpload[]
   loading: boolean
 
-  addCustomer: (c: Omit<Customer, 'id' | 'createdAt'>) => void
+  addCustomer: (c: Omit<Customer, 'id' | 'createdAt'>) => string
   updateCustomer: (id: string, c: Partial<Customer>) => void
   deleteCustomer: (id: string) => void
 
@@ -124,6 +125,8 @@ type StoreCtx = {
   deleteEmailTemplate: (id: string) => void
   sendCaseEmail: (data: { caseId: string; templateName?: string; toEmail: string; subject: string; body: string }) => Promise<void>
   notifyOpsTeam: (caseItem: Case) => Promise<void>
+
+  deleteTelegramUpload: (id: string) => void
 }
 
 // ─── DB row → TypeScript mappers ──────────────────────────────────────────────
@@ -208,6 +211,13 @@ const toCaseEmailLog = (l: CaseEmailLog) => ({
   id: l.id, case_id: l.caseId, template_name: l.templateName ?? null,
   to_email: l.toEmail, subject: l.subject, body: l.body,
   status: l.status, error_message: l.errorMessage ?? null, sent_at: l.sentAt,
+})
+
+const fromTelegramUpload = (r: Row): TelegramUpload => ({
+  id: r.id, fileName: r.file_name ?? '', fileSize: r.file_size ?? 0, fileType: r.file_type ?? '',
+  fileDataUrl: r.file_data_url ?? undefined, uploadedBy: r.uploaded_by ?? '', uploadedAt: r.uploaded_at,
+  telegramChatId: r.telegram_chat_id ?? undefined, telegramMessageId: r.telegram_message_id ?? undefined,
+  telegramFileId: r.telegram_file_id ?? undefined,
 })
 
 const fromCaseNote = (r: Row): CaseNote => ({
@@ -335,6 +345,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [submissionLetterTemplates, setSubmissionLetterTemplates] = useState<SubmissionLetterTemplate[]>(mockSubmissionLetterTemplates)
   const [emailTemplates, setEmailTemplates] = useState<EmailTemplate[]>([])
   const [caseEmails, setCaseEmails] = useState<CaseEmailLog[]>([])
+  const [telegramUploads, setTelegramUploads] = useState<TelegramUpload[]>([])
   const [settingsData] = useState<SettingsData>({
     caseTypes: mockSettingsCaseTypes,
     industries: mockSettingsIndustries,
@@ -383,6 +394,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       { data: idRows },
       { data: templateRows },
       { data: caseEmailRows },
+      { data: telegramUploadRows },
     ] = await Promise.all([
       sb.from('customers').select('*').order('created_at', { ascending: false }),
       sb.from('contacts').select('*'),
@@ -400,6 +412,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       sb.from('inquiry_documents').select('*').order('uploaded_at', { ascending: false }),
       sb.from('email_templates').select('*').order('created_at'),
       sb.from('case_emails').select('*').order('sent_at', { ascending: false }),
+      sb.from('telegram_uploads').select('*').order('uploaded_at', { ascending: false }),
     ])
 
     if (custErr) console.error('[Supabase] customers load error:', custErr.message)
@@ -423,6 +436,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       fileDataUrl: r.file_data_url ?? '', uploadedAt: r.uploaded_at,
     })))
     if (caseEmailRows) setCaseEmails(caseEmailRows.map(fromCaseEmailLog))
+    if (telegramUploadRows) setTelegramUploads(telegramUploadRows.map(fromTelegramUpload))
     if (templateRows) {
       setEmailTemplates(templateRows.map(fromEmailTemplate))
       if (templateRows.length === 0) seedEmailTemplates(sb)
@@ -489,7 +503,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   // ─── Customers ────────────────────────────────────────────────────────────
 
-  const addCustomer = (c: Omit<Customer, 'id' | 'createdAt'>) => {
+  const addCustomer = (c: Omit<Customer, 'id' | 'createdAt'>): string => {
     const row: Customer = { ...c, id: generateId(), createdAt: nowIso() }
     setCustomers(prev => [row, ...prev])
     createClient().from('customers').insert(toCustomer(row))
@@ -497,6 +511,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (error) console.error('[Supabase] addCustomer failed:', error.message, error.code)
         else console.log('[Supabase] addCustomer saved:', row.customerName)
       })
+    return row.id
   }
   const updateCustomer = (id: string, c: Partial<Customer>) => {
     setCustomers(prev => prev.map(x => x.id === id ? { ...x, ...c } : x))
@@ -647,6 +662,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     createClient().from('case_emails').insert(toCaseEmailLog(row)).then()
 
     if (status === 'failed') throw new Error(errorMessage)
+  }
+
+  // ─── Telegram Inbox ─────────────────────────────────────────────────────────
+
+  const deleteTelegramUpload = (id: string) => {
+    setTelegramUploads(prev => prev.filter(x => x.id !== id))
+    createClient().from('telegram_uploads').delete().eq('id', id).then()
   }
 
   const deleteCase = (id: string) => {
@@ -1068,7 +1090,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       customers, contacts, cases, caseNotes, followUps, pics,
       users, caseFiles, activityLogs, settingsData: settingsState, workflowTemplates,
       inquiries, inquiryQuotations, inquiryNotes, inquiryDocuments,
-      products, productPackages, emailTemplates, caseEmails, loading,
+      products, productPackages, emailTemplates, caseEmails, telegramUploads, loading,
       addCustomer, updateCustomer, deleteCustomer,
       addContact, updateContact, deleteContact, setPrimaryContact,
       addCase, updateCase, deleteCase, archiveCase, restoreCase,
@@ -1091,6 +1113,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       submissionLetterTemplates,
       addSubmissionLetterTemplate, updateSubmissionLetterTemplate, deleteSubmissionLetterTemplate,
       addEmailTemplate, updateEmailTemplate, deleteEmailTemplate, sendCaseEmail, notifyOpsTeam,
+      deleteTelegramUpload,
     }}>
       {children}
     </StoreContext.Provider>

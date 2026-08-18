@@ -35,6 +35,15 @@ const nav = [
     ),
   },
   {
+    href: '/inbox',
+    label: 'Inbox',
+    icon: (
+      <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+      </svg>
+    ),
+  },
+  {
     href: '/followups',
     label: 'Follow-Ups',
     icon: (
@@ -138,6 +147,7 @@ export default function Sidebar() {
   const pathname = usePathname()
   const router = useRouter()
   const { currentUser, logout } = useAuth()
+  const { telegramUploads } = useStore()
 
   const isActive = (href: string) =>
     pathname === href || (href !== '/dashboard' && pathname.startsWith(href))
@@ -181,7 +191,12 @@ export default function Sidebar() {
             <span className={isActive(item.href) ? 'text-blue-600' : 'text-gray-400'}>
               {item.icon}
             </span>
-            {item.label}
+            <span className="flex-1">{item.label}</span>
+            {item.href === '/inbox' && telegramUploads.length > 0 && (
+              <span className="text-[10px] font-bold bg-amber-100 text-amber-700 rounded-full px-1.5 py-0.5 leading-none">
+                {telegramUploads.length}
+              </span>
+            )}
           </Link>
         ))}
       </nav>

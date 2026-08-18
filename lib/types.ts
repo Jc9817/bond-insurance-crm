@@ -275,6 +275,24 @@ export type CaseFile = {
   supersededBy?: string        // id of the newer file that replaced this one
 }
 
+// ─── Telegram Inbox ───────────────────────────────────────────────────────────
+// Documents dropped into the Telegram bot land here unassigned. Staff review
+// them from /inbox and either spin up a new case, attach to an existing case,
+// or discard — resolving an item deletes its row here.
+
+export type TelegramUpload = {
+  id: string
+  fileName: string
+  fileSize: number
+  fileType: string
+  fileDataUrl?: string
+  uploadedBy: string
+  uploadedAt: string
+  telegramChatId?: number
+  telegramMessageId?: number
+  telegramFileId?: string
+}
+
 // ─── Activity Log ─────────────────────────────────────────────────────────────
 
 export const ACTIVITY_LOG_ACTION_TYPES = [
