@@ -127,6 +127,7 @@ type StoreCtx = {
   notifyOpsTeam: (caseItem: Case) => Promise<void>
 
   deleteTelegramUpload: (id: string) => void
+  sendCaseFileToInbox: (file: CaseFile) => void
 }
 
 // ─── DB row → TypeScript mappers ──────────────────────────────────────────────
@@ -218,6 +219,12 @@ const fromTelegramUpload = (r: Row): TelegramUpload => ({
   fileDataUrl: r.file_data_url ?? undefined, uploadedBy: r.uploaded_by ?? '', uploadedAt: r.uploaded_at,
   telegramChatId: r.telegram_chat_id ?? undefined, telegramMessageId: r.telegram_message_id ?? undefined,
   telegramFileId: r.telegram_file_id ?? undefined,
+})
+const toTelegramUpload = (u: TelegramUpload) => ({
+  id: u.id, file_name: u.fileName, file_size: u.fileSize, file_type: u.fileType,
+  file_data_url: u.fileDataUrl ?? null, uploaded_by: u.uploadedBy, uploaded_at: u.uploadedAt,
+  telegram_chat_id: u.telegramChatId ?? null, telegram_message_id: u.telegramMessageId ?? null,
+  telegram_file_id: u.telegramFileId ?? null,
 })
 
 const fromCaseNote = (r: Row): CaseNote => ({
@@ -671,6 +678,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     createClient().from('telegram_uploads').delete().eq('id', id).then()
   }
 
+  const sendCaseFileToInbox = (file: CaseFile) => {
+    const row: TelegramUpload = {
+      id: generateId(), fileName: file.fileName, fileSize: file.fileSize, fileType: file.fileType,
+      fileDataUrl: file.fileDataUrl, uploadedBy: file.uploadedBy, uploadedAt: nowIso(),
+    }
+    setTelegramUploads(prev => [row, ...prev])
+    setCaseFiles(prev => prev.filter(x => x.id !== file.id))
+    const sb = createClient()
+    sb.from('telegram_uploads').insert(toTelegramUpload(row)).then(({ error }) => {
+      if (error) console.error('[Supabase] sendCaseFileToInbox insert failed:', error.message)
+    })
+    sb.from('case_files').delete().eq('id', file.id).then()
+  }
+
   const deleteCase = (id: string) => {
     // Remove from memory immediately
     setCases(prev => prev.filter(x => x.id !== id))
@@ -1113,7 +1134,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       submissionLetterTemplates,
       addSubmissionLetterTemplate, updateSubmissionLetterTemplate, deleteSubmissionLetterTemplate,
       addEmailTemplate, updateEmailTemplate, deleteEmailTemplate, sendCaseEmail, notifyOpsTeam,
-      deleteTelegramUpload,
+      deleteTelegramUpload, sendCaseFileToInbox,
     }}>
       {children}
     </StoreContext.Provider>

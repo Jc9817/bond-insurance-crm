@@ -157,7 +157,7 @@ type Props = {
 }
 
 export default function DocumentChecklist({ caseId, caseTitle, template, caseFiles, filterStepId, readOnly, onScanReady }: Props) {
-  const { addCaseFile, deleteCaseFile, updateCaseFile, startAiScan, addActivityLog } = useStore()
+  const { addCaseFile, deleteCaseFile, updateCaseFile, startAiScan, addActivityLog, sendCaseFileToInbox } = useStore()
   const { currentUser } = useAuth()
   const [uploadingDocId, setUploadingDocId] = useState<string | null>(null)
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
@@ -324,6 +324,7 @@ export default function DocumentChecklist({ caseId, caseTitle, template, caseFil
                   onDelete={() => { deleteCaseFile(f.id); setDeleteConfirmId(null) }}
                   onView={() => setViewingFile(f)}
                   onDownload={() => downloadFile(f)}
+                  onSendToInbox={() => sendCaseFileToInbox(f)}
                 />
               ))}
             </div>
@@ -520,6 +521,7 @@ export default function DocumentChecklist({ caseId, caseTitle, template, caseFil
                 }}
                 onView={() => setViewingFile(f)}
                 onDownload={() => downloadFile(f)}
+                onSendToInbox={() => sendCaseFileToInbox(f)}
               />
             ))}
           </div>
@@ -781,13 +783,15 @@ type UnassignedFileCardProps = {
   onDelete: () => void
   onView: () => void
   onDownload: () => void
+  onSendToInbox?: () => void
 }
 
 function UnassignedFileCard({
   file, docs, deleteConfirmId, setDeleteConfirmId,
-  onAssign, onDragStart, onDelete, onView, onDownload,
+  onAssign, onDragStart, onDelete, onView, onDownload, onSendToInbox,
 }: UnassignedFileCardProps) {
   const isOrphaned = !!file.requiredDocumentId
+  const fromTelegram = file.documentType === 'Uploaded via Telegram'
 
   return (
     <div
@@ -837,6 +841,18 @@ function UnassignedFileCard({
               Download
             </button>
           </>
+        )}
+        {fromTelegram && onSendToInbox && (
+          <button
+            onClick={onSendToInbox}
+            title="Move this file back to the Unassigned Inbox — use this if it was attached to the wrong case"
+            className="btn-xs bg-white border border-gray-200 hover:bg-amber-50 text-gray-600 hover:text-amber-700 flex items-center gap-1"
+          >
+            <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M11 17l-5-5m0 0l5-5m-5 5h12" />
+            </svg>
+            Back to Inbox
+          </button>
         )}
         {/* Assign-to dropdown */}
         {docs.length > 0 && (
