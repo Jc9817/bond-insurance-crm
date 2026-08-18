@@ -16,4 +16,4 @@ create table if not exists telegram_uploads (
   telegram_file_id text
 );
 alter table telegram_uploads disable row level security;
-grant select, insert, update, delete on telegram_uploads to anon, authenticated;
+grant select, insert, update, delete on telegram_uploads to anon, authenticated, service_role;
