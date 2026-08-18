@@ -338,7 +338,7 @@ export default function InquiryDetailPage() {
       caseType,
       amount,
       personInCharge,
-      currentStatus: 'New',
+      currentStatus: 'Created',
       currentWorkflowStepId: '',
       result: '',
       closingRemarks: '',

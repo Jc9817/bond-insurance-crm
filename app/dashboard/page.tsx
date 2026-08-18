@@ -17,7 +17,7 @@ export default function HomePage() {
   const dateLabel = today.toLocaleDateString('en-MY', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
   const greeting = currentUser ? `, ${currentUser.fullName.split(' ')[0]}` : ''
 
-  const activeCases = cases.filter(c => c.currentStatus !== 'Closed')
+  const activeCases = cases.filter(c => c.currentStatus !== 'Done')
   const openFollowUps = followUps.filter(f => f.status === 'Open')
   const overdueFollowUps = openFollowUps.filter(f => {
     const d = getDaysUntil(f.dueDate)

@@ -88,7 +88,7 @@ export async function POST(req: NextRequest) {
       .from('cases')
       .select('id, case_title, customer_name, current_status')
       .is('archived_at', null)
-      .neq('current_status', 'Closed')
+      .neq('current_status', 'Done')
       .order('created_at', { ascending: false })
       .limit(30)
 

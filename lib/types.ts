@@ -91,13 +91,9 @@ export type CaseProduct = {
 // ─── Case ────────────────────────────────────────────────────────────────────
 
 export const CASE_STATUSES = [
-  'New',
-  'Waiting Documents',
-  'Submitted',
-  'Quoted',
-  'Sent to Customer',
-  'Confirmed',
-  'Closed',
+  'Created',
+  'In Progress',
+  'Done',
 ] as const
 export type CaseStatus = (typeof CASE_STATUSES)[number]
 

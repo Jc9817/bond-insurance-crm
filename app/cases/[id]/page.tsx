@@ -100,7 +100,7 @@ export default function CaseDetailPage() {
   const daysAtCurrentStep = currentStepEnteredAt
     ? Math.floor((now - currentStepEnteredAt) / 86400000)
     : null
-  const slaBreached = currentStep?.slaDays != null && daysAtCurrentStep != null && daysAtCurrentStep > currentStep.slaDays && caseItem.currentStatus !== 'Closed'
+  const slaBreached = currentStep?.slaDays != null && daysAtCurrentStep != null && daysAtCurrentStep > currentStep.slaDays && caseItem.currentStatus !== 'Done'
 
   // ── handlers ───────────────────────────────────────────────────────────────
 
@@ -221,7 +221,7 @@ export default function CaseDetailPage() {
             </div>
           </div>
           <div className="flex gap-2 shrink-0">
-            {(caseItem.result === 'Won' || caseItem.currentStatus === 'Closed') && (
+            {(caseItem.result === 'Won' || caseItem.currentStatus === 'Done') && (
               <button
                 onClick={() => {
                   const newId = addCase({
@@ -232,7 +232,7 @@ export default function CaseDetailPage() {
                     caseType: caseItem.caseType,
                     amount: caseItem.finalAmount ?? caseItem.amount,
                     personInCharge: caseItem.personInCharge,
-                    currentStatus: 'New',
+                    currentStatus: 'Created',
                     currentWorkflowStepId: '',
                     result: '',
                     closingRemarks: '',
@@ -293,13 +293,13 @@ export default function CaseDetailPage() {
             {action}
           </div>
         )
-        if (expiryDays !== null && expiryDays < 0 && caseItem.currentStatus !== 'Closed')
+        if (expiryDays !== null && expiryDays < 0 && caseItem.currentStatus !== 'Done')
           return warn('bg-red-600', `Bond expired ${Math.abs(expiryDays)} day${Math.abs(expiryDays) !== 1 ? 's' : ''} ago — expired ${formatDate(caseItem.bondExpiryDate!)}`)
         if (slaBreached && currentStep)
           return warn('bg-orange-500', `SLA exceeded — ${daysAtCurrentStep} days at "${currentStep.name}" (limit: ${currentStep.slaDays} days)`)
-        if (expiryDays !== null && expiryDays >= 0 && expiryDays <= 30 && caseItem.currentStatus !== 'Closed')
+        if (expiryDays !== null && expiryDays >= 0 && expiryDays <= 30 && caseItem.currentStatus !== 'Done')
           return warn('bg-amber-500', `Bond expiring in ${expiryDays} day${expiryDays !== 1 ? 's' : ''} — expires ${formatDate(caseItem.bondExpiryDate!)}`)
-        if (expiryDays !== null && expiryDays <= 90 && (caseItem.result === 'Won' || caseItem.currentStatus === 'Closed') && !caseFollowUps.some(f => f.title.toLowerCase().includes('renew') && f.status === 'Open'))
+        if (expiryDays !== null && expiryDays <= 90 && (caseItem.result === 'Won' || caseItem.currentStatus === 'Done') && !caseFollowUps.some(f => f.title.toLowerCase().includes('renew') && f.status === 'Open'))
           return warn('bg-indigo-600', expiryDays < 0 ? 'Bond has expired — time to renew.' : `Bond expires in ${expiryDays} days — schedule renewal now.`,
             <button onClick={() => { setFuForm({ title: `Renew bond — ${caseItem.caseTitle}`, personInCharge: caseItem.personInCharge || (pics[0]?.name ?? ''), dueDate: caseItem.bondExpiryDate ? new Date(new Date(caseItem.bondExpiryDate).getTime() - 30 * 86400000).toISOString().split('T')[0] : '' }); setFollowUpModal(true) }} className="text-xs font-semibold bg-white text-indigo-700 px-3 py-1.5 rounded-lg hover:bg-indigo-50 shrink-0">+ Schedule Renewal</button>
           )
@@ -564,7 +564,7 @@ export default function CaseDetailPage() {
               <DetailRow label="Bond Expiry Date">
                 {caseItem.bondExpiryDate ? (() => {
                   const days = Math.ceil((new Date(caseItem.bondExpiryDate).getTime() - now) / 86400000)
-                  const urgent = days <= 30 && caseItem.currentStatus !== 'Closed'
+                  const urgent = days <= 30 && caseItem.currentStatus !== 'Done'
                   return <span className={`text-sm font-semibold ${urgent ? 'text-red-600' : 'text-gray-800'}`}>{urgent && '⚠ '}{formatDate(caseItem.bondExpiryDate)}{days >= 0 ? ` (${days}d)` : ' (expired)'}</span>
                 })() : <span className="text-sm text-gray-400">—</span>}
               </DetailRow>
@@ -1172,7 +1172,7 @@ function MilestoneRow({ index, step, timestamp, isCurrent, onSave }: {
   const dirty = value !== toInputValue(timestamp)
 
   return (
-    <div className={`flex items-center gap-3 rounded-xl px-3.5 py-3 border ${
+    <div className={`flex items-start gap-3 rounded-xl px-3.5 py-3 border ${
       timestamp ? 'bg-green-50 border-green-100' : isCurrent ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-100'
     }`}>
       <div className={`w-6 h-6 rounded-full text-xs font-bold flex items-center justify-center shrink-0 ${
@@ -1180,26 +1180,28 @@ function MilestoneRow({ index, step, timestamp, isCurrent, onSave }: {
       }`}>
         {timestamp ? '✓' : index + 1}
       </div>
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 pt-0.5">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-sm font-medium text-gray-800">{step.name}</span>
           {isCurrent && <span className="text-xs bg-blue-100 text-blue-700 rounded-full px-2 py-0.5 font-medium shrink-0">Current</span>}
         </div>
         {step.description && <p className="text-xs text-gray-400 mt-0.5">{step.description}</p>}
       </div>
-      <input
-        type="datetime-local"
-        className="input text-sm w-56 shrink-0"
-        value={value}
-        onChange={e => setValue(e.target.value)}
-      />
-      <button
-        onClick={() => onSave(value)}
-        disabled={!value || !dirty}
-        className="btn-xs bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
-      >
-        Save
-      </button>
+      <div className="flex items-center gap-2 shrink-0">
+        <input
+          type="datetime-local"
+          className="input text-sm w-56"
+          value={value}
+          onChange={e => setValue(e.target.value)}
+        />
+        <button
+          onClick={() => onSave(value)}
+          disabled={!value || !dirty}
+          className="btn-xs bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-30 disabled:cursor-not-allowed"
+        >
+          Save
+        </button>
+      </div>
     </div>
   )
 }

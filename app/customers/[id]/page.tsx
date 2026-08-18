@@ -103,7 +103,7 @@ export default function CustomerDetailPage() {
   const relatedCases = cases.filter(c => c.customerId === id && !c.archivedAt)
   const relatedFollowUps = followUps.filter(f => f.customerId === id && f.status === 'Open')
 
-  const activeCases = relatedCases.filter(c => c.currentStatus !== 'Closed')
+  const activeCases = relatedCases.filter(c => c.currentStatus !== 'Done')
   const totalExposure = activeCases.reduce((sum, c) => sum + (c.amount || 0), 0)
   const wonCases = relatedCases.filter(c => c.result === 'Won').length
 

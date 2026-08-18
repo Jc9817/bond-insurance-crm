@@ -23,7 +23,7 @@ const emptyCase = (customers: { id: string; customerName: string }[]): FormData 
   caseType: '',
   amount: 0,
   personInCharge: '',
-  currentStatus: 'New',
+  currentStatus: 'Created',
   currentWorkflowStepId: '',
   result: '',
   closingRemarks: '',
@@ -368,7 +368,7 @@ export default function CasesPage() {
                 const missing = getMissingRequiredDocs(c.id, template, caseFiles)
                 const uploaded = required.length - missing.length
                 const expiryDays = c.bondExpiryDate ? Math.ceil((new Date(c.bondExpiryDate).getTime() - now) / 86400000) : null
-                const expiryUrgent = expiryDays !== null && expiryDays <= 30 && c.currentStatus !== 'Closed'
+                const expiryUrgent = expiryDays !== null && expiryDays <= 30 && c.currentStatus !== 'Done'
                 return (
                   <tr key={c.id} className="hover:bg-stone-50 transition-colors">
                     <td className="table-td">

@@ -21,10 +21,10 @@ export default function ReportsPage() {
   const thisYear = now.getFullYear()
 
   // Core metrics
-  const closedCases = cases.filter(c => c.currentStatus === 'Closed')
+  const closedCases = cases.filter(c => c.currentStatus === 'Done')
   const wonCases = cases.filter(c => c.result === 'Won')
   const lostCases = cases.filter(c => c.result === 'Lost')
-  const activeCases = cases.filter(c => c.currentStatus !== 'Closed')
+  const activeCases = cases.filter(c => c.currentStatus !== 'Done')
   const casesThisMonth = cases.filter(c => {
     const d = new Date(c.createdAt)
     return d.getMonth() === thisMonth && d.getFullYear() === thisYear
@@ -102,7 +102,7 @@ export default function ReportsPage() {
     return {
       pic,
       total: picCases.length,
-      active: picCases.filter(c => c.currentStatus !== 'Closed').length,
+      active: picCases.filter(c => c.currentStatus !== 'Done').length,
       won: picCases.filter(c => c.result === 'Won').length,
       lost: picCases.filter(c => c.result === 'Lost').length,
       overdueFollowUps: picOD,
@@ -137,12 +137,8 @@ export default function ReportsPage() {
     return getMissingRequiredDocs(c.id, template, caseFiles).length === 0 &&
       !overdueFollowUps.some(f => f.caseId === c.id)
   })
-  const waitingCustomer = activeCases.filter(c =>
-    c.currentStatus === 'Sent to Customer' || c.currentStatus === 'Quoted'
-  )
-  const waitingInsurer = activeCases.filter(c =>
-    c.currentStatus === 'Submitted'
-  )
+  const waitingCustomer = activeCases.filter(c => c.waitingFor === 'Customer')
+  const waitingInsurer = activeCases.filter(c => c.waitingFor === 'Insurer')
 
   // Insurer view — group all non-closed cases that have a target insurer set
   const insurerGroups = activeCases
@@ -154,7 +150,7 @@ export default function ReportsPage() {
       return acc
     }, {})
   const insurerNames = Object.keys(insurerGroups).sort()
-  const unassignedSubmitted = activeCases.filter(c => c.currentStatus === 'Submitted' && !c.finalInsurer)
+  const unassignedSubmitted = activeCases.filter(c => c.waitingFor === 'Insurer' && !c.finalInsurer)
 
   const copyInsurerSummary = (insurerName: string, caseList: Case[]) => {
     const today = new Date().toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' })
@@ -405,7 +401,7 @@ export default function ReportsPage() {
             <div className="card-section">
               <h2 className="text-base font-semibold text-gray-800 mb-5">Active Cases by Status</h2>
               <div className="space-y-3">
-                {CASE_STATUSES.filter(s => s !== 'Closed').map(s => {
+                {CASE_STATUSES.filter(s => s !== 'Done').map(s => {
                   const count = activeCases.filter(c => c.currentStatus === s).length
                   const max = Math.max(...CASE_STATUSES.map(st => activeCases.filter(c => c.currentStatus === st).length), 1)
                   return (

@@ -162,7 +162,7 @@ const fromCase = (r: Row): Case => ({
   id: r.id, caseTitle: r.case_title, customerId: r.customer_id ?? '',
   customerName: r.customer_name ?? '', caseType: r.case_type ?? '',
   amount: r.amount ?? 0, personInCharge: r.person_in_charge ?? '',
-  currentStatus: r.current_status ?? 'New', currentWorkflowStepId: r.current_workflow_step_id ?? undefined,
+  currentStatus: r.current_status ?? 'Created', currentWorkflowStepId: r.current_workflow_step_id ?? undefined,
   result: r.result ?? '', closingRemarks: r.closing_remarks ?? '',
   lossReason: r.loss_reason ?? undefined, finalAmount: r.final_amount ?? undefined,
   finalInsurer: r.final_insurer ?? undefined, closedAt: r.closed_at ?? undefined,

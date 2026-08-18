@@ -147,7 +147,7 @@ function UploadCard({ upload }: { upload: TelegramUpload }) {
       caseType,
       amount: Number(amount) || 0,
       personInCharge,
-      currentStatus: 'New',
+      currentStatus: 'Created',
       result: '',
       closingRemarks: '',
     })
@@ -163,7 +163,7 @@ function UploadCard({ upload }: { upload: TelegramUpload }) {
 
   const submitDiscard = () => deleteTelegramUpload(upload.id)
 
-  const openCases = cases.filter(c => !c.archivedAt && c.currentStatus !== 'Closed')
+  const openCases = cases.filter(c => !c.archivedAt && c.currentStatus !== 'Done')
 
   return (
     <div className="rounded-2xl border border-gray-150 bg-white">
@@ -300,14 +300,38 @@ function UploadCard({ upload }: { upload: TelegramUpload }) {
   )
 }
 
+type SortOrder = 'newest' | 'oldest'
+
 export default function InboxPage() {
   const { telegramUploads } = useStore()
+  const [sortOrder, setSortOrder] = useState<SortOrder>('newest')
+
+  const sortedUploads = [...telegramUploads].sort((a, b) => {
+    const diff = new Date(a.uploadedAt).getTime() - new Date(b.uploadedAt).getTime()
+    return sortOrder === 'newest' ? -diff : diff
+  })
 
   return (
     <div className="p-8 max-w-screen-xl mx-auto">
       <PageHeader
         title="Unassigned Inbox"
         subtitle={`${telegramUploads.length} document${telegramUploads.length === 1 ? '' : 's'} uploaded via Telegram, awaiting review`}
+        action={telegramUploads.length > 1 ? (
+          <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+            <button
+              onClick={() => setSortOrder('newest')}
+              className={`text-xs font-medium px-3 py-1.5 rounded-md transition-colors ${sortOrder === 'newest' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+              Newest first
+            </button>
+            <button
+              onClick={() => setSortOrder('oldest')}
+              className={`text-xs font-medium px-3 py-1.5 rounded-md transition-colors ${sortOrder === 'oldest' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+              Oldest first
+            </button>
+          </div>
+        ) : undefined}
       />
 
       {telegramUploads.length === 0 ? (
@@ -317,7 +341,7 @@ export default function InboxPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          {telegramUploads.map(u => <UploadCard key={u.id} upload={u} />)}
+          {sortedUploads.map(u => <UploadCard key={u.id} upload={u} />)}
         </div>
       )}
 

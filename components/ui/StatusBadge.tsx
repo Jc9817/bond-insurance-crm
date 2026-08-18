@@ -2,12 +2,11 @@ type Props = { status: string; size?: 'sm' | 'md' }
 
 const styleMap: Record<string, string> = {
   // Case statuses
+  Created: 'bg-gray-100 text-gray-600',
+  'In Progress': 'bg-blue-50 text-blue-700',
+  // Shared with Inquiry/Quotation statuses below: New, Quoted, Closed
   New: 'bg-gray-100 text-gray-600',
-  'Waiting Documents': 'bg-amber-50 text-amber-700',
-  Submitted: 'bg-blue-50 text-blue-700',
   Quoted: 'bg-violet-50 text-violet-700',
-  'Sent to Customer': 'bg-cyan-50 text-cyan-700',
-  Confirmed: 'bg-green-50 text-green-700',
   Closed: 'bg-slate-100 text-slate-500',
   // Follow-up status
   Open: 'bg-blue-50 text-blue-700',
@@ -32,12 +31,10 @@ const styleMap: Record<string, string> = {
 }
 
 const iconMap: Record<string, string> = {
+  Created: '○',
+  'In Progress': '→',
   New: '○',
-  'Waiting Documents': '⏳',
-  Submitted: '→',
   Quoted: '💬',
-  'Sent to Customer': '✉',
-  Confirmed: '✓',
   Closed: '■',
   Open: '○',
   Done: '✓',

@@ -112,7 +112,7 @@ export default function CustomersPage() {
     .map(p => ({
       name: p.name,
       totalCases: p.cases.length,
-      activeCases: p.cases.filter(c => c.currentStatus !== 'Closed' && !c.result).length,
+      activeCases: p.cases.filter(c => c.currentStatus !== 'Done' && !c.result).length,
       wonCases: p.cases.filter(c => c.result === 'Won').length,
       totalExposure: p.cases.reduce((sum, c) => sum + (c.finalAmount ?? c.amount), 0),
       customers: Array.from(new Set(p.cases.map(c => c.customerName))),
