@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useStore } from '@/lib/store'
@@ -9,22 +9,18 @@ import type { CaseFile, WorkflowStep, CaseProduct } from '@/lib/types'
 import { WAITING_FOR_OPTIONS, REQUEST_TYPES } from '@/lib/types'
 import {
   resolveTemplate, getWorkflowTemplate, getActiveSteps, getCaseReadiness, getDocumentCompleteness,
-  getMissingRequiredDocs, getCurrentStep, getNextStep, getUnassignedFiles,
-  getDocsForStep, getStepDocumentCompleteness, getNextRecommendedAction,
+  getMissingRequiredDocs, getCurrentStep, getNextStep, getUnassignedFiles, getNextRecommendedAction,
 } from '@/lib/workflow'
 import { formatDate, formatCurrency, timeAgo, getDaysUntil } from '@/lib/utils'
 import StatusBadge from '@/components/ui/StatusBadge'
 import Modal from '@/components/ui/Modal'
 import DocumentChecklist from '@/components/ui/DocumentChecklist'
 import AIScanPanel from '@/components/ui/AIScanPanel'
-import StagePipeline from '@/components/ui/StagePipeline'
 import QuotationEmailPanel from '@/components/ui/QuotationEmailPanel'
 import CustomerEmailPanel from '@/components/ui/CustomerEmailPanel'
 import OpsNotifyPanel from '@/components/ui/OpsNotifyPanel'
 import QuotationDocumentPanel from '@/components/ui/QuotationDocumentPanel'
 import SearchableSelect from '@/components/ui/SearchableSelect'
-
-type StageState = 'done' | 'current' | 'future'
 
 export default function CaseDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -39,7 +35,7 @@ export default function CaseDetailPage() {
   const caseItem = cases.find(c => c.id === id)
 
   // ── state ──────────────────────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState<'files' | 'ai' | 'emails' | 'info' | 'notes' | 'activity'>('files')
+  const [activeTab, setActiveTab] = useState<'files' | 'ai' | 'emails' | 'info' | 'notes' | 'milestones' | 'activity'>('files')
   const [noteText, setNoteText] = useState('')
   const [notePic, setNotePic] = useState(pics[0]?.name ?? '')
   const [followUpModal, setFollowUpModal] = useState(false)
@@ -52,17 +48,6 @@ export default function CaseDetailPage() {
   const [closingForm, setClosingForm] = useState({
     result: '', closingRemarks: '', lossReason: '', finalAmount: 0, finalInsurer: '', acceptanceDate: '', acceptedBy: '',
   })
-
-  // Pipeline step modal
-  const [stepModal, setStepModal] = useState<{
-    step: WorkflowStep
-    state: StageState
-    dateEditOnly?: boolean
-  } | null>(null)
-  const [stepDate, setStepDate] = useState('')
-
-  // Which step's checklist is currently shown (defaults to current step)
-  const [viewingStepId, setViewingStepId] = useState<string | null>(null)
 
   // Stable timestamp captured at mount — used for date diff calculations
   const [now] = useState(Date.now)
@@ -84,13 +69,9 @@ export default function CaseDetailPage() {
   const caseTypeOptions = [...new Set(workflowTemplates.filter(t => t.isActive).map(t => t.caseType))]
   const custContacts = contacts.filter(c => c.customerId === caseItem.customerId)
 
-  // Active viewing step — default to current step
-  const effectiveViewingStepId = viewingStepId ?? caseItem.currentWorkflowStepId ?? null
-  const viewingStep = steps.find(s => s.id === effectiveViewingStepId) ?? null
   const currentStep = getCurrentStep(caseItem.currentWorkflowStepId, template)
   const nextStep = getNextStep(caseItem.currentWorkflowStepId, template)
 
-  const stepCompleteness = getStepDocumentCompleteness(id, template, effectiveViewingStepId, caseDocs)
   const overallReadiness = getCaseReadiness(caseItem, template, caseFiles, followUps)
   const missingDocs = getMissingRequiredDocs(id, template, caseFiles)
   const caseFollowUps = followUps.filter(f => f.caseId === id)
@@ -123,37 +104,29 @@ export default function CaseDetailPage() {
 
   // ── handlers ───────────────────────────────────────────────────────────────
 
-  const handleStageClick = (step: WorkflowStep, state: StageState) => {
-    const ts = stepTimestamps[step.name]
-    setStepDate(ts ? new Date(ts).toISOString().slice(0, 16) : new Date().toISOString().slice(0, 16))
-    setStepModal({ step, state, dateEditOnly: state === 'done' && step.id === caseItem.currentWorkflowStepId })
-    setViewingStepId(step.id)
-    setActiveTab('files')
-  }
-
-  const confirmStepChange = () => {
-    if (!stepModal) return
-    const ts = stepDate ? new Date(stepDate).toISOString() : new Date().toISOString()
-    const prevStep = currentStep
-
-    if (!stepModal.dateEditOnly) {
-      updateCase(id, { currentWorkflowStepId: stepModal.step.id })
-      setViewingStepId(stepModal.step.id)
-    }
+  // Capturing/editing a step's timestamp also advances currentWorkflowStepId to
+  // whichever step is furthest along (by template order) among all dated steps —
+  // there's no separate manual "Advance" action anymore.
+  const handleSetStepTimestamp = (step: WorkflowStep, dateValue: string) => {
+    if (!dateValue) return
+    const ts = new Date(dateValue).toISOString()
     addActivityLog({
       caseId: id,
       caseTitle: caseItem.caseTitle,
       actionType: 'WORKFLOW_STEP_CHANGED',
-      title: stepModal.dateEditOnly ? 'Step date updated' : 'Workflow step changed',
-      oldValue: prevStep?.name,
-      newValue: stepModal.step.name,
-      description: stepModal.dateEditOnly
-        ? `Date updated for step: ${stepModal.step.name}`
-        : `Moved to: ${stepModal.step.name}${prevStep ? ` from ${prevStep.name}` : ''}`,
+      title: 'Step date captured',
+      oldValue: currentStep?.name,
+      newValue: step.name,
+      description: `${step.name} timestamp set to ${formatDate(dateValue.split('T')[0])}`,
       changedBy: currentUser?.fullName ?? 'Unknown',
       timestamp: ts,
     })
-    setStepModal(null)
+    const merged = { ...stepTimestamps, [step.name]: ts }
+    let furthest: WorkflowStep | null = null
+    for (const s of steps) { if (merged[s.name]) furthest = s }
+    if (furthest && furthest.id !== caseItem.currentWorkflowStepId) {
+      updateCase(id, { currentWorkflowStepId: furthest.id })
+    }
   }
 
   const submitNote = (e: React.FormEvent) => {
@@ -209,6 +182,7 @@ export default function CaseDetailPage() {
   }
 
   const aiPendingCount = caseDocs.filter(f => f.aiStatus === 'Ready for Review').length
+  const datedStepCount = steps.filter(s => stepTimestamps[s.name]).length
 
   const TABS = [
     { key: 'files' as const, label: `Files${caseDocs.length > 0 ? ` (${caseDocs.length})` : ''}` },
@@ -216,11 +190,9 @@ export default function CaseDetailPage() {
     { key: 'emails' as const, label: 'Emails' },
     { key: 'info' as const, label: 'Case Info' },
     { key: 'notes' as const, label: `Notes${notes.length + openFollowUps.length > 0 ? ` (${notes.length + openFollowUps.length})` : ''}` },
+    { key: 'milestones' as const, label: `Milestones${steps.length > 0 ? ` (${datedStepCount}/${steps.length})` : ''}` },
     { key: 'activity' as const, label: `Activity${caseLogs.length > 0 ? ` (${caseLogs.length})` : ''}` },
   ]
-
-  const currentIdx = steps.findIndex(s => s.id === caseItem.currentWorkflowStepId)
-  const viewingIdx = steps.findIndex(s => s.id === effectiveViewingStepId)
 
   return (
     <div className="max-w-screen-xl mx-auto">
@@ -334,115 +306,16 @@ export default function CaseDetailPage() {
         return null
       })()}
 
-      {/* ── Stage Pipeline ───────────────────────────────────────────────────── */}
-      <div className="bg-stone-50 border-b border-gray-200 px-8 py-4">
-        {steps.length === 0 ? (
-          <div className="text-sm text-gray-400 py-2">No workflow template for this case type. <Link href="/settings" className="text-blue-600 hover:underline">Configure in Settings →</Link></div>
-        ) : (
-          <StagePipeline
-            steps={steps}
-            currentStepId={caseItem.currentWorkflowStepId ?? ''}
-            stepTimestamps={stepTimestamps}
-            result={caseItem.result}
-            selectedStepId={effectiveViewingStepId ?? undefined}
-            onStepSelect={(stepId) => { setViewingStepId(stepId); setActiveTab('files') }}
-            onStageClick={handleStageClick}
-            onResultClick={() => {
-              setClosingForm({ result: caseItem.result, closingRemarks: caseItem.closingRemarks, lossReason: caseItem.lossReason ?? '', finalAmount: caseItem.finalAmount ?? caseItem.amount, finalInsurer: caseItem.finalInsurer ?? '', acceptanceDate: caseItem.acceptanceDate ?? '', acceptedBy: caseItem.acceptedBy ?? '' })
-              setClosingModal(true)
-            }}
-          />
-        )}
-      </div>
-
-      {/* ── Step context bar ─────────────────────────────────────────────────── */}
-      {steps.length > 0 && (
-        <div className="px-8 py-3 border-b border-gray-200 bg-white">
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-2.5 min-w-0 flex-1">
-              <div className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${
-                viewingIdx < currentIdx ? 'bg-green-500 text-white' :
-                viewingIdx === currentIdx ? 'bg-blue-600 text-white' :
-                'bg-gray-200 text-gray-500'
-              }`}>
-                {viewingIdx < currentIdx ? '✓' : viewingIdx >= 0 ? viewingIdx + 1 : '?'}
-              </div>
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className={`text-sm font-semibold ${
-                    viewingIdx < currentIdx ? 'text-green-800' :
-                    viewingIdx === currentIdx ? 'text-gray-900' : 'text-gray-400'
-                  }`}>
-                    {viewingStep?.name ?? 'No step selected'}
-                  </span>
-                  <span className="text-xs text-gray-400 shrink-0">
-                    {viewingIdx >= 0 ? `Step ${viewingIdx + 1} of ${steps.length}` : ''}
-                  </span>
-                  {viewingIdx === currentIdx && <span className="shrink-0 text-xs bg-blue-100 text-blue-700 rounded-full px-2 py-0.5 font-medium">Active</span>}
-                  {viewingIdx < currentIdx && <span className="shrink-0 text-xs bg-green-100 text-green-700 rounded-full px-2 py-0.5 font-medium">Done</span>}
-                  {viewingIdx > currentIdx && <span className="shrink-0 text-xs bg-gray-100 text-gray-500 rounded-full px-2 py-0.5 font-medium">Upcoming</span>}
-                  {viewingStep && stepTimestamps[viewingStep.name] && (
-                    <button
-                      onClick={() => {
-                        const ts = stepTimestamps[viewingStep.name]
-                        setStepDate(ts ? new Date(ts).toISOString().slice(0, 16) : new Date().toISOString().slice(0, 16))
-                        setStepModal({ step: viewingStep, state: viewingIdx < currentIdx ? 'done' : viewingIdx === currentIdx ? 'current' : 'future', dateEditOnly: true })
-                      }}
-                      className="shrink-0 text-xs text-gray-400 hover:text-blue-600 transition-colors"
-                    >
-                      {formatDate(stepTimestamps[viewingStep.name].split('T')[0])}
-                    </button>
-                  )}
-                </div>
-                {viewingStep?.description && (
-                  <p className="text-xs text-gray-400 mt-0.5 truncate max-w-md">{viewingStep.description}</p>
-                )}
-              </div>
-            </div>
-            <div className="flex items-center gap-1.5 shrink-0">
-              <button
-                disabled={currentIdx <= 0}
-                onClick={() => {
-                  const prevStep = steps[currentIdx - 1]
-                  if (!prevStep) return
-                  setStepDate(new Date().toISOString().slice(0, 16))
-                  setStepModal({ step: prevStep, state: 'done' })
-                }}
-                className="text-xs px-2.5 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-              >
-                ← Back
-              </button>
-              <button
-                disabled={currentIdx >= steps.length - 1}
-                onClick={() => {
-                  const nextStepNav = steps[currentIdx + 1]
-                  if (!nextStepNav) return
-                  setStepDate(new Date().toISOString().slice(0, 16))
-                  setStepModal({ step: nextStepNav, state: 'future' })
-                }}
-                className="text-xs px-2.5 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors font-medium"
-              >
-                Advance →
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* ── Next Best Action card ────────────────────────────────────────────── */}
       <NextBestAction
         missingDocs={missingDocs}
         followUps={caseFollowUps}
         nextStep={nextStep}
         currentStep={currentStep}
-        onGoToDocs={() => { setActiveTab('files'); setViewingStepId(steps[0]?.id ?? null) }}
+        onGoToDocs={() => setActiveTab('files')}
         onGoToFollowUps={() => setActiveTab('notes')}
         onGoToEmails={() => setActiveTab('emails')}
-        onAdvance={() => {
-          if (!nextStep) return
-          setStepDate(new Date().toISOString().slice(0, 16))
-          setStepModal({ step: nextStep, state: 'future' })
-        }}
+        onAdvance={() => setActiveTab('milestones')}
         onSetResult={() => {
           setClosingForm({ result: caseItem.result, closingRemarks: caseItem.closingRemarks, lossReason: caseItem.lossReason ?? '', finalAmount: caseItem.finalAmount ?? caseItem.amount, finalInsurer: caseItem.finalInsurer ?? '', acceptanceDate: caseItem.acceptanceDate ?? '', acceptedBy: caseItem.acceptedBy ?? '' })
           setClosingModal(true)
@@ -471,7 +344,7 @@ export default function CaseDetailPage() {
           <div className="space-y-5">
             {/* Document checklist section */}
             <div className="card-section">
-              {viewingStep?.aiEmailEnabled ? (
+              {currentStep?.aiEmailEnabled ? (
                 <QuotationDocumentPanel
                   caseId={id}
                   caseTitle={caseItem.caseTitle}
@@ -845,6 +718,47 @@ export default function CaseDetailPage() {
           </div>
         )}
 
+        {/* ── Milestones tab ────────────────────────────────────────────────── */}
+        {activeTab === 'milestones' && (
+          <div className="card-section">
+            <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1">Milestones</h2>
+            <p className="text-xs text-gray-400 mb-5">Key in the date each stage was actually reached. The furthest dated stage becomes the case&apos;s current step.</p>
+
+            {steps.length === 0 ? (
+              <p className="text-sm text-gray-400">No workflow template for this case type. <Link href="/settings" className="text-blue-600 hover:underline">Configure in Settings →</Link></p>
+            ) : (
+              <div className="space-y-2">
+                {steps.map((step, idx) => (
+                  <MilestoneRow
+                    key={step.id}
+                    index={idx}
+                    step={step}
+                    timestamp={stepTimestamps[step.name]}
+                    isCurrent={step.id === caseItem.currentWorkflowStepId}
+                    onSave={(dateValue) => handleSetStepTimestamp(step, dateValue)}
+                  />
+                ))}
+              </div>
+            )}
+
+            <div className="mt-5 pt-5 border-t border-gray-100 flex items-center justify-between">
+              <div>
+                <p className="text-sm font-semibold text-gray-800">Case Result</p>
+                <p className="text-xs text-gray-400">{caseItem.result ? `Currently: ${caseItem.result}` : 'Not yet recorded'}</p>
+              </div>
+              <button
+                onClick={() => {
+                  setClosingForm({ result: caseItem.result, closingRemarks: caseItem.closingRemarks, lossReason: caseItem.lossReason ?? '', finalAmount: caseItem.finalAmount ?? caseItem.amount, finalInsurer: caseItem.finalInsurer ?? '', acceptanceDate: caseItem.acceptanceDate ?? '', acceptedBy: caseItem.acceptedBy ?? '' })
+                  setClosingModal(true)
+                }}
+                className="btn-secondary text-sm"
+              >
+                {caseItem.result ? 'Edit Result' : 'Record Result'}
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* ── Activity tab ──────────────────────────────────────────────────── */}
         {activeTab === 'activity' && (
           <div className="card-section">
@@ -879,53 +793,6 @@ export default function CaseDetailPage() {
           </div>
         )}
       </div>
-
-      {/* ── Step Change Modal ─────────────────────────────────────────────────── */}
-      <Modal
-        isOpen={!!stepModal}
-        onClose={() => setStepModal(null)}
-        title={stepModal?.dateEditOnly ? 'Edit Step Date' : stepModal?.state === 'done' ? 'Change Step' : 'Advance to Step'}
-        maxWidth="sm"
-      >
-        {stepModal && (
-          <div className="px-6 py-5 space-y-4">
-            <div className={`rounded-xl px-4 py-3 ${
-              stepModal.state === 'done' ? 'bg-green-50' :
-              stepModal.state === 'current' ? 'bg-blue-50' :
-              'bg-gray-50'
-            }`}>
-              <p className="text-xs text-gray-400 mb-0.5">
-                {stepModal.dateEditOnly ? 'Editing date for:' : stepModal.state === 'future' ? 'Moving to:' : 'Changing to:'}
-              </p>
-              <p className="text-base font-bold text-gray-900">{stepModal.step.name}</p>
-              {stepModal.step.description && (
-                <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">{stepModal.step.description}</p>
-              )}
-            </div>
-            {stepModal.step.requireDocumentsComplete && stepCompleteness < 100 && !stepModal.dateEditOnly && (
-              <div className="flex items-start gap-2 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2.5">
-                <svg className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-                </svg>
-                <p className="text-xs text-amber-700">This step requires all documents to be complete before advancing. Some required documents are still missing.</p>
-              </div>
-            )}
-            <div>
-              <label className="label">When did this happen?</label>
-              <input type="datetime-local" className="input" value={stepDate} onChange={e => setStepDate(e.target.value)} />
-              <p className="text-xs text-gray-400 mt-1.5">Defaults to now. Backdate if this step was completed earlier.</p>
-            </div>
-            <div className="flex gap-3 pt-1">
-              <button onClick={() => setStepModal(null)} className="btn-secondary flex-1">Cancel</button>
-              <button onClick={confirmStepChange} className={`flex-1 text-sm py-2.5 px-4 rounded-xl font-semibold transition-colors ${
-                stepModal.state === 'future' ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-gray-800 hover:bg-gray-900 text-white'
-              }`}>
-                {stepModal.dateEditOnly ? 'Update Date' : stepModal.state === 'future' ? 'Advance Stage →' : 'Set Stage'}
-              </button>
-            </div>
-          </div>
-        )}
-      </Modal>
 
       {/* ── Case Result Modal ─────────────────────────────────────────────────── */}
       <Modal isOpen={closingModal} onClose={() => setClosingModal(false)} title="Case Result" maxWidth="sm">
@@ -1250,7 +1117,7 @@ function NextBestAction({
     const d = daysUntil(f.dueDate)
     primary = { urgency: 'warning', badge: d === 0 ? 'Due Today' : 'Due Soon', headline: f.title, detail: d === 0 ? 'This follow-up is due today' : `Due in ${d} day${d !== 1 ? 's' : ''}`, cta: 'View Follow-Ups', onClick: onGoToFollowUps }
   } else if (nextStep) {
-    primary = { urgency: 'ready', badge: 'Step Complete', headline: `Advance to: ${nextStep.name}`, detail: nextStep.description || 'All tasks for this step are complete. You can now move to the next stage.', cta: `Advance to ${nextStep.name}`, onClick: onAdvance }
+    primary = { urgency: 'ready', badge: 'Step Complete', headline: `Next: ${nextStep.name}`, detail: nextStep.description || 'All tasks for this step are complete. Capture a date for the next milestone to move the case forward.', cta: `Set date for ${nextStep.name}`, onClick: onAdvance }
   } else if (allDone) {
     primary = { urgency: 'ready', badge: 'All Done', headline: 'Record the final case result', detail: 'All workflow steps are complete. Close this case by recording the outcome.', cta: 'Record Case Result', onClick: onSetResult }
   } else if (openFollowUps.length > 0) {
@@ -1284,6 +1151,55 @@ function NextBestAction({
           </svg>
         </button>
       </div>
+    </div>
+  )
+}
+
+// ─── Milestone date row ─────────────────────────────────────────────────────
+
+function MilestoneRow({ index, step, timestamp, isCurrent, onSave }: {
+  index: number
+  step: WStep
+  timestamp?: string
+  isCurrent: boolean
+  onSave: (dateValue: string) => void
+}) {
+  const toInputValue = (ts?: string) => ts ? new Date(ts).toISOString().slice(0, 16) : ''
+  const [value, setValue] = useState(toInputValue(timestamp))
+
+  useEffect(() => { setValue(toInputValue(timestamp)) }, [timestamp])
+
+  const dirty = value !== toInputValue(timestamp)
+
+  return (
+    <div className={`flex items-center gap-3 rounded-xl px-3.5 py-3 border ${
+      timestamp ? 'bg-green-50 border-green-100' : isCurrent ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-100'
+    }`}>
+      <div className={`w-6 h-6 rounded-full text-xs font-bold flex items-center justify-center shrink-0 ${
+        timestamp ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-500'
+      }`}>
+        {timestamp ? '✓' : index + 1}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-sm font-medium text-gray-800">{step.name}</span>
+          {isCurrent && <span className="text-xs bg-blue-100 text-blue-700 rounded-full px-2 py-0.5 font-medium shrink-0">Current</span>}
+        </div>
+        {step.description && <p className="text-xs text-gray-400 mt-0.5">{step.description}</p>}
+      </div>
+      <input
+        type="datetime-local"
+        className="input text-sm w-56 shrink-0"
+        value={value}
+        onChange={e => setValue(e.target.value)}
+      />
+      <button
+        onClick={() => onSave(value)}
+        disabled={!value || !dirty}
+        className="btn-xs bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
+      >
+        Save
+      </button>
     </div>
   )
 }
