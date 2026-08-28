@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { SUPPORTED_MIME_TYPES } from '@/lib/ai-scan'
 import { generateId } from '@/lib/utils'
+import { notifyDocFlowWebhook } from '@/lib/n8n'
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN!
 const ALLOWED_CHAT_ID = Number(process.env.TELEGRAM_ALLOWED_CHAT_ID!)
@@ -159,14 +160,18 @@ export async function POST(req: NextRequest) {
     const base64 = Buffer.from(buffer).toString('base64')
     const fileDataUrl = `data:${mimeType};base64,${base64}`
 
+    const uploadId = generateId()
+    const uploadedAt = new Date().toISOString()
+    const uploadedBy = `Telegram: ${senderName}`
+
     const { error } = await supabase.from('telegram_uploads').insert({
-      id: generateId(),
+      id: uploadId,
       file_name: fileName,
       file_size: fileSize,
       file_type: mimeType,
       file_data_url: fileDataUrl,
-      uploaded_by: `Telegram: ${senderName}`,
-      uploaded_at: new Date().toISOString(),
+      uploaded_by: uploadedBy,
+      uploaded_at: uploadedAt,
       telegram_chat_id: chatId,
       telegram_message_id: msgId,
       telegram_file_id: fileId,
@@ -176,6 +181,20 @@ export async function POST(req: NextRequest) {
       await send(chatId, `❌ Failed to save upload: ${esc(error.message)}`, msgId)
       return NextResponse.json({ ok: true })
     }
+
+    await notifyDocFlowWebhook({
+      event: 'telegram_upload_received',
+      fileId: uploadId,
+      fileName,
+      fileType: mimeType,
+      fileSize,
+      uploadedBy,
+      uploadedAt,
+      fileUrl: fileDataUrl,
+      telegramChatId: chatId,
+      telegramMessageId: msgId,
+      status: 'pending',
+    })
 
     await send(chatId,
       `📥 Got <b>${esc(fileName)}</b> — added to the Unassigned Inbox.\n\n` +

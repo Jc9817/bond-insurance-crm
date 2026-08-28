@@ -773,10 +773,30 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   // ─── Case Files ───────────────────────────────────────────────────────────
 
+  const notifyDocFlow = (file: CaseFile) => {
+    fetch('/api/notify-n8n', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        event: 'case_file_uploaded',
+        caseId: file.caseId,
+        fileId: file.id,
+        fileName: file.fileName,
+        fileType: file.fileType,
+        fileSize: file.fileSize,
+        documentType: file.documentType,
+        uploadedBy: file.uploadedBy,
+        uploadedAt: file.uploadedAt,
+        fileUrl: file.fileDataUrl,
+      }),
+    }).catch(err => console.error('[n8n] docflow notify failed:', err))
+  }
+
   const addCaseFile = (f: Omit<CaseFile, 'id' | 'uploadedAt'>): string => {
     const row: CaseFile = { ...f, id: generateId(), uploadedAt: nowIso() }
     setCaseFiles(prev => [...prev, row])
     createClient().from('case_files').upsert(toCaseFile(row)).then()
+    notifyDocFlow(row)
     return row.id
   }
   const deleteCaseFile = (id: string) => {
