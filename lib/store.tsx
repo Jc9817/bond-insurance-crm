@@ -176,6 +176,7 @@ const fromCase = (r: Row): Case => ({
   workflowTemplateId: r.workflow_template_id ?? undefined,
   requestType: r.request_type ?? undefined,
   selectedProducts: r.selected_products ?? undefined,
+  loaAiStatus: r.loa_ai_status ?? 'Pending',
 })
 const toCase = (c: Case) => ({
   id: c.id, case_title: c.caseTitle, customer_id: c.customerId, customer_name: c.customerName,
@@ -193,6 +194,11 @@ const toCase = (c: Case) => ({
   workflow_template_id: c.workflowTemplateId ?? null,
   request_type: c.requestType ?? null,
   selected_products: c.selectedProducts ?? null,
+  // Conditionally included (not `?? null`) — updateCase() is often called with a
+  // sparse partial (e.g. just { currentStatus }), and toCase() runs on that partial
+  // object directly. A blanket `?? null` here would send loa_ai_status: null on
+  // every such unrelated update and wipe it back to unset.
+  ...(c.loaAiStatus !== undefined ? { loa_ai_status: c.loaAiStatus } : {}),
 })
 
 const fromEmailTemplate = (r: Row): EmailTemplate => ({

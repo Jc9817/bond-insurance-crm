@@ -4,13 +4,14 @@ import { SUPPORTED_MIME_TYPES } from '@/lib/ai-scan'
 import { generateId } from '@/lib/utils'
 import { notifyDocFlowWebhook } from '@/lib/n8n'
 
-const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN!
-const ALLOWED_CHAT_ID = Number(process.env.TELEGRAM_ALLOWED_CHAT_ID!)
-const WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET!
+const BOT_TOKEN = process.env.TELEGRAM_BOT2_TOKEN!
+// Falls back to the same group Bot 1 uses unless a separate one is set.
+const ALLOWED_CHAT_ID = Number(process.env.TELEGRAM_BOT2_ALLOWED_CHAT_ID || process.env.TELEGRAM_ALLOWED_CHAT_ID!)
+const WEBHOOK_SECRET = process.env.TELEGRAM_BOT2_WEBHOOK_SECRET!
 const APP_URL = (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, '')
 const TELEGRAM_API = `https://api.telegram.org/bot${BOT_TOKEN}`
 
-// Service role key bypasses RLS — required for bot to create customers/cases/files
+// Service role key bypasses RLS — required for bot to write uploads
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 const supabaseKey = serviceRoleKey ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 const supabase = createClient(
@@ -47,13 +48,11 @@ async function downloadTelegramFile(fileId: string): Promise<{ url: string } | n
 }
 
 // ── Main handler ──────────────────────────────────────────────────────────────
-// This is Bot 1 ("DocFlow Upload") — every document/photo dropped into the
-// group is treated as a Letter of Award: it auto-creates a bare case (customer
-// / case type / amount are filled in afterward, e.g. via AI Scan) and attaches
-// the file to it, tagged as LOA. No staff review step in between.
-// Additional supporting documents for an existing case go through Bot 2
-// instead (app/api/telegram/webhook-docs), which lands them in the CRM's
-// Inbox (/inbox) for manual assignment.
+// This is Bot 2 ("DocFlow Additional Docs"). Every document/photo it receives
+// is stored as an unassigned upload — no back-and-forth in the chat, and it
+// never creates a case itself. Staff pick which case it belongs to from the
+// CRM's Inbox page (/inbox). New cases are created by Bot 1 instead
+// (app/api/telegram/webhook), which auto-tags the upload as the LOA.
 
 export async function POST(req: NextRequest) {
   if (req.headers.get('x-telegram-bot-api-secret-token') !== WEBHOOK_SECRET) {
@@ -77,58 +76,15 @@ export async function POST(req: NextRequest) {
   // ── /help ─────────────────────────────────────────────────────────────────
   if (cmdBase === '/help' || cmdBase === '/start') {
     await send(chatId,
-      `<b>DocFlow — Upload Bot</b>\n\n` +
-      `Send a <b>PDF or image</b> here — it automatically creates a new case and attaches it as the Letter of Award.\n\n` +
-      `<b>/cases</b> [keyword] — browse existing open cases`,
+      `<b>DocFlow — Additional Docs</b>\n\n` +
+      `Send a <b>PDF or image</b> here and it'll land in the CRM's Unassigned Inbox.\n\n` +
+      `Assign it to a case here:\n${APP_URL}/inbox`,
       msgId
     )
     return NextResponse.json({ ok: true })
   }
 
-  // ── /cases [keyword] — read-only browse ───────────────────────────────────
-  if (cmdBase === '/cases') {
-    const keyword = rawText.replace(/^\/cases(@\S+)?/i, '').trim().toLowerCase()
-
-    const { data: rows, error } = await supabase
-      .from('cases')
-      .select('id, case_title, customer_name, current_status')
-      .is('archived_at', null)
-      .neq('current_status', 'Done')
-      .order('created_at', { ascending: false })
-      .limit(30)
-
-    if (error) {
-      await send(chatId, `❌ Could not fetch cases: ${esc(error.message)}`, msgId)
-      return NextResponse.json({ ok: true })
-    }
-
-    const filtered = keyword
-      ? (rows ?? []).filter(c =>
-          c.case_title?.toLowerCase().includes(keyword) ||
-          c.customer_name?.toLowerCase().includes(keyword)
-        )
-      : (rows ?? [])
-
-    if (!filtered.length) {
-      await send(chatId,
-        keyword ? `No open cases found for "<b>${esc(keyword)}</b>".` : 'No open cases found.',
-        msgId
-      )
-      return NextResponse.json({ ok: true })
-    }
-
-    const lines = filtered.slice(0, 10).map(c =>
-      `• <b>${esc(c.case_title ?? '')}</b>\n  ${esc(c.customer_name ?? '')} · <code>${esc(c.id)}</code>`
-    ).join('\n\n')
-
-    await send(chatId,
-      `<b>Open cases${keyword ? ` matching "${esc(keyword)}"` : ''}:</b>\n\n${lines}`,
-      msgId
-    )
-    return NextResponse.json({ ok: true })
-  }
-
-  // ── Document/photo upload → auto-creates a case, tagged as the LOA ────────
+  // ── Document/photo upload → straight into the Unassigned Inbox ────────────
   const doc = msg.document ?? null
   const photos: { file_id: string; file_size?: number }[] | null = msg.photo ?? null
   const photo = photos ? photos[photos.length - 1] : null
@@ -164,58 +120,31 @@ export async function POST(req: NextRequest) {
     const base64 = Buffer.from(buffer).toString('base64')
     const fileDataUrl = `data:${mimeType};base64,${base64}`
 
+    const uploadId = generateId()
     const uploadedAt = new Date().toISOString()
     const uploadedBy = `Telegram: ${senderName}`
 
-    // Bare-bones case — customer / case type / amount are unknown at this
-    // point. Staff fill those in afterward (Edit Info + AI Scan on the LOA).
-    const caseId = generateId()
-    const caseTitle = fileName.replace(/\.[^.]+$/, '')
-
-    const { error: caseError } = await supabase.from('cases').insert({
-      id: caseId,
-      case_title: caseTitle,
-      customer_id: '',
-      customer_name: '',
-      case_type: '',
-      amount: 0,
-      person_in_charge: '',
-      current_status: 'Created',
-      result: '',
-      closing_remarks: '',
-      created_at: uploadedAt,
-      updated_at: uploadedAt,
-    })
-
-    if (caseError) {
-      console.error('[Telegram] case creation failed:', caseError.message)
-      await send(chatId, `❌ Something went wrong. Please try again later.`, msgId)
-      return NextResponse.json({ ok: true })
-    }
-
-    const { error: fileError } = await supabase.from('case_files').insert({
-      id: generateId(),
-      case_id: caseId,
+    const { error } = await supabase.from('telegram_uploads').insert({
+      id: uploadId,
       file_name: fileName,
       file_size: fileSize,
       file_type: mimeType,
-      document_type: 'Letter of Award (LOA)',
+      file_data_url: fileDataUrl,
       uploaded_by: uploadedBy,
       uploaded_at: uploadedAt,
-      file_data_url: fileDataUrl,
-      ai_scanned: false,
-      ai_status: 'Not Scanned',
+      telegram_chat_id: chatId,
+      telegram_message_id: msgId,
+      telegram_file_id: fileId,
     })
 
-    if (fileError) {
-      console.error('[Telegram] case_files insert failed:', fileError.message)
+    if (error) {
       await send(chatId, `❌ Upload failed. Please try again.`, msgId)
       return NextResponse.json({ ok: true })
     }
 
     await notifyDocFlowWebhook({
-      event: 'case_created_from_telegram',
-      caseId,
+      event: 'telegram_upload_received',
+      fileId: uploadId,
       fileName,
       fileType: mimeType,
       fileSize,
@@ -228,9 +157,8 @@ export async function POST(req: NextRequest) {
     })
 
     await send(chatId,
-      `📄 <b>${esc(fileName)}</b> received!\n` +
-      `✅ New case created: <code>${esc(caseId)}</code>\n\n` +
-      `Tagged as Letter of Award. View it here:\n${APP_URL}/cases/${caseId}`,
+      `📥 Got <b>${esc(fileName)}</b> — added to the Unassigned Inbox.\n\n` +
+      `Assign it to a case here:\n${APP_URL}/inbox`,
       msgId
     )
 

@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useStore } from '@/lib/store'
 import { useAuth } from '@/lib/auth'
-import type { CaseFile, WorkflowStep, CaseProduct, CaseStatus } from '@/lib/types'
+import type { CaseFile, WorkflowStep, CaseProduct, CaseStatus, LoaAiStatus } from '@/lib/types'
 import { WAITING_FOR_OPTIONS, REQUEST_TYPES, CASE_STATUSES } from '@/lib/types'
 import {
   resolveTemplate, getWorkflowTemplate, getActiveSteps, getCaseReadiness, getDocumentCompleteness,
@@ -26,6 +26,12 @@ const statusSelectStyle: Record<CaseStatus, string> = {
   Created: 'border-gray-200 text-gray-700 bg-gray-100',
   'In Progress': 'border-blue-200 text-blue-700 bg-blue-50',
   Done: 'border-green-200 text-green-700 bg-green-50',
+}
+
+const loaStatusBadgeStyle: Record<LoaAiStatus, string> = {
+  Pending: 'border-gray-200 text-gray-600 bg-gray-100',
+  Extracted: 'border-green-200 text-green-700 bg-green-50',
+  Manual: 'border-amber-200 text-amber-700 bg-amber-50',
 }
 
 export default function CaseDetailPage() {
@@ -367,11 +373,20 @@ export default function CaseDetailPage() {
                     <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest">
                       Document Checklist
                     </h2>
-                    {unassignedDocs.length > 0 && (
-                      <span className="text-xs font-semibold rounded-full px-2.5 py-1 bg-amber-100 text-amber-700">
-                        {unassignedDocs.length} unassigned file{unassignedDocs.length > 1 ? 's' : ''}
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-400">LOA AI:</span>
+                      <span
+                        title="Set by the upload/review bots — not editable here"
+                        className={`text-xs font-semibold border rounded-full px-2.5 py-1 ${loaStatusBadgeStyle[caseItem.loaAiStatus ?? 'Pending']}`}
+                      >
+                        {caseItem.loaAiStatus ?? 'Pending'}
                       </span>
-                    )}
+                      {unassignedDocs.length > 0 && (
+                        <span className="text-xs font-semibold rounded-full px-2.5 py-1 bg-amber-100 text-amber-700">
+                          {unassignedDocs.length} unassigned file{unassignedDocs.length > 1 ? 's' : ''}
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <DocumentChecklist
                     caseId={id}

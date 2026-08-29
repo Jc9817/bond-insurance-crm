@@ -333,12 +333,22 @@ function FileRow({
   file, docs, deleteConfirmId, setDeleteConfirmId,
   onRetag, onDelete, onScan, onReview, onView, onDownload, onSendToInbox,
 }: FileRowProps) {
-  const fromTelegram = file.documentType === 'Uploaded via Telegram'
+  // Telegram-sourced files now default to a "Letter of Award" tag rather than
+  // a fixed placeholder, so origin has to be read off `uploadedBy` instead.
+  const fromTelegram = file.uploadedBy.startsWith('Telegram:')
   const isTagged = !!file.requiredDocumentId && docs.some(d => d.id === file.requiredDocumentId)
+  // Letter of Award is the one document the whole case revolves around —
+  // call it out from ordinary supporting documents at a glance.
+  const isLoa = file.documentType.toLowerCase().includes('letter of award')
 
   return (
     <div className={`flex items-center gap-3 rounded-xl px-3.5 py-2.5 border transition-colors ${isTagged ? 'bg-green-50 border-green-100' : 'bg-amber-50 border-amber-100'}`}>
       <span className="text-xs font-medium text-gray-400 bg-white border border-gray-200 rounded px-1.5 py-0.5 shrink-0">{file.fileType}</span>
+      {isLoa && (
+        <span className="text-xs font-bold bg-purple-100 text-purple-700 rounded px-1.5 py-0.5 shrink-0" title="Letter of Award">
+          LOA
+        </span>
+      )}
 
       <div className="min-w-0 flex-1">
         <button onClick={onView} className="text-sm font-medium text-gray-800 truncate block hover:text-blue-600 hover:underline text-left">

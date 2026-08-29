@@ -4,12 +4,12 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useStore } from '@/lib/store'
 import type { TelegramUpload } from '@/lib/types'
-import { CASE_TYPES } from '@/lib/types'
 import { formatFileSize, timeAgo } from '@/lib/utils'
+import { getActiveDocs, resolveTemplate } from '@/lib/workflow'
 import PageHeader from '@/components/ui/PageHeader'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 
-type ActionMode = 'newCase' | 'assign' | 'discard'
+type ActionMode = 'assign' | 'discard'
 
 // Browsers won't render/navigate large base64 data: URIs reliably (some treat
 // them as a download instead of a view). Converting to a blob: URL first is
@@ -86,19 +86,10 @@ function UploadViewerModal({ upload, onClose }: { upload: TelegramUpload; onClos
 }
 
 function UploadCard({ upload }: { upload: TelegramUpload }) {
-  const { customers, cases, pics, addCustomer, addCase, addCaseFile, deleteTelegramUpload } = useStore()
+  const { cases, workflowTemplates, addCaseFile, deleteTelegramUpload } = useStore()
   const [action, setAction] = useState<ActionMode | null>(null)
   const [viewing, setViewing] = useState(false)
   const [error, setError] = useState('')
-
-  // New Case form state
-  const [customerMode, setCustomerMode] = useState<'existing' | 'new'>('existing')
-  const [customerId, setCustomerId] = useState('')
-  const [newCustomerName, setNewCustomerName] = useState('')
-  const [caseTitle, setCaseTitle] = useState(() => upload.fileName.replace(/\.[^.]+$/, ''))
-  const [caseType, setCaseType] = useState('')
-  const [amount, setAmount] = useState('')
-  const [personInCharge, setPersonInCharge] = useState('')
 
   // Assign form state
   const [assignCaseId, setAssignCaseId] = useState('')
@@ -108,12 +99,18 @@ function UploadCard({ upload }: { upload: TelegramUpload }) {
     setAction(prev => prev === mode ? null : mode)
   }
 
-  const attachFile = (caseId: string) => addCaseFile({
+  // New-case creation now happens directly in the upload bot (Bot 1) — this
+  // inbox exists purely to park a document onto an already-existing case.
+  // Bot 1 only ever sends the Letter of Award, so default the tag to that
+  // instead of a generic placeholder; staff can still retag it from the
+  // checklist if it's ever something else.
+  const attachFile = (caseId: string, loaDoc: { id: string; name: string } | null) => addCaseFile({
     caseId,
     fileName: upload.fileName,
     fileSize: upload.fileSize,
     fileType: upload.fileType,
-    documentType: 'Uploaded via Telegram',
+    documentType: loaDoc?.name ?? 'Letter of Award (LOA)',
+    requiredDocumentId: loaDoc?.id,
     uploadedBy: upload.uploadedBy,
     fileDataUrl: upload.fileDataUrl,
     aiScanned: false,
@@ -121,43 +118,12 @@ function UploadCard({ upload }: { upload: TelegramUpload }) {
     aiExtractedData: null,
   })
 
-  const submitNewCase = () => {
-    if (!caseTitle.trim()) { setError('Case title is required.'); return }
-
-    let resolvedCustomerId = customerId
-    let resolvedCustomerName = customers.find(c => c.id === customerId)?.customerName ?? ''
-
-    if (customerMode === 'new') {
-      if (!newCustomerName.trim()) { setError('Customer name is required.'); return }
-      resolvedCustomerName = newCustomerName.trim()
-      resolvedCustomerId = addCustomer({
-        customerName: resolvedCustomerName,
-        companyRegistrationNo: '', businessType: '', industry: '',
-        mainPhone: '', mainEmail: '', notes: 'Created from Telegram inbox',
-      })
-    } else if (!resolvedCustomerId) {
-      setError('Select a customer, or switch to "New customer".')
-      return
-    }
-
-    const newCaseId = addCase({
-      caseTitle: caseTitle.trim(),
-      customerId: resolvedCustomerId,
-      customerName: resolvedCustomerName,
-      caseType,
-      amount: Number(amount) || 0,
-      personInCharge,
-      currentStatus: 'Created',
-      result: '',
-      closingRemarks: '',
-    })
-    attachFile(newCaseId)
-    deleteTelegramUpload(upload.id)
-  }
-
   const submitAssign = () => {
     if (!assignCaseId) { setError('Select a case to assign this file to.'); return }
-    attachFile(assignCaseId)
+    const targetCase = cases.find(c => c.id === assignCaseId)
+    const template = targetCase ? resolveTemplate(targetCase, workflowTemplates) : null
+    const loaDoc = template ? getActiveDocs(template).find(d => d.name.toLowerCase().includes('letter of award')) ?? null : null
+    attachFile(assignCaseId, loaDoc)
     deleteTelegramUpload(upload.id)
   }
 
@@ -188,9 +154,6 @@ function UploadCard({ upload }: { upload: TelegramUpload }) {
               View
             </button>
           )}
-          <button onClick={() => toggle('newCase')} className={`btn-xs ${action === 'newCase' ? 'bg-blue-700' : 'bg-blue-600 hover:bg-blue-700'} text-white`}>
-            New Case
-          </button>
           <button onClick={() => toggle('assign')} className={`btn-xs ${action === 'assign' ? 'bg-violet-700' : 'bg-violet-600 hover:bg-violet-700'} text-white`}>
             Assign to Case
           </button>
@@ -199,72 +162,6 @@ function UploadCard({ upload }: { upload: TelegramUpload }) {
           </button>
         </div>
       </div>
-
-      {action === 'newCase' && (
-        <div className="px-5 py-4 border-t border-gray-100 bg-gray-50 rounded-b-2xl space-y-3">
-          <div className="flex gap-4">
-            <label className="flex items-center gap-1.5 text-sm cursor-pointer">
-              <input type="radio" checked={customerMode === 'existing'} onChange={() => setCustomerMode('existing')} />
-              Existing customer
-            </label>
-            <label className="flex items-center gap-1.5 text-sm cursor-pointer">
-              <input type="radio" checked={customerMode === 'new'} onChange={() => setCustomerMode('new')} />
-              New customer
-            </label>
-          </div>
-
-          {customerMode === 'existing' ? (
-            <div>
-              <label className="label">Customer *</label>
-              <SearchableSelect
-                value={customerId}
-                onChange={setCustomerId}
-                options={customers.map(c => ({ value: c.id, label: c.customerName }))}
-                placeholder="— Select customer —"
-              />
-            </div>
-          ) : (
-            <div>
-              <label className="label">Customer / Company Name *</label>
-              <input className="input text-sm" value={newCustomerName} onChange={e => setNewCustomerName(e.target.value)} placeholder="e.g. Juta-Kaseh Sdn Bhd" />
-            </div>
-          )}
-
-          <div>
-            <label className="label">Case Title *</label>
-            <input className="input text-sm" value={caseTitle} onChange={e => setCaseTitle(e.target.value)} />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="label">Case Type</label>
-              <select className="input text-sm" value={caseType} onChange={e => setCaseType(e.target.value)}>
-                <option value="">— Optional —</option>
-                {CASE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="label">Amount (RM)</label>
-              <input className="input text-sm" type="number" min={0} value={amount} onChange={e => setAmount(e.target.value)} placeholder="0" />
-            </div>
-          </div>
-
-          <div>
-            <label className="label">Person In Charge</label>
-            <select className="input text-sm" value={personInCharge} onChange={e => setPersonInCharge(e.target.value)}>
-              <option value="">— Unassigned —</option>
-              {pics.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
-            </select>
-          </div>
-
-          {error && <p className="text-xs text-red-500">{error}</p>}
-
-          <div className="flex gap-2 pt-1">
-            <button onClick={submitNewCase} className="btn-primary text-sm">Create Case &amp; Attach File</button>
-            <button onClick={() => setAction(null)} className="btn-secondary text-sm">Cancel</button>
-          </div>
-        </div>
-      )}
 
       {action === 'assign' && (
         <div className="px-5 py-4 border-t border-gray-100 bg-gray-50 rounded-b-2xl space-y-3">

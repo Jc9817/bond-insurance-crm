@@ -110,6 +110,12 @@ export const CASE_TYPES = [
 export const WAITING_FOR_OPTIONS = ['Customer', 'Insurer', 'Internal'] as const
 export type WaitingFor = (typeof WAITING_FOR_OPTIONS)[number]
 
+// Tracks whether the case's Letter of Award has had its AI extraction run —
+// 'Manual' covers staff doing the extraction by hand instead of via AI.
+// Display-only in the CRM UI — set by the upload/review bots, not editable there.
+export const LOA_AI_STATUSES = ['Pending', 'Extracted', 'Manual'] as const
+export type LoaAiStatus = (typeof LOA_AI_STATUSES)[number]
+
 export type Case = {
   id: string
   caseTitle: string
@@ -137,6 +143,7 @@ export type Case = {
   workflowTemplateId?: string  // snapshot of template ID at case creation — insulates from future template edits
   requestType?: string         // New Business | Renewal | Endorsement | Cancellation | Claim | Servicing
   selectedProducts?: CaseProduct[]  // products selected for this case (from Product Master)
+  loaAiStatus?: LoaAiStatus     // defaults to 'Pending' when unset
 }
 
 export type CaseNote = {
