@@ -88,7 +88,10 @@ async function createCaseFromUpload(pending: PendingFile) {
   const { error: caseError } = await supabase.from('cases').insert({
     id: caseId,
     case_title: caseTitle,
-    customer_id: '',
+    // null, not '' — cases.customer_id has a foreign key to customers(id),
+    // and an empty string doesn't match any customer row. NULL passes the
+    // FK check unconditionally; staff fill in the real customer afterward.
+    customer_id: null,
     customer_name: '',
     case_type: '',
     amount: 0,

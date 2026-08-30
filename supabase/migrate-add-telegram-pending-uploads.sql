@@ -19,4 +19,4 @@ create table if not exists telegram_pending_uploads (
   created_at timestamptz not null default now()
 );
 alter table telegram_pending_uploads disable row level security;
-grant select, insert, update, delete on telegram_pending_uploads to anon, authenticated;
+grant select, insert, update, delete on telegram_pending_uploads to anon, authenticated, service_role;
