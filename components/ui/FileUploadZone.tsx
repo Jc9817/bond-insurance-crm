@@ -25,11 +25,10 @@ const FILE_ICONS: Record<string, string> = {
 }
 
 const AI_STATUS_COLORS: Record<string, string> = {
-  'Not Scanned': 'bg-gray-100 text-gray-500',
+  'Pending': 'bg-gray-100 text-gray-500',
   'Processing': 'bg-blue-100 text-blue-600',
-  'Ready for Review': 'bg-amber-100 text-amber-700',
-  'Approved': 'bg-green-100 text-green-700',
-  'Rejected': 'bg-red-100 text-red-600',
+  'Extracted': 'bg-green-100 text-green-700',
+  'Failed': 'bg-red-100 text-red-600',
 }
 
 type Props = {
@@ -77,7 +76,7 @@ export default function FileUploadZone({ caseId, documentTypes, onScanReady }: P
           documentType,
           uploadedBy: currentUser?.fullName ?? 'Unknown',
           aiScanned: false,
-          aiStatus: 'Not Scanned',
+          aiStatus: 'Pending',
           aiExtractedData: null,
           fileDataUrl,
         })
@@ -223,7 +222,7 @@ export default function FileUploadZone({ caseId, documentTypes, onScanReady }: P
                     View
                   </button>
                 )}
-                {(file.aiStatus === 'Not Scanned' || file.aiStatus === 'Rejected') && (
+                {(file.aiStatus === 'Pending' || file.aiStatus === 'Failed') && (
                   <button
                     onClick={() => handleScan(file)}
                     className="btn-xs bg-violet-50 text-violet-700 hover:bg-violet-100"
@@ -231,7 +230,7 @@ export default function FileUploadZone({ caseId, documentTypes, onScanReady }: P
                     AI Scan
                   </button>
                 )}
-                {file.aiStatus === 'Ready for Review' && onScanReady && (
+                {file.aiStatus === 'Extracted' && onScanReady && (
                   <button
                     onClick={() => onScanReady(file)}
                     className="btn-xs bg-amber-50 text-amber-700 hover:bg-amber-100"

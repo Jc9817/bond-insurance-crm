@@ -257,7 +257,7 @@ const fromCaseFile = (r: Row): CaseFile => ({
   requiredDocumentId: r.required_document_id ?? undefined,
   uploadedBy: r.uploaded_by ?? '', uploadedAt: r.uploaded_at,
   fileDataUrl: r.file_data_url ?? undefined,
-  aiScanned: r.ai_scanned ?? false, aiStatus: r.ai_status ?? 'Not Scanned',
+  aiScanned: r.ai_scanned ?? false, aiStatus: r.ai_status ?? 'Pending',
   aiExtractedData: r.ai_extracted_data ?? null, aiPrompt: r.ai_prompt ?? undefined,
 })
 const toCaseFile = (f: CaseFile) => ({
@@ -832,54 +832,36 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       createClient().from('case_files').update(updateData).eq('id', id).then()
   }
 
+  // Scanning itself happens in n8n, not here — this just fires the trigger
+  // and flips the file to "Processing". n8n reports the actual result
+  // (Extracted + data, or Failed) back via POST /api/ai-scan/callback.
   const startAiScan = (id: string) => {
-    updateCaseFile(id, { aiStatus: 'Processing' })
     const file = caseFiles.find(f => f.id === id)
-    if (!file?.fileDataUrl) {
-      setCaseFiles(prev => prev.map(x => x.id === id ? { ...x, aiStatus: 'Not Scanned' } : x))
-      createClient().from('case_files').update({ ai_status: 'Not Scanned' }).eq('id', id).then()
-      return
-    }
+    if (!file?.fileDataUrl) return
 
-    // If fileDataUrl is a storage URL, fetch the file and convert to base64 first
-    const getBase64 = async (): Promise<string> => {
-      if (!file.fileDataUrl!.startsWith('http')) return file.fileDataUrl!
-      const res = await fetch(file.fileDataUrl!)
-      const blob = await res.blob()
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader()
-        reader.onload = () => resolve(reader.result as string)
-        reader.onerror = reject
-        reader.readAsDataURL(blob)
-      })
-    }
+    updateCaseFile(id, { aiStatus: 'Processing' })
 
-    getBase64()
-      .then(fileDataUrl => fetch('/api/ai-scan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          fileDataUrl, fileName: file.fileName,
-          documentType: file.documentType, aiPrompt: file.aiPrompt,
-        }),
-      }))
+    fetch('/api/notify-n8n', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        event: 'ai_scan_requested',
+        caseFileId: id,
+        caseId: file.caseId,
+        fileName: file.fileName,
+        fileType: file.fileType,
+        documentType: file.documentType,
+        aiPrompt: file.aiPrompt,
+        fileUrl: file.fileDataUrl,
+      }),
+    })
       .then(async res => {
-        const data = await res.json()
-        if (!res.ok || data.error) throw new Error(data.error ?? `AI scan failed (${res.status})`)
-        return data
-      })
-      .then(data => {
-        setCaseFiles(prev => prev.map(x => x.id === id
-          ? { ...x, aiStatus: 'Ready for Review', aiScanned: true, aiExtractedData: data } : x
-        ))
-        createClient().from('case_files').update({
-          ai_status: 'Ready for Review', ai_scanned: true, ai_extracted_data: data,
-        }).eq('id', id).then()
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok || data.error) throw new Error(data.error ?? `n8n trigger failed (${res.status})`)
       })
       .catch((err: unknown) => {
-        const msg = err instanceof Error ? err.message : 'AI scan failed'
-        setCaseFiles(prev => prev.map(x => x.id === id ? { ...x, aiStatus: 'Not Scanned' } : x))
-        createClient().from('case_files').update({ ai_status: 'Not Scanned' }).eq('id', id).then()
+        const msg = err instanceof Error ? err.message : 'AI scan trigger failed'
+        updateCaseFile(id, { aiStatus: 'Failed' })
         alert(`AI Scan failed: ${msg}`)
       })
   }

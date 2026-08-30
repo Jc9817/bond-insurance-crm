@@ -27,9 +27,7 @@ const INPUT_CLS = 'w-full text-sm font-medium text-gray-800 bg-white border bord
 export default function AIScanPanel({ file, onClose }: Props) {
   const { updateCaseFile, addActivityLog } = useStore()
   const { currentUser } = useAuth()
-  const isEditMode = file.aiStatus === 'Approved'
-  const [done, setDone] = useState(false)
-  const [decision, setDecision] = useState<'approved' | 'rejected' | null>(null)
+  const [saved, setSaved] = useState(false)
   const [form, setForm] = useState<AiExtractedData>(() => ({
     ...(file.aiExtractedData ?? {
       customerName: '', projectName: '', caseType: '',
@@ -43,34 +41,20 @@ export default function AIScanPanel({ file, onClose }: Props) {
   const setRaw = (key: string, value: string) =>
     setForm(f => ({ ...f, raw: { ...f.raw, [key]: value } }))
 
-  const approve = () => {
-    updateCaseFile(file.id, { aiStatus: 'Approved', aiExtractedData: form })
+  const save = () => {
+    updateCaseFile(file.id, { aiExtractedData: form })
     addActivityLog({
       caseId: file.caseId,
       actionType: 'AI_EXTRACTION_APPROVED',
-      title: 'AI extraction approved',
-      description: `Extracted data from ${file.fileName} approved`,
+      title: 'AI data saved',
+      description: `Extracted data from ${file.fileName} updated`,
       changedBy: currentUser?.fullName ?? 'Unknown',
     })
-    setDecision('approved')
-    setDone(true)
-  }
-
-  const reject = () => {
-    updateCaseFile(file.id, { aiStatus: 'Rejected' })
-    addActivityLog({
-      caseId: file.caseId,
-      actionType: 'AI_EXTRACTION_REJECTED',
-      title: 'AI extraction rejected',
-      description: `Extracted data from ${file.fileName} rejected`,
-      changedBy: currentUser?.fullName ?? 'Unknown',
-    })
-    setDecision('rejected')
-    setDone(true)
+    setSaved(true)
   }
 
   const rescan = () => {
-    updateCaseFile(file.id, { aiStatus: 'Not Scanned' })
+    updateCaseFile(file.id, { aiStatus: 'Pending' })
     onClose()
   }
 
@@ -78,48 +62,34 @@ export default function AIScanPanel({ file, onClose }: Props) {
   const isSSTDoc = Object.keys(raw).some(k => SST_KEYS.has(k))
 
   return (
-    <Modal isOpen onClose={onClose} title={isEditMode ? 'Edit Extracted Data' : 'AI Scan — Review & Confirm'} maxWidth="lg">
+    <Modal isOpen onClose={onClose} title="Extracted Data" maxWidth="lg">
       <div className="px-6 py-5 overflow-y-auto">
         {/* File info */}
         <div className="flex items-center gap-2 mb-5 pb-4 border-b border-gray-100">
-          <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${isEditMode ? 'bg-green-100' : 'bg-violet-100'}`}>
-            {isEditMode ? (
-              <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-              </svg>
-            ) : (
-              <svg className="w-4 h-4 text-violet-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-              </svg>
-            )}
+          <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 bg-green-100">
+            <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+            </svg>
           </div>
           <div className="min-w-0">
             <p className="text-sm font-semibold text-gray-800 truncate">{file.fileName}</p>
             <p className="text-xs text-gray-400">{file.documentType}</p>
           </div>
-          {isEditMode && (
-            <span className="ml-auto shrink-0 text-xs bg-green-100 text-green-700 font-medium rounded-full px-2.5 py-1">
-              AI Verified
-            </span>
-          )}
+          <span className="ml-auto shrink-0 text-xs bg-green-100 text-green-700 font-medium rounded-full px-2.5 py-1">
+            Extracted
+          </span>
         </div>
 
-        {!done ? (
+        {!saved ? (
           <>
-            {isEditMode ? (
-              <div className="bg-blue-50 border border-blue-100 rounded-xl px-3 py-2.5 mb-4 flex items-start gap-2">
-                <svg className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <p className="text-xs text-blue-700">
-                  This data is already approved and showing in the case report. Edit any field below and click <strong>Save Changes</strong> — no re-scan needed, no extra cost.
-                </p>
-              </div>
-            ) : (
-              <p className="text-xs text-gray-400 mb-4">
-                Review and correct the AI-extracted information below before approving. Once approved, it will appear in the case report.
+            <div className="bg-blue-50 border border-blue-100 rounded-xl px-3 py-2.5 mb-4 flex items-start gap-2">
+              <svg className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <p className="text-xs text-blue-700">
+                This data is showing in the case report. Edit any field below and click <strong>Save Changes</strong> to correct it.
               </p>
-            )}
+            </div>
 
             <div className="space-y-3 mb-6">
               {file.aiPrompt ? (
@@ -164,68 +134,27 @@ export default function AIScanPanel({ file, onClose }: Props) {
               )}
             </div>
 
-            {!isEditMode && (
-              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4">
-                <p className="text-xs text-amber-700">
-                  <strong>Check before approving:</strong> AI extraction can occasionally misread figures or names. Compare the values above against the original document.
-                </p>
-              </div>
-            )}
-
             <div className="flex gap-3 mb-3">
-              {!isEditMode && <button onClick={reject} className="btn-secondary flex-1">Reject</button>}
-              {isEditMode && <button onClick={onClose} className="btn-secondary flex-1">Cancel</button>}
-              <button onClick={approve} className="btn-primary flex-1">
-                {isEditMode ? 'Save Changes' : 'Approve & Save'}
-              </button>
+              <button onClick={onClose} className="btn-secondary flex-1">Cancel</button>
+              <button onClick={save} className="btn-primary flex-1">Save Changes</button>
             </div>
-            {!isEditMode && (
-              <p className="text-center text-xs text-gray-400">
-                Completely wrong?{' '}
-                <button onClick={rescan} className="text-violet-600 hover:underline">
-                  Re-scan with AI
-                </button>
-                {' '}(uses 1 API credit)
-              </p>
-            )}
-            {isEditMode && (
-              <p className="text-center text-xs text-gray-400">
-                Extraction is completely wrong?{' '}
-                <button onClick={rescan} className="text-violet-600 hover:underline">
-                  Re-scan with AI
-                </button>
-                {' '}(uses 1 API credit)
-              </p>
-            )}
+            <p className="text-center text-xs text-gray-400">
+              Extraction is completely wrong?{' '}
+              <button onClick={rescan} className="text-violet-600 hover:underline">
+                Re-scan with AI
+              </button>
+            </p>
           </>
-        ) : decision === 'approved' ? (
+        ) : (
           <div className="text-center py-6">
             <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
               <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
               </svg>
             </div>
-            <p className="text-base font-semibold text-gray-800">{isEditMode ? 'Changes Saved' : 'Approved'}</p>
-            <p className="text-sm text-gray-400 mt-1">
-              {isEditMode
-                ? 'The case report has been updated with your corrections.'
-                : 'Extracted data has been approved and saved to the case report.'}
-            </p>
+            <p className="text-base font-semibold text-gray-800">Changes Saved</p>
+            <p className="text-sm text-gray-400 mt-1">The case report has been updated with your corrections.</p>
             <button onClick={onClose} className="btn-primary mt-5 px-8">Close</button>
-          </div>
-        ) : (
-          <div className="text-center py-6">
-            <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-3">
-              <svg className="w-6 h-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </div>
-            <p className="text-base font-semibold text-gray-800">Rejected</p>
-            <p className="text-sm text-gray-400 mt-1">Extraction was rejected. You may re-scan this file.</p>
-            <div className="flex gap-3 mt-5 justify-center">
-              <button onClick={onClose} className="btn-secondary px-6">Close</button>
-              <button onClick={rescan} className="btn-primary px-6">Re-scan</button>
-            </div>
           </div>
         )}
       </div>

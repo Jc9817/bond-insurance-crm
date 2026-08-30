@@ -83,7 +83,11 @@ type PendingFile = {
 async function createCaseFromUpload(pending: PendingFile) {
   const uploadedAt = new Date().toISOString()
   const caseId = generateId()
-  const caseTitle = pending.fileName.replace(/\.[^.]+$/, '')
+  // Match the existing manual convention: "YYYY/MM - description".
+  const now = new Date()
+  const yearMonth = `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, '0')}`
+  const description = pending.fileName.replace(/\.[^.]+$/, '')
+  const caseTitle = `${yearMonth} - ${description}`
 
   const { error: caseError } = await supabase.from('cases').insert({
     id: caseId,
@@ -120,7 +124,7 @@ async function createCaseFromUpload(pending: PendingFile) {
     uploaded_at: uploadedAt,
     file_data_url: pending.fileDataUrl,
     ai_scanned: false,
-    ai_status: 'Not Scanned',
+    ai_status: 'Pending',
   })
 
   if (fileError) {

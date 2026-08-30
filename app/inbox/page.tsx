@@ -114,7 +114,7 @@ function UploadCard({ upload }: { upload: TelegramUpload }) {
     uploadedBy: upload.uploadedBy,
     fileDataUrl: upload.fileDataUrl,
     aiScanned: false,
-    aiStatus: 'Not Scanned',
+    aiStatus: 'Pending',
     aiExtractedData: null,
   })
 

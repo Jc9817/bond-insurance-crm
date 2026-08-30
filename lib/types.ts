@@ -240,12 +240,14 @@ export type User = {
 
 // ─── Case Files ───────────────────────────────────────────────────────────────
 
+// Driven by an n8n workflow: Pending (not scanned yet) -> Processing (n8n
+// triggered, awaiting result) -> Extracted (n8n reported success, data
+// filled in) or Failed (n8n reported an extraction error).
 export const AI_STATUSES = [
-  'Not Scanned',
+  'Pending',
   'Processing',
-  'Ready for Review',
-  'Approved',
-  'Rejected',
+  'Extracted',
+  'Failed',
 ] as const
 export type AiStatus = (typeof AI_STATUSES)[number]
 

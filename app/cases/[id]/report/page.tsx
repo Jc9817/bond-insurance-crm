@@ -296,7 +296,7 @@ export default function CaseReportPage() {
   const pic = pics.find(p => p.name === caseItem?.personInCharge)
 
   const approvedFiles = caseFiles.filter(
-    f => f.caseId === id && f.aiStatus === 'Approved' && f.aiExtractedData !== null
+    f => f.caseId === id && f.aiStatus === 'Extracted' && f.aiExtractedData !== null
   )
 
   if (!caseItem) {

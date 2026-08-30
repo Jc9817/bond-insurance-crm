@@ -193,12 +193,12 @@ export default function CaseDetailPage() {
     setClosingModal(false)
   }
 
-  const aiPendingCount = caseDocs.filter(f => f.aiStatus === 'Ready for Review').length
+  const aiExtractedCount = caseDocs.filter(f => f.aiStatus === 'Extracted').length
   const datedStepCount = steps.filter(s => stepTimestamps[s.name]).length
 
   const TABS = [
     { key: 'files' as const, label: `Files${caseDocs.length > 0 ? ` (${caseDocs.length})` : ''}` },
-    { key: 'ai' as const, label: `AI Data${aiPendingCount > 0 ? ` (${aiPendingCount})` : ''}` },
+    { key: 'ai' as const, label: `AI Data${aiExtractedCount > 0 ? ` (${aiExtractedCount})` : ''}` },
     { key: 'emails' as const, label: 'Emails' },
     { key: 'info' as const, label: 'Case Info' },
     { key: 'notes' as const, label: `Notes${notes.length + openFollowUps.length > 0 ? ` (${notes.length + openFollowUps.length})` : ''}` },
@@ -405,98 +405,97 @@ export default function CaseDetailPage() {
         {activeTab === 'ai' && (
           <div className="card-section">
             <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-5">AI Extracted Data</h2>
-            {caseDocs.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 text-center">
-                <svg className="w-10 h-10 text-gray-200 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
-                </svg>
-                <p className="text-sm text-gray-400">No files uploaded yet.</p>
-                <p className="text-xs text-gray-300 mt-1">Upload documents in the Files tab to enable AI extraction.</p>
-                <button onClick={() => setActiveTab('files')} className="mt-4 text-xs px-4 py-2 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 font-medium transition-colors">
-                  Go to Files →
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {caseDocs.map(f => {
-                  const scanned = f.aiStatus === 'Approved' || f.aiStatus === 'Rejected'
-                  const d = f.aiExtractedData
-                  const raw = (d?.raw ?? {}) as Record<string, unknown>
-                  return (
-                    <div key={f.id} className={`rounded-xl border ${f.aiStatus === 'Approved' ? 'border-emerald-100 bg-emerald-50/30' : 'border-gray-100 bg-gray-50'}`}>
-                      <div className="flex items-center justify-between gap-3 px-4 py-3">
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                            f.aiStatus === 'Approved' ? 'bg-emerald-100 text-emerald-700' :
-                            f.aiStatus === 'Rejected' ? 'bg-red-100 text-red-700' :
-                            f.aiStatus === 'Processing' ? 'bg-amber-100 text-amber-700' :
-                            f.aiStatus === 'Ready for Review' ? 'bg-blue-100 text-blue-700' :
-                            'bg-gray-100 text-gray-500'
-                          }`}>
-                            {f.aiStatus ?? 'Not Scanned'}
-                          </span>
-                          <p className="text-sm font-medium text-gray-800 truncate">{f.fileName}</p>
-                          <span className="text-xs text-gray-400 shrink-0">{f.documentType}</span>
-                        </div>
-                        <button
-                          onClick={() => setScanFile(f)}
-                          className="shrink-0 text-xs px-3 py-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 font-medium transition-colors"
-                        >
-                          {scanned ? 'Edit / Re-scan' : f.aiStatus === 'Processing' ? 'Scanning…' : f.aiStatus === 'Ready for Review' ? 'Review AI' : 'Scan with AI'}
-                        </button>
-                      </div>
+            {(() => {
+              const extractedDocs = caseDocs.filter(f => f.aiStatus === 'Extracted')
 
-                      {f.aiStatus === 'Approved' && d && (
-                        <div className="px-4 pb-4">
-                          <div className="bg-white rounded-xl border border-emerald-100 p-4">
-                            <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-3">
-                              {d.customerName && <AiField label="Principal" value={d.customerName} />}
-                              {d.projectName && <AiField label="Project / Works" value={d.projectName} wide />}
-                              {d.caseType && <AiField label="Bond / Insurance Type" value={d.caseType} />}
-                              {d.amount && <AiField label="Contract Value" value={d.amount} />}
-                              {d.bondValue && <AiField label="Bond Value" value={d.bondValue} />}
-                              {d.expiryDate && <AiField label="Expiry Date" value={d.expiryDate} />}
-                              {raw.sebut_harga_no != null && <AiField label="No. Sebut Harga" value={String(raw.sebut_harga_no)} />}
-                              {raw.sebuthargaNo != null && <AiField label="No. Sebutharga" value={String(raw.sebuthargaNo)} />}
-                              {raw.ssm_number != null && <AiField label="SSM / MOF No." value={String(raw.ssm_number)} />}
-                              {raw.site_possession_date != null && <AiField label="Site Possession Date" value={String(raw.site_possession_date)} />}
-                              {raw.completion_date != null && <AiField label="Completion Date" value={String(raw.completion_date)} />}
-                              {raw.defect_liability_period != null && <AiField label="DLP" value={String(raw.defect_liability_period)} />}
-                              {raw.performance_bond_value != null && <AiField label="Bon Pelaksanaan" value={String(raw.performance_bond_value)} />}
-                              {raw.third_party_liability != null && <AiField label="Insurans Kerja" value={String(raw.third_party_liability)} />}
-                              {raw.public_liability != null && <AiField label="Tanggungan Awam" value={String(raw.public_liability)} />}
-                              {raw.thirdPartyLiability != null && <AiField label="Third Party Liability" value={String(raw.thirdPartyLiability)} />}
-                              {raw.workInsuranceValue != null && <AiField label="WC Insurance" value={String(raw.workInsuranceValue)} />}
-                              {raw.sstNo != null && <AiField label="SST / Contract No." value={String(raw.sstNo)} />}
-                              {raw.issuingAgency != null && <AiField label="Issuing Agency" value={String(raw.issuingAgency)} />}
-                              {raw.company_address != null && <AiField label="Company Address" value={String(raw.company_address)} wide />}
-                              {d.notes && <AiField label="Notes / References" value={d.notes} wide />}
-                            </div>
+              if (caseDocs.length === 0) {
+                return (
+                  <div className="flex flex-col items-center justify-center py-12 text-center">
+                    <svg className="w-10 h-10 text-gray-200 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+                    </svg>
+                    <p className="text-sm text-gray-400">No files uploaded yet.</p>
+                    <p className="text-xs text-gray-300 mt-1">Upload documents in the Files tab to enable AI extraction.</p>
+                    <button onClick={() => setActiveTab('files')} className="mt-4 text-xs px-4 py-2 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 font-medium transition-colors">
+                      Go to Files →
+                    </button>
+                  </div>
+                )
+              }
+
+              if (extractedDocs.length === 0) {
+                return (
+                  <div className="flex flex-col items-center justify-center py-12 text-center">
+                    <svg className="w-10 h-10 text-gray-200 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+                    </svg>
+                    <p className="text-sm text-gray-400">No documents extracted yet.</p>
+                    <p className="text-xs text-gray-300 mt-1">Run AI Scan on a file in the Files tab — extracted data will show up here once it&apos;s done.</p>
+                    <button onClick={() => setActiveTab('files')} className="mt-4 text-xs px-4 py-2 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 font-medium transition-colors">
+                      Go to Files →
+                    </button>
+                  </div>
+                )
+              }
+
+              return (
+                <div className="space-y-4">
+                  {extractedDocs.map(f => {
+                    const d = f.aiExtractedData
+                    const raw = (d?.raw ?? {}) as Record<string, unknown>
+                    return (
+                      <div key={f.id} className="rounded-xl border border-emerald-100 bg-emerald-50/30">
+                        <div className="flex items-center justify-between gap-3 px-4 py-3">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <span className="shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
+                              Extracted
+                            </span>
+                            <p className="text-sm font-medium text-gray-800 truncate">{f.fileName}</p>
+                            <span className="text-xs text-gray-400 shrink-0">{f.documentType}</span>
                           </div>
-                        </div>
-                      )}
-
-                      {f.aiStatus === 'Ready for Review' && (
-                        <div className="px-4 pb-3">
                           <button
                             onClick={() => setScanFile(f)}
-                            className="w-full text-xs bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded-lg transition-colors"
+                            className="shrink-0 text-xs px-3 py-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 font-medium transition-colors"
                           >
-                            Review & approve extracted data →
+                            Edit / Re-scan
                           </button>
                         </div>
-                      )}
 
-                      {f.aiStatus === 'Rejected' && (
-                        <div className="px-4 pb-3">
-                          <p className="text-xs text-red-500">Extraction was rejected. Re-scan to try again.</p>
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            )}
+                        {d && (
+                          <div className="px-4 pb-4">
+                            <div className="bg-white rounded-xl border border-emerald-100 p-4">
+                              <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-3">
+                                {d.customerName && <AiField label="Principal" value={d.customerName} />}
+                                {d.projectName && <AiField label="Project / Works" value={d.projectName} wide />}
+                                {d.caseType && <AiField label="Bond / Insurance Type" value={d.caseType} />}
+                                {d.amount && <AiField label="Contract Value" value={d.amount} />}
+                                {d.bondValue && <AiField label="Bond Value" value={d.bondValue} />}
+                                {d.expiryDate && <AiField label="Expiry Date" value={d.expiryDate} />}
+                                {raw.sebut_harga_no != null && <AiField label="No. Sebut Harga" value={String(raw.sebut_harga_no)} />}
+                                {raw.sebuthargaNo != null && <AiField label="No. Sebutharga" value={String(raw.sebuthargaNo)} />}
+                                {raw.ssm_number != null && <AiField label="SSM / MOF No." value={String(raw.ssm_number)} />}
+                                {raw.site_possession_date != null && <AiField label="Site Possession Date" value={String(raw.site_possession_date)} />}
+                                {raw.completion_date != null && <AiField label="Completion Date" value={String(raw.completion_date)} />}
+                                {raw.defect_liability_period != null && <AiField label="DLP" value={String(raw.defect_liability_period)} />}
+                                {raw.performance_bond_value != null && <AiField label="Bon Pelaksanaan" value={String(raw.performance_bond_value)} />}
+                                {raw.third_party_liability != null && <AiField label="Insurans Kerja" value={String(raw.third_party_liability)} />}
+                                {raw.public_liability != null && <AiField label="Tanggungan Awam" value={String(raw.public_liability)} />}
+                                {raw.thirdPartyLiability != null && <AiField label="Third Party Liability" value={String(raw.thirdPartyLiability)} />}
+                                {raw.workInsuranceValue != null && <AiField label="WC Insurance" value={String(raw.workInsuranceValue)} />}
+                                {raw.sstNo != null && <AiField label="SST / Contract No." value={String(raw.sstNo)} />}
+                                {raw.issuingAgency != null && <AiField label="Issuing Agency" value={String(raw.issuingAgency)} />}
+                                {raw.company_address != null && <AiField label="Company Address" value={String(raw.company_address)} wide />}
+                                {d.notes && <AiField label="Notes / References" value={d.notes} wide />}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+            })()}
           </div>
         )}
 

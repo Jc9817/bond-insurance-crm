@@ -212,7 +212,7 @@ export default function DocumentChecklist({ caseId, caseTitle, template, caseFil
         documentType: 'Supporting Document',
         uploadedBy: currentUser?.fullName ?? 'Unknown',
         aiScanned: false,
-        aiStatus: 'Not Scanned',
+        aiStatus: 'Pending',
         aiExtractedData: null,
         fileDataUrl,
       })
@@ -359,21 +359,20 @@ function FileRow({
         </p>
       </div>
 
-      {file.aiStatus === 'Approved' && (
-        <span className="text-xs bg-green-100 text-green-700 rounded-full px-2 py-0.5 font-medium shrink-0">AI Verified</span>
+      {file.aiStatus === 'Extracted' && (
+        <button onClick={onReview} className="text-xs font-semibold text-green-700 bg-green-100 border border-green-200 rounded-full px-2 py-0.5 shrink-0">
+          Extracted →
+        </button>
       )}
-      {file.aiStatus === 'Rejected' && (
-        <span className="text-xs bg-red-100 text-red-600 rounded-full px-2 py-0.5 font-medium shrink-0">Rejected</span>
+      {file.aiStatus === 'Failed' && (
+        <button onClick={onScan} className="btn-xs bg-red-50 border border-red-200 hover:bg-red-100 text-red-600 shrink-0">
+          Failed — Retry
+        </button>
       )}
       {file.aiStatus === 'Processing' && (
         <span className="text-xs text-amber-600 font-medium shrink-0">Scanning…</span>
       )}
-      {file.aiStatus === 'Ready for Review' && (
-        <button onClick={onReview} className="text-xs font-semibold text-blue-600 bg-blue-50 border border-blue-200 rounded-full px-2 py-0.5 shrink-0">
-          Review in AI Data →
-        </button>
-      )}
-      {file.aiStatus === 'Not Scanned' && (
+      {file.aiStatus === 'Pending' && (
         <button onClick={onScan} className="btn-xs bg-white border border-gray-200 hover:bg-violet-50 text-violet-700 shrink-0">
           AI Scan
         </button>

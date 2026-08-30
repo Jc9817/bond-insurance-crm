@@ -398,7 +398,7 @@ export const mockCaseFiles: CaseFile[] = [
     uploadedBy: 'Ahmad Farid',
     uploadedAt: '2026-01-12T10:00:00Z',
     aiScanned: true,
-    aiStatus: 'Approved',
+    aiStatus: 'Extracted',
     aiExtractedData: {
       customerName: 'Bina Perkasa Sdn Bhd',
       projectName: 'Projek Lebuh Raya MRR2',
@@ -420,7 +420,7 @@ export const mockCaseFiles: CaseFile[] = [
     uploadedBy: 'Ahmad Farid',
     uploadedAt: '2026-01-12T10:15:00Z',
     aiScanned: false,
-    aiStatus: 'Not Scanned',
+    aiStatus: 'Pending',
     aiExtractedData: null,
   },
   {
@@ -434,7 +434,7 @@ export const mockCaseFiles: CaseFile[] = [
     uploadedBy: 'Ahmad Farid',
     uploadedAt: '2026-01-12T10:20:00Z',
     aiScanned: false,
-    aiStatus: 'Not Scanned',
+    aiStatus: 'Pending',
     aiExtractedData: null,
   },
   {
@@ -448,7 +448,7 @@ export const mockCaseFiles: CaseFile[] = [
     uploadedBy: 'Ahmad Farid',
     uploadedAt: '2026-05-03T09:30:00Z',
     aiScanned: false,
-    aiStatus: 'Not Scanned',
+    aiStatus: 'Pending',
     aiExtractedData: null,
   },
   {
@@ -462,7 +462,7 @@ export const mockCaseFiles: CaseFile[] = [
     uploadedBy: 'David Lim',
     uploadedAt: '2026-04-03T11:00:00Z',
     aiScanned: false,
-    aiStatus: 'Not Scanned',
+    aiStatus: 'Pending',
     aiExtractedData: null,
   },
 ]

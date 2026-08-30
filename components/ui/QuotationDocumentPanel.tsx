@@ -134,7 +134,7 @@ export default function QuotationDocumentPanel({ caseId, caseTitle, caseFiles }:
         documentType: 'Quotation Document',
         uploadedBy: currentUser?.fullName ?? 'Unknown',
         aiScanned: false,
-        aiStatus: 'Not Scanned',
+        aiStatus: 'Pending',
         aiExtractedData: null,
         fileDataUrl: reader.result as string,
         aiPrompt: QUOTATION_AI_PROMPT,
@@ -221,9 +221,8 @@ export default function QuotationDocumentPanel({ caseId, caseTitle, caseFiles }:
             <div
               key={file.id}
               className={`rounded-2xl border bg-white overflow-hidden transition-colors ${
-                file.aiStatus === 'Approved' ? 'border-green-200' :
-                file.aiStatus === 'Ready for Review' ? 'border-violet-200' :
-                file.aiStatus === 'Rejected' ? 'border-red-200' :
+                file.aiStatus === 'Extracted' ? 'border-green-200' :
+                file.aiStatus === 'Failed' ? 'border-red-200' :
                 'border-gray-200'
               }`}
             >
@@ -272,7 +271,7 @@ export default function QuotationDocumentPanel({ caseId, caseTitle, caseFiles }:
                     </>
                   )}
 
-                  {file.aiStatus === 'Not Scanned' && (
+                  {file.aiStatus === 'Pending' && (
                     <button
                       onClick={() => handleScan(file)}
                       className="btn-xs bg-violet-600 hover:bg-violet-700 text-white flex items-center gap-1.5 font-semibold"
@@ -289,19 +288,14 @@ export default function QuotationDocumentPanel({ caseId, caseTitle, caseFiles }:
                       Scanning…
                     </span>
                   )}
-                  {file.aiStatus === 'Ready for Review' && (
-                    <span className="text-xs font-semibold bg-violet-100 text-violet-700 rounded-full px-2.5 py-0.5">
-                      ✦ Results ready ↓
-                    </span>
-                  )}
-                  {file.aiStatus === 'Approved' && (
+                  {file.aiStatus === 'Extracted' && (
                     <span className="text-xs font-semibold bg-green-100 text-green-700 rounded-full px-2.5 py-0.5">
-                      ✓ AI Verified
+                      ✓ Extracted
                     </span>
                   )}
-                  {file.aiStatus === 'Rejected' && (
-                    <button onClick={() => handleScan(file)} className="btn-xs bg-amber-50 text-amber-700 hover:bg-amber-100 font-semibold">
-                      Re-scan
+                  {file.aiStatus === 'Failed' && (
+                    <button onClick={() => handleScan(file)} className="btn-xs bg-red-50 text-red-700 hover:bg-red-100 font-semibold">
+                      Failed — Retry
                     </button>
                   )}
 
