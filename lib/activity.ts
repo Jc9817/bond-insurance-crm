@@ -23,13 +23,6 @@ export const ACTION_META: Record<ActivityLogActionType, ActionMeta> = {
   CASE_REOPENED:            { label: 'Case reopened',           color: 'blue'   },
   RESULT_SET:               { label: 'Result set',              color: 'purple' },
   NOTE_ADDED:               { label: 'Note added',              color: 'gray'   },
-  INQUIRY_CREATED:          { label: 'Inquiry created',         color: 'blue'   },
-  INQUIRY_STATUS_CHANGED:   { label: 'Inquiry status changed',  color: 'blue'   },
-  INQUIRY_NOTE_ADDED:       { label: 'Note added',              color: 'gray'   },
-  INQUIRY_QUOTATION_ADDED:  { label: 'Quotation added',         color: 'green'  },
-  INQUIRY_QUOTATION_UPDATED:{ label: 'Quotation updated',       color: 'indigo' },
-  INQUIRY_DOCUMENT_UPLOADED:{ label: 'Document uploaded',       color: 'green'  },
-  INQUIRY_CONVERTED:        { label: 'Converted to case',       color: 'purple' },
   DOCUMENT_ASSIGNED:        { label: 'Document assigned',       color: 'indigo' },
   CASE_UPDATED:             { label: 'Case info updated',       color: 'blue'   },
 }

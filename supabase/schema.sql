@@ -157,65 +157,17 @@ create table if not exists required_documents (
 );
 alter table required_documents disable row level security;
 
--- ─── Inquiries ────────────────────────────────────────────────────────────────
-create table if not exists inquiries (
+-- ─── Document Tags ────────────────────────────────────────────────────────────
+-- Centralized catalog of document tags (LOA, Bank Statement, SSM Certificate, ...)
+-- with a per-tag AI prompt, editable from Settings → Document Tags & AI Prompts.
+-- Resolved by name against case_files.document_type when triggering an AI scan,
+-- so the same prompt is used no matter which workflow template/step the file
+-- came through.
+create table if not exists document_tags (
   id text primary key,
-  inquiry_title text default '',
-  customer_id text default '',
-  customer_name text default '',
-  contact_id text,
-  contact_name text,
-  inquiry_type text default '',
-  rough_amount numeric default 0,
-  status text default 'New',
-  assigned_person text default '',
-  notes text default '',
-  converted_to_case boolean default false,
-  converted_case_id text,
-  created_at timestamptz default now(),
-  updated_at timestamptz
-);
-alter table inquiries disable row level security;
-
--- ─── Inquiry Quotations ───────────────────────────────────────────────────────
-create table if not exists inquiry_quotations (
-  id text primary key,
-  inquiry_id text references inquiries(id) on delete cascade,
-  provider_name text default '',
-  quotation_amount numeric default 0,
-  requested_date text default '',
-  received_date text,
-  status text default 'Pending',
-  notes text default '',
-  email_sent boolean default false,
-  email_sent_at timestamptz,
-  email_to text,
-  email_subject text,
-  email_body text,
+  name text not null unique,
+  ai_prompt text default '',
+  is_active boolean default true,
   created_at timestamptz default now()
 );
-alter table inquiry_quotations disable row level security;
-
--- ─── Inquiry Notes ────────────────────────────────────────────────────────────
-create table if not exists inquiry_notes (
-  id text primary key,
-  inquiry_id text references inquiries(id) on delete cascade,
-  content text default '',
-  created_by text default '',
-  created_at timestamptz default now()
-);
-alter table inquiry_notes disable row level security;
-
--- ─── Inquiry Documents ────────────────────────────────────────────────────────
-create table if not exists inquiry_documents (
-  id text primary key,
-  inquiry_id text references inquiries(id) on delete cascade,
-  file_name text default '',
-  file_size integer default 0,
-  file_type text default '',
-  document_type text default '',
-  uploaded_by text default '',
-  file_data_url text default '',
-  uploaded_at timestamptz default now()
-);
-alter table inquiry_documents disable row level security;
+alter table document_tags disable row level security;

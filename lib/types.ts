@@ -260,6 +260,13 @@ export type AiExtractedData = {
   expiryDate: string
   notes: string
   raw?: Record<string, unknown>   // full parsed response when a custom prompt schema is used
+  // n8n-driven pipeline's shape — one flat bucket of whatever fields matter
+  // for this document type (e.g. an LOA sends award_date/award_amount/
+  // awarding_body; a Bank Statement sends different keys entirely).
+  // Rendered generically — no per-field whitelist to maintain per doc type.
+  fields?: Record<string, string | null>
+  reasoning?: string
+  confidence?: string
 }
 
 export type CaseFile = {
@@ -316,13 +323,6 @@ export const ACTIVITY_LOG_ACTION_TYPES = [
   'CASE_REOPENED',
   'RESULT_SET',
   'NOTE_ADDED',
-  'INQUIRY_CREATED',
-  'INQUIRY_STATUS_CHANGED',
-  'INQUIRY_NOTE_ADDED',
-  'INQUIRY_QUOTATION_ADDED',
-  'INQUIRY_QUOTATION_UPDATED',
-  'INQUIRY_DOCUMENT_UPLOADED',
-  'INQUIRY_CONVERTED',
   'DOCUMENT_ASSIGNED',
   'CASE_UPDATED',
 ] as const
@@ -332,7 +332,6 @@ export type ActivityLog = {
   id: string
   caseId?: string
   caseTitle?: string
-  inquiryId?: string
   actionType?: ActivityLogActionType
   title: string
   description?: string
@@ -356,8 +355,6 @@ export type SettingsCategory =
   | 'contactTypes'
   | 'followUpCategories'
   | 'documentTypes'
-  | 'inquiryStatuses'
-  | 'quotationStatuses'
   | 'insurers'
 
 // ─── Workflow Templates ───────────────────────────────────────────────────────
@@ -398,6 +395,20 @@ export type WorkflowTemplate = {
   isActive: boolean
 }
 
+// ─── Document Tags ────────────────────────────────────────────────────────────
+// Centralized catalog of document tags (LOA, Bank Statement, SSM Certificate,
+// ...) with a per-tag AI prompt, editable in Settings. Resolved by name
+// against a case_file's documentType when triggering an AI scan, so the same
+// prompt is used regardless of which workflow template/step the file came
+// through.
+
+export type DocumentTag = {
+  id: string
+  name: string
+  aiPrompt: string
+  isActive: boolean
+}
+
 // ─── Submission Letter Templates ─────────────────────────────────────────────
 
 export type SubmissionLetterDocItem = {
@@ -417,91 +428,3 @@ export type SubmissionLetterTemplate = {
   docItems: SubmissionLetterDocItem[]
 }
 
-// ─── Inquiry ──────────────────────────────────────────────────────────────────
-
-export const INQUIRY_STATUSES = [
-  'New',
-  'Gathering Info',
-  'Docs Requested',
-  'Quotation Requested',
-  'Quotation Received',
-  'Customer Reviewing',
-  'Qualified',
-  'Closed',
-  'Lost',
-] as const
-export type InquiryStatus = (typeof INQUIRY_STATUSES)[number]
-
-export const INQUIRY_TYPES = [
-  'Bond Request',
-  'Insurance Request',
-  'Renewal',
-  'Endorsement',
-  'Quotation Check',
-  'Market Checking',
-  'Other',
-]
-
-export const QUOTATION_STATUSES = [
-  'Pending',
-  'Quoted',
-  'Under Review',
-  'Rejected',
-  'No Response',
-] as const
-export type QuotationStatus = (typeof QUOTATION_STATUSES)[number]
-
-export type Inquiry = {
-  id: string
-  inquiryTitle: string
-  customerId: string
-  customerName: string
-  contactId?: string
-  contactName?: string
-  inquiryType: string
-  roughAmount: number
-  status: InquiryStatus
-  assignedPerson: string
-  notes: string
-  createdAt: string
-  updatedAt?: string
-  convertedToCase: boolean
-  convertedCaseId?: string
-}
-
-export type InquiryQuotation = {
-  id: string
-  inquiryId: string
-  providerName: string
-  quotationAmount: number
-  requestedDate: string
-  receivedDate?: string
-  status: QuotationStatus
-  notes: string
-  // Email
-  emailSent?: boolean
-  emailSentAt?: string
-  emailTo?: string
-  emailSubject?: string
-  emailBody?: string
-}
-
-export type InquiryNote = {
-  id: string
-  inquiryId: string
-  content: string
-  createdAt: string
-  createdBy: string
-}
-
-export type InquiryDocument = {
-  id: string
-  inquiryId: string
-  fileName: string
-  fileSize: number
-  fileType: string
-  documentType: string
-  uploadedBy: string
-  uploadedAt: string
-  fileDataUrl?: string
-}

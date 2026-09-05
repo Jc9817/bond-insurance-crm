@@ -5,15 +5,13 @@ import { createClient } from '@/utils/supabase/client'
 import type {
   Customer, Contact, Case, CaseNote, FollowUp, PicUser,
   User, CaseFile, ActivityLog, SettingsItem, SettingsCategory,
-  WorkflowTemplate, RequiredDocument, WorkflowStep,
-  Inquiry, InquiryQuotation, InquiryNote, InquiryDocument,
+  WorkflowTemplate, RequiredDocument, WorkflowStep, DocumentTag,
   Product, ProductPackage, SubmissionLetterTemplate, EmailTemplate, CaseEmailLog, TelegramUpload,
 } from './types'
 import {
   mockPics, mockUsers, mockWorkflowTemplates,
   mockSettingsCaseTypes, mockSettingsIndustries, mockSettingsContactTypes,
   mockSettingsFollowUpCategories, mockSettingsDocumentTypes,
-  mockSettingsInquiryStatuses, mockSettingsQuotationStatuses,
   mockSettingsInsurers, mockProducts, mockProductPackages,
   mockSubmissionLetterTemplates,
 } from './mock-data'
@@ -34,10 +32,7 @@ type StoreCtx = {
   activityLogs: ActivityLog[]
   settingsData: SettingsData
   workflowTemplates: WorkflowTemplate[]
-  inquiries: Inquiry[]
-  inquiryQuotations: InquiryQuotation[]
-  inquiryNotes: InquiryNote[]
-  inquiryDocuments: InquiryDocument[]
+  documentTags: DocumentTag[]
   products: Product[]
   productPackages: ProductPackage[]
   emailTemplates: EmailTemplate[]
@@ -95,6 +90,10 @@ type StoreCtx = {
   updateRequiredDocument: (templateId: string, docId: string, doc: Partial<RequiredDocument>) => void
   deleteRequiredDocument: (templateId: string, docId: string) => void
 
+  addDocumentTag: (t: Omit<DocumentTag, 'id'>) => void
+  updateDocumentTag: (id: string, t: Partial<DocumentTag>) => void
+  deleteDocumentTag: (id: string) => void
+
   addProduct: (p: Omit<Product, 'id'>) => void
   updateProduct: (id: string, p: Partial<Product>) => void
   deleteProduct: (id: string) => void
@@ -102,18 +101,6 @@ type StoreCtx = {
   addProductPackage: (p: Omit<ProductPackage, 'id'>) => void
   updateProductPackage: (id: string, p: Partial<ProductPackage>) => void
   deleteProductPackage: (id: string) => void
-
-  addInquiry: (i: Omit<Inquiry, 'id' | 'createdAt' | 'convertedToCase'>) => string
-  updateInquiry: (id: string, i: Partial<Inquiry>) => void
-  deleteInquiry: (id: string) => void
-  addInquiryQuotation: (q: Omit<InquiryQuotation, 'id'>) => void
-  updateInquiryQuotation: (id: string, q: Partial<InquiryQuotation>) => void
-  deleteInquiryQuotation: (id: string) => void
-  sendQuotationEmail: (quotationId: string, emailData: { emailTo: string; emailSubject: string; emailBody: string }) => Promise<void>
-  addInquiryNote: (n: Omit<InquiryNote, 'id' | 'createdAt'>) => void
-  addInquiryDocument: (d: Omit<InquiryDocument, 'id' | 'uploadedAt'>) => void
-  deleteInquiryDocument: (id: string) => void
-  convertInquiryToCase: (inquiryId: string, caseData: Omit<Case, 'id' | 'createdAt'>) => string
 
   submissionLetterTemplates: SubmissionLetterTemplate[]
   addSubmissionLetterTemplate: (t: Omit<SubmissionLetterTemplate, 'id'>) => void
@@ -298,42 +285,6 @@ const fromDoc = (r: Row): RequiredDocument => ({
   aiPrompt: r.ai_prompt ?? undefined,
 })
 
-const fromInquiry = (r: Row): Inquiry => ({
-  id: r.id, inquiryTitle: r.inquiry_title ?? '', customerId: r.customer_id ?? '',
-  customerName: r.customer_name ?? '', contactId: r.contact_id ?? undefined,
-  contactName: r.contact_name ?? undefined, inquiryType: r.inquiry_type ?? '',
-  roughAmount: r.rough_amount ?? 0, status: r.status ?? 'New',
-  assignedPerson: r.assigned_person ?? '', notes: r.notes ?? '',
-  convertedToCase: r.converted_to_case ?? false, convertedCaseId: r.converted_case_id ?? undefined,
-  createdAt: r.created_at, updatedAt: r.updated_at ?? undefined,
-})
-const toInquiry = (i: Inquiry) => ({
-  id: i.id, inquiry_title: i.inquiryTitle, customer_id: i.customerId,
-  customer_name: i.customerName, contact_id: i.contactId ?? null,
-  contact_name: i.contactName ?? null, inquiry_type: i.inquiryType,
-  rough_amount: i.roughAmount, status: i.status, assigned_person: i.assignedPerson,
-  notes: i.notes, converted_to_case: i.convertedToCase,
-  converted_case_id: i.convertedCaseId ?? null,
-  created_at: i.createdAt, updated_at: i.updatedAt ?? null,
-})
-
-const fromInquiryQuotation = (r: Row): InquiryQuotation => ({
-  id: r.id, inquiryId: r.inquiry_id, providerName: r.provider_name ?? '',
-  quotationAmount: r.quotation_amount ?? 0, requestedDate: r.requested_date ?? '',
-  receivedDate: r.received_date ?? undefined, status: r.status ?? 'Pending',
-  notes: r.notes ?? '', emailSent: r.email_sent ?? false,
-  emailSentAt: r.email_sent_at ?? undefined, emailTo: r.email_to ?? undefined,
-  emailSubject: r.email_subject ?? undefined, emailBody: r.email_body ?? undefined,
-})
-const toInquiryQuotation = (q: InquiryQuotation) => ({
-  id: q.id, inquiry_id: q.inquiryId, provider_name: q.providerName,
-  quotation_amount: q.quotationAmount, requested_date: q.requestedDate,
-  received_date: q.receivedDate ?? null, status: q.status, notes: q.notes,
-  email_sent: q.emailSent ?? false, email_sent_at: q.emailSentAt ?? null,
-  email_to: q.emailTo ?? null, email_subject: q.emailSubject ?? null,
-  email_body: q.emailBody ?? null,
-})
-
 // ─── Context ──────────────────────────────────────────────────────────────────
 
 const StoreContext = createContext<StoreCtx | null>(null)
@@ -349,10 +300,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [caseFiles, setCaseFiles] = useState<CaseFile[]>([])
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([])
   const [workflowTemplates, setWorkflowTemplates] = useState<WorkflowTemplate[]>([])
-  const [inquiries, setInquiries] = useState<Inquiry[]>([])
-  const [inquiryQuotations, setInquiryQuotations] = useState<InquiryQuotation[]>([])
-  const [inquiryNotes, setInquiryNotes] = useState<InquiryNote[]>([])
-  const [inquiryDocuments, setInquiryDocuments] = useState<InquiryDocument[]>([])
+  const [documentTags, setDocumentTags] = useState<DocumentTag[]>([])
   const [products, setProducts] = useState<Product[]>(mockProducts)
   const [productPackages, setProductPackages] = useState<ProductPackage[]>(mockProductPackages)
   const [submissionLetterTemplates, setSubmissionLetterTemplates] = useState<SubmissionLetterTemplate[]>(mockSubmissionLetterTemplates)
@@ -365,8 +313,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     contactTypes: mockSettingsContactTypes,
     followUpCategories: mockSettingsFollowUpCategories,
     documentTypes: mockSettingsDocumentTypes,
-    inquiryStatuses: mockSettingsInquiryStatuses,
-    quotationStatuses: mockSettingsQuotationStatuses,
     insurers: mockSettingsInsurers,
   })
   const [loading, setLoading] = useState(true)
@@ -401,10 +347,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       { data: templates },
       { data: steps },
       { data: docs },
-      { data: inqRows },
-      { data: iqRows },
-      { data: inRows },
-      { data: idRows },
+      { data: tagRows },
       { data: templateRows },
       { data: caseEmailRows },
       { data: telegramUploadRows },
@@ -419,10 +362,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       sb.from('workflow_templates').select('*'),
       sb.from('workflow_steps').select('*').order('order'),
       sb.from('required_documents').select('*'),
-      sb.from('inquiries').select('*').order('created_at', { ascending: false }),
-      sb.from('inquiry_quotations').select('*').order('created_at'),
-      sb.from('inquiry_notes').select('*').order('created_at', { ascending: false }),
-      sb.from('inquiry_documents').select('*').order('uploaded_at', { ascending: false }),
+      sb.from('document_tags').select('*').order('name'),
       sb.from('email_templates').select('*').order('created_at'),
       sb.from('case_emails').select('*').order('sent_at', { ascending: false }),
       sb.from('telegram_uploads').select('*').order('uploaded_at', { ascending: false }),
@@ -436,17 +376,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (fuRows) setFollowUps(fuRows.map(fromFollowUp))
     if (fileRows) setCaseFiles(fileRows.map(fromCaseFile))
     if (logRows) setActivityLogs(logRows.map(fromActivityLog))
-    if (inqRows) setInquiries(inqRows.map(fromInquiry))
-    if (iqRows) setInquiryQuotations(iqRows.map(fromInquiryQuotation))
-    if (inRows) setInquiryNotes(inRows.map(r => ({
-      id: r.id, inquiryId: r.inquiry_id, content: r.content ?? '',
-      createdBy: r.created_by ?? '', createdAt: r.created_at,
-    })))
-    if (idRows) setInquiryDocuments(idRows.map(r => ({
-      id: r.id, inquiryId: r.inquiry_id, fileName: r.file_name ?? '',
-      fileSize: r.file_size ?? 0, fileType: r.file_type ?? '',
-      documentType: r.document_type ?? '', uploadedBy: r.uploaded_by ?? '',
-      fileDataUrl: r.file_data_url ?? '', uploadedAt: r.uploaded_at,
+    if (tagRows) setDocumentTags(tagRows.map(r => ({
+      id: r.id, name: r.name ?? '', aiPrompt: r.ai_prompt ?? '', isActive: r.is_active ?? true,
     })))
     if (caseEmailRows) setCaseEmails(caseEmailRows.map(fromCaseEmailLog))
     if (telegramUploadRows) setTelegramUploads(telegramUploadRows.map(fromTelegramUpload))
@@ -835,6 +766,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // Scanning itself happens in n8n, not here — this just fires the trigger
   // and flips the file to "Processing". n8n reports the actual result
   // (Extracted + data, or Failed) back via POST /api/ai-scan/callback.
+  // Resolve the file's tag (e.g. "Bank Statement") against the Document Tags
+  // catalog to find the AI prompt to send n8n — exact name match first, then
+  // partial, same lookup the callback route does for required-document tagging.
+  const resolveTagPrompt = (documentType: string): string | undefined => {
+    const needle = documentType.trim().toLowerCase()
+    if (!needle) return undefined
+    const active = documentTags.filter(t => t.isActive)
+    const match = active.find(t => t.name.toLowerCase() === needle)
+      ?? active.find(t => t.name.toLowerCase().includes(needle) || needle.includes(t.name.toLowerCase()))
+    return match?.aiPrompt?.trim() || undefined
+  }
+
   const startAiScan = (id: string) => {
     const file = caseFiles.find(f => f.id === id)
     if (!file?.fileDataUrl) return
@@ -851,7 +794,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         fileName: file.fileName,
         fileType: file.fileType,
         documentType: file.documentType,
-        aiPrompt: file.aiPrompt,
+        aiPrompt: file.aiPrompt ?? resolveTagPrompt(file.documentType),
         fileUrl: file.fileDataUrl,
       }),
     })
@@ -879,8 +822,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [settingsState, setSettingsState] = useState<SettingsData>({
     caseTypes: mockSettingsCaseTypes, industries: mockSettingsIndustries,
     contactTypes: mockSettingsContactTypes, followUpCategories: mockSettingsFollowUpCategories,
-    documentTypes: mockSettingsDocumentTypes, inquiryStatuses: mockSettingsInquiryStatuses,
-    quotationStatuses: mockSettingsQuotationStatuses, insurers: mockSettingsInsurers,
+    documentTypes: mockSettingsDocumentTypes, insurers: mockSettingsInsurers,
   })
   const addSettingsItem = (category: SettingsCategory, name: string) =>
     setSettingsState(prev => ({ ...prev, [category]: [...prev[category], { id: generateId(), name, isActive: true }] }))
@@ -987,93 +929,26 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     createClient().from('required_documents').delete().eq('id', docId).then()
   }
 
-  // ─── Inquiries ────────────────────────────────────────────────────────────
+  // ─── Document Tags ────────────────────────────────────────────────────────
 
-  const addInquiry = (i: Omit<Inquiry, 'id' | 'createdAt' | 'convertedToCase'>): string => {
-    const id = generateId()
-    const now = nowIso()
-    const row: Inquiry = { ...i, id, createdAt: now, updatedAt: now, convertedToCase: false }
-    setInquiries(prev => [row, ...prev])
-    createClient().from('inquiries').insert(toInquiry(row)).then()
-    addActivityLog({
-      actionType: 'INQUIRY_CREATED', title: 'Inquiry created',
-      description: `New inquiry: ${i.inquiryTitle}`, changedBy: i.assignedPerson,
-    })
-    return id
-  }
-  const updateInquiry = (id: string, i: Partial<Inquiry>) => {
-    setInquiries(prev => prev.map(x => x.id === id ? { ...x, ...i, updatedAt: nowIso() } : x))
-    createClient().from('inquiries').update(toInquiry({ ...i, id } as Inquiry)).eq('id', id).then()
-  }
-  const deleteInquiry = (id: string) => {
-    setInquiries(prev => prev.filter(x => x.id !== id))
-    setInquiryQuotations(prev => prev.filter(x => x.inquiryId !== id))
-    setInquiryNotes(prev => prev.filter(x => x.inquiryId !== id))
-    setInquiryDocuments(prev => prev.filter(x => x.inquiryId !== id))
-    createClient().from('inquiries').delete().eq('id', id).then()
-  }
-
-  const addInquiryQuotation = (q: Omit<InquiryQuotation, 'id'>) => {
-    const row: InquiryQuotation = { ...q, id: generateId() }
-    setInquiryQuotations(prev => [...prev, row])
-    setInquiries(prev => prev.map(x => x.id === q.inquiryId ? { ...x, updatedAt: nowIso() } : x))
-    createClient().from('inquiry_quotations').insert(toInquiryQuotation(row)).then()
-  }
-  const updateInquiryQuotation = (id: string, q: Partial<InquiryQuotation>) => {
-    setInquiryQuotations(prev => prev.map(x => x.id === id ? { ...x, ...q } : x))
-    createClient().from('inquiry_quotations').update(toInquiryQuotation({ ...q, id } as InquiryQuotation)).eq('id', id).then()
-  }
-  const deleteInquiryQuotation = (id: string) => {
-    setInquiryQuotations(prev => prev.filter(x => x.id !== id))
-    createClient().from('inquiry_quotations').delete().eq('id', id).then()
-  }
-
-  const addInquiryNote = (n: Omit<InquiryNote, 'id' | 'createdAt'>) => {
-    const now = nowIso()
-    const row: InquiryNote = { ...n, id: generateId(), createdAt: now }
-    setInquiryNotes(prev => [row, ...prev])
-    setInquiries(prev => prev.map(x => x.id === n.inquiryId ? { ...x, updatedAt: now } : x))
-    createClient().from('inquiry_notes').insert({
-      id: row.id, inquiry_id: row.inquiryId, content: row.content,
-      created_by: row.createdBy, created_at: row.createdAt,
+  const addDocumentTag = (t: Omit<DocumentTag, 'id'>) => {
+    const row: DocumentTag = { ...t, id: generateId() }
+    setDocumentTags(prev => [...prev, row])
+    createClient().from('document_tags').insert({
+      id: row.id, name: row.name, ai_prompt: row.aiPrompt, is_active: row.isActive,
     }).then()
   }
-
-  const addInquiryDocument = (d: Omit<InquiryDocument, 'id' | 'uploadedAt'>) => {
-    const now = nowIso()
-    const row: InquiryDocument = { ...d, id: generateId(), uploadedAt: now }
-    setInquiryDocuments(prev => [...prev, row])
-    setInquiries(prev => prev.map(x => x.id === d.inquiryId ? { ...x, updatedAt: now } : x))
-    createClient().from('inquiry_documents').insert({
-      id: row.id, inquiry_id: row.inquiryId, file_name: row.fileName,
-      file_size: row.fileSize, file_type: row.fileType, document_type: row.documentType,
-      uploaded_by: row.uploadedBy, file_data_url: row.fileDataUrl, uploaded_at: row.uploadedAt,
-    }).then()
+  const updateDocumentTag = (id: string, t: Partial<DocumentTag>) => {
+    setDocumentTags(prev => prev.map(x => x.id === id ? { ...x, ...t } : x))
+    const payload: Record<string, unknown> = {}
+    if (t.name !== undefined) payload.name = t.name
+    if (t.aiPrompt !== undefined) payload.ai_prompt = t.aiPrompt
+    if (t.isActive !== undefined) payload.is_active = t.isActive
+    createClient().from('document_tags').update(payload).eq('id', id).then()
   }
-  const deleteInquiryDocument = (id: string) => {
-    setInquiryDocuments(prev => prev.filter(x => x.id !== id))
-    createClient().from('inquiry_documents').delete().eq('id', id).then()
-  }
-
-  const sendQuotationEmail = async (
-    quotationId: string,
-    emailData: { emailTo: string; emailSubject: string; emailBody: string }
-  ) => {
-    const res = await fetch('/api/send-email', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ quotationId, ...emailData }),
-    })
-    if (!res.ok) throw new Error('Failed to send email')
-    const now = nowIso()
-    setInquiryQuotations(prev => prev.map(q => q.id === quotationId ? {
-      ...q, emailSent: true, emailSentAt: now,
-      emailTo: emailData.emailTo, emailSubject: emailData.emailSubject, emailBody: emailData.emailBody,
-    } : q))
-    createClient().from('inquiry_quotations').update({
-      email_sent: true, email_sent_at: now,
-      email_to: emailData.emailTo, email_subject: emailData.emailSubject, email_body: emailData.emailBody,
-    }).eq('id', quotationId).then()
+  const deleteDocumentTag = (id: string) => {
+    setDocumentTags(prev => prev.filter(x => x.id !== id))
+    createClient().from('document_tags').delete().eq('id', id).then()
   }
 
   // ─── Product Master (in-memory) ───────────────────────────────────────────
@@ -1099,26 +974,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const deleteSubmissionLetterTemplate = (id: string) =>
     setSubmissionLetterTemplates(prev => prev.filter(x => x.id !== id))
 
-  const convertInquiryToCase = (inquiryId: string, caseData: Omit<Case, 'id' | 'createdAt'>): string => {
-    const caseId = generateId()
-    const now = nowIso()
-    const newCase: Case = { ...caseData, id: caseId, createdAt: now, updatedAt: now }
-    setCases(prev => [newCase, ...prev])
-    setInquiries(prev => prev.map(x =>
-      x.id === inquiryId ? { ...x, convertedToCase: true, convertedCaseId: caseId, updatedAt: now } : x
-    ))
-    createClient().from('cases').insert(toCase(newCase)).then()
-    createClient().from('inquiries').update({
-      converted_to_case: true, converted_case_id: caseId, updated_at: now,
-    }).eq('id', inquiryId).then()
-    return caseId
-  }
-
   return (
     <StoreContext.Provider value={{
       customers, contacts, cases, caseNotes, followUps, pics,
       users, caseFiles, activityLogs, settingsData: settingsState, workflowTemplates,
-      inquiries, inquiryQuotations, inquiryNotes, inquiryDocuments,
+      documentTags,
       products, productPackages, emailTemplates, caseEmails, telegramUploads, loading,
       addCustomer, updateCustomer, deleteCustomer,
       addContact, updateContact, deleteContact, setPrimaryContact,
@@ -1133,10 +993,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       addWorkflowTemplate, updateWorkflowTemplate, deleteWorkflowTemplate,
       addWorkflowStep, updateWorkflowStep, deleteWorkflowStep,
       addRequiredDocument, updateRequiredDocument, deleteRequiredDocument,
-      addInquiry, updateInquiry, deleteInquiry,
-      addInquiryQuotation, updateInquiryQuotation, deleteInquiryQuotation, sendQuotationEmail,
-      addInquiryNote, addInquiryDocument, deleteInquiryDocument,
-      convertInquiryToCase,
+      addDocumentTag, updateDocumentTag, deleteDocumentTag,
       addProduct, updateProduct, deleteProduct,
       addProductPackage, updateProductPackage, deleteProductPackage,
       submissionLetterTemplates,

@@ -466,7 +466,26 @@ export default function CaseDetailPage() {
                         {d && (
                           <div className="px-4 pb-4">
                             <div className="bg-white rounded-xl border border-emerald-100 p-4">
+                              {d.confidence && (
+                                <div className="flex items-center gap-2 mb-3">
+                                  <span className="text-xs text-gray-400">AI Confidence:</span>
+                                  <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                                    d.confidence === 'high' ? 'bg-emerald-100 text-emerald-700' :
+                                    d.confidence === 'medium' ? 'bg-amber-100 text-amber-700' :
+                                    d.confidence === 'low' ? 'bg-red-100 text-red-700' :
+                                    'bg-gray-100 text-gray-600'
+                                  }`}>
+                                    {d.confidence}
+                                  </span>
+                                </div>
+                              )}
                               <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-3">
+                                {/* n8n-driven pipeline — one flat, doc-type-specific field bucket */}
+                                {Object.entries(d.fields ?? {})
+                                  .filter(([, v]) => v != null && v !== '')
+                                  .map(([key, value]) => (
+                                    <AiField key={key} label={humanizeFieldKey(key)} value={String(value)} />
+                                  ))}
                                 {d.customerName && <AiField label="Principal" value={d.customerName} />}
                                 {d.projectName && <AiField label="Project / Works" value={d.projectName} wide />}
                                 {d.caseType && <AiField label="Bond / Insurance Type" value={d.caseType} />}
@@ -489,6 +508,12 @@ export default function CaseDetailPage() {
                                 {raw.company_address != null && <AiField label="Company Address" value={String(raw.company_address)} wide />}
                                 {d.notes && <AiField label="Notes / References" value={d.notes} wide />}
                               </div>
+                              {d.reasoning && (
+                                <div className="mt-3 pt-3 border-t border-gray-100">
+                                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1">AI Reasoning</p>
+                                  <p className="text-xs text-gray-500">{d.reasoning}</p>
+                                </div>
+                              )}
                             </div>
                           </div>
                         )}
@@ -1102,6 +1127,10 @@ function DetailRow({ label, children }: { label: string; children: React.ReactNo
       {children}
     </div>
   )
+}
+
+function humanizeFieldKey(key: string): string {
+  return key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 }
 
 function AiField({ label, value, wide }: { label: string; value: string; wide?: boolean }) {

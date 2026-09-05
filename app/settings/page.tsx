@@ -10,12 +10,11 @@ import Modal from '@/components/ui/Modal'
 
 // ─── Tab type ─────────────────────────────────────────────────────────────────
 
-type Tab = 'users' | 'caseTypes' | 'industries' | 'contactTypes' | 'followUpCategories' | 'documentTypes' | 'pic' | 'workflowTemplates' | 'quotationWorkflow' | 'insurers' | 'productMaster' | 'productPackages' | 'submissionLetters' | 'emailTemplates'
+type Tab = 'users' | 'caseTypes' | 'industries' | 'contactTypes' | 'followUpCategories' | 'documentTypes' | 'documentTags' | 'pic' | 'workflowTemplates' | 'insurers' | 'productMaster' | 'productPackages' | 'submissionLetters' | 'emailTemplates'
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'users', label: 'Users' },
   { key: 'workflowTemplates', label: 'Workflow Templates' },
-  { key: 'quotationWorkflow', label: 'Quotation Workflow' },
   { key: 'submissionLetters', label: 'Letter Templates' },
   { key: 'emailTemplates', label: 'Email Templates' },
   { key: 'productMaster', label: 'Product Master' },
@@ -26,6 +25,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'contactTypes', label: 'Contact Types' },
   { key: 'followUpCategories', label: 'Follow-Up Categories' },
   { key: 'documentTypes', label: 'Document Types' },
+  { key: 'documentTags', label: 'Document Tags & AI Prompts' },
   { key: 'pic', label: 'Person in Charge' },
 ]
 
@@ -190,6 +190,154 @@ function ListSection({ category }: { category: SettingsCategory }) {
         />
         <button type="submit" className="btn-primary">+ Add</button>
       </form>
+    </div>
+  )
+}
+
+// ─── Document Tags tab ────────────────────────────────────────────────────────
+
+type TagFormData = { name: string; aiPrompt: string; isActive: boolean }
+const emptyTagForm = (): TagFormData => ({ name: '', aiPrompt: '', isActive: true })
+
+function TagModal({ initial, onSave, onClose, title }: {
+  initial: TagFormData
+  onSave: (d: TagFormData) => void
+  onClose: () => void
+  title: string
+}) {
+  const [form, setForm] = useState<TagFormData>(initial)
+  const [error, setError] = useState('')
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!form.name.trim()) { setError('Tag name is required.'); return }
+    onSave(form)
+  }
+
+  return (
+    <Modal isOpen onClose={onClose} title={title} maxWidth="sm">
+      <form onSubmit={submit} className="px-6 py-5 space-y-4">
+        {error && <p className="text-sm text-red-600 bg-red-50 rounded-xl p-3">{error}</p>}
+        <div>
+          <label className="label">Tag Name *</label>
+          <input className="input" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. Letter of Award (LOA)" />
+        </div>
+        <div>
+          <label className="label">AI Extraction Prompt</label>
+          <textarea
+            className="input min-h-[220px] text-xs leading-relaxed font-mono resize-y"
+            value={form.aiPrompt}
+            onChange={e => setForm(p => ({ ...p, aiPrompt: e.target.value }))}
+            placeholder={`Write extraction instructions for documents tagged with this type.\n\nExample:\n  This is a Letter of Award (LOA). Extract:\n  - award_date: date the letter was issued\n  - award_amount: total contract/award value\n  - awarding_body: name of the government agency or company issuing the award`}
+          />
+          <p className="text-xs text-gray-400 mt-1">
+            Sent to n8n when a file tagged with this name is scanned. Edit here and the next scan uses the new wording — no need to touch the n8n workflow.
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <input
+            type="checkbox"
+            id="tagActive"
+            checked={form.isActive}
+            onChange={e => setForm(p => ({ ...p, isActive: e.target.checked }))}
+            className="w-4 h-4 rounded border-gray-300 text-blue-600"
+          />
+          <label htmlFor="tagActive" className="text-sm text-gray-700">Active (available when tagging a document)</label>
+        </div>
+        <div className="flex gap-3 pt-1">
+          <button type="button" onClick={onClose} className="btn-secondary flex-1">Cancel</button>
+          <button type="submit" className="btn-primary flex-1">Save Tag</button>
+        </div>
+      </form>
+    </Modal>
+  )
+}
+
+function DocumentTagsTab() {
+  const { documentTags, addDocumentTag, updateDocumentTag, deleteDocumentTag } = useStore()
+  const [adding, setAdding] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [deleteId, setDeleteId] = useState<string | null>(null)
+
+  const editing = editingId ? documentTags.find(t => t.id === editingId) : null
+
+  return (
+    <div className="card-section">
+      <div className="flex items-center justify-between mb-1">
+        <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Document Tags &amp; AI Prompts</h2>
+        <button onClick={() => setAdding(true)} className="btn-primary text-xs px-4 py-2">+ Add Tag</button>
+      </div>
+      <p className="text-sm text-gray-500 mb-5">
+        The catalog of document tags (LOA, Bank Statement, SSM Certificate, ...) used when tagging a file, each with its own AI extraction prompt sent to n8n on scan.
+      </p>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-xs text-gray-400 border-b border-gray-100">
+              <th className="pb-2 font-semibold">Tag Name</th>
+              <th className="pb-2 font-semibold">AI Prompt</th>
+              <th className="pb-2 font-semibold w-24">Status</th>
+              <th className="pb-2 font-semibold w-56 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-50">
+            {documentTags.map(tag => (
+              <tr key={tag.id}>
+                <td className="py-3 align-top">
+                  <span className={`font-medium ${tag.isActive ? 'text-gray-800' : 'text-gray-400 line-through'}`}>{tag.name}</span>
+                </td>
+                <td className="py-3 align-top max-w-md">
+                  <p className="text-xs text-gray-500 line-clamp-2">
+                    {tag.aiPrompt.trim() || <span className="text-gray-300">No custom prompt set</span>}
+                  </p>
+                </td>
+                <td className="py-3 align-top">
+                  <span className={`text-xs font-medium rounded-full px-2.5 py-1 ${tag.isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                    {tag.isActive ? 'Active' : 'Inactive'}
+                  </span>
+                </td>
+                <td className="py-3 align-top text-right">
+                  <div className="flex items-center gap-2 justify-end">
+                    <button onClick={() => setEditingId(tag.id)} className="btn-xs bg-gray-100 hover:bg-gray-200 text-gray-700">Edit</button>
+                    <button onClick={() => updateDocumentTag(tag.id, { isActive: !tag.isActive })} className={`btn-xs ${tag.isActive ? 'bg-amber-50 text-amber-700 hover:bg-amber-100' : 'bg-green-50 text-green-700 hover:bg-green-100'}`}>
+                      {tag.isActive ? 'Deactivate' : 'Activate'}
+                    </button>
+                    {deleteId === tag.id ? (
+                      <>
+                        <button onClick={() => { deleteDocumentTag(tag.id); setDeleteId(null) }} className="btn-xs bg-red-600 text-white hover:bg-red-700">Confirm</button>
+                        <button onClick={() => setDeleteId(null)} className="btn-xs bg-gray-100 text-gray-600">Cancel</button>
+                      </>
+                    ) : (
+                      <button onClick={() => setDeleteId(tag.id)} className="btn-xs bg-red-50 text-red-500 hover:bg-red-100">Delete</button>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+            {documentTags.length === 0 && (
+              <tr><td colSpan={4} className="py-4 text-sm text-gray-400">No document tags yet — add one to start building the catalog.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {adding && (
+        <TagModal
+          title="Add Document Tag"
+          initial={emptyTagForm()}
+          onClose={() => setAdding(false)}
+          onSave={d => { addDocumentTag(d); setAdding(false) }}
+        />
+      )}
+      {editing && (
+        <TagModal
+          title="Edit Document Tag"
+          initial={{ name: editing.name, aiPrompt: editing.aiPrompt, isActive: editing.isActive }}
+          onClose={() => setEditingId(null)}
+          onSave={d => { updateDocumentTag(editing.id, d); setEditingId(null) }}
+        />
+      )}
     </div>
   )
 }
@@ -1602,22 +1750,6 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* ── Quotation Workflow tab ─────────────────────────────────────────── */}
-      {tab === 'quotationWorkflow' && (
-        <div className="card-section space-y-8">
-          <div>
-            <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1">Inquiry Statuses</h2>
-            <p className="text-sm text-gray-500 mb-5">Stages an inquiry moves through from first contact to close.</p>
-            <ListSection category="inquiryStatuses" />
-          </div>
-          <div className="border-t border-gray-100 pt-8">
-            <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1">Quotation Statuses</h2>
-            <p className="text-sm text-gray-500 mb-5">Statuses for individual insurer quotations within an inquiry.</p>
-            <ListSection category="quotationStatuses" />
-          </div>
-        </div>
-      )}
-
       {/* ── Product Master tab ─────────────────────────────────────────────── */}
       {tab === 'productMaster' && (
         <div className="card-section">
@@ -1689,6 +1821,9 @@ export default function SettingsPage() {
           <ListSection category="documentTypes" />
         </div>
       )}
+
+      {/* ── Document Tags tab ───────────────────────────────────────────────── */}
+      {tab === 'documentTags' && <DocumentTagsTab />}
 
       {/* ── Person in Charge tab ───────────────────────────────────────────── */}
       {tab === 'submissionLetters' && <SubmissionLettersTab />}

@@ -29,17 +29,23 @@ export default function AIScanPanel({ file, onClose }: Props) {
   const { currentUser } = useAuth()
   const [saved, setSaved] = useState(false)
   const [form, setForm] = useState<AiExtractedData>(() => ({
-    ...(file.aiExtractedData ?? {
-      customerName: '', projectName: '', caseType: '',
-      amount: '', bondValue: '', expiryDate: '', notes: '',
-    }),
+    // Base defaults always applied first — aiExtractedData from the n8n
+    // pipeline may only carry { fields, reasoning, confidence } with none
+    // of these, and leaving them undefined would make the fixed-form
+    // inputs below flip from uncontrolled to controlled.
+    customerName: '', projectName: '', caseType: '',
+    amount: '', bondValue: '', expiryDate: '', notes: '',
+    ...(file.aiExtractedData ?? {}),
   }))
 
-  const setField = (key: keyof Omit<AiExtractedData, 'raw'>, value: string) =>
+  const setField = (key: keyof Omit<AiExtractedData, 'raw' | 'fields'>, value: string) =>
     setForm(f => ({ ...f, [key]: value }))
 
   const setRaw = (key: string, value: string) =>
     setForm(f => ({ ...f, raw: { ...f.raw, [key]: value } }))
+
+  const setDynamicField = (key: string, value: string) =>
+    setForm(f => ({ ...f, fields: { ...f.fields, [key]: value } }))
 
   const save = () => {
     updateCaseFile(file.id, { aiExtractedData: form })
@@ -60,6 +66,13 @@ export default function AIScanPanel({ file, onClose }: Props) {
 
   const raw = (form.raw ?? {}) as Record<string, unknown>
   const isSSTDoc = Object.keys(raw).some(k => SST_KEYS.has(k))
+  const hasDynamicFields = Object.keys(form.fields ?? {}).length > 0
+
+  const confidenceBadge =
+    form.confidence === 'high' ? 'bg-emerald-100 text-emerald-700' :
+    form.confidence === 'medium' ? 'bg-amber-100 text-amber-700' :
+    form.confidence === 'low' ? 'bg-red-100 text-red-700' :
+    'bg-gray-100 text-gray-600'
 
   return (
     <Modal isOpen onClose={onClose} title="Extracted Data" maxWidth="lg">
@@ -91,8 +104,18 @@ export default function AIScanPanel({ file, onClose }: Props) {
               </p>
             </div>
 
+            {form.confidence && (
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-xs text-gray-400">AI Confidence:</span>
+                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${confidenceBadge}`}>{form.confidence}</span>
+              </div>
+            )}
+
             <div className="space-y-3 mb-6">
-              {file.aiPrompt ? (
+              {hasDynamicFields ? (
+                // n8n-driven pipeline — one flat, doc-type-specific field bucket
+                <CustomRawFields raw={form.fields as Record<string, unknown>} onChange={setDynamicField} />
+              ) : file.aiPrompt ? (
                 // Custom prompt — show raw extracted fields directly, no remapping confusion
                 <CustomRawFields raw={raw} onChange={setRaw} />
               ) : (
@@ -133,6 +156,13 @@ export default function AIScanPanel({ file, onClose }: Props) {
                 </>
               )}
             </div>
+
+            {form.reasoning && (
+              <div className="bg-gray-50 border border-gray-100 rounded-xl p-3 mb-4">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-1">AI Reasoning</p>
+                <p className="text-xs text-gray-600">{form.reasoning}</p>
+              </div>
+            )}
 
             <div className="flex gap-3 mb-3">
               <button onClick={onClose} className="btn-secondary flex-1">Cancel</button>

@@ -74,7 +74,7 @@ const nav = [
 ]
 
 function GlobalSearch() {
-  const { cases, customers, inquiries } = useStore()
+  const { cases, customers } = useStore()
   const router = useRouter()
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
@@ -92,10 +92,9 @@ function GlobalSearch() {
   const results = q.length < 2 ? [] : [
     ...customers.filter(c => c.customerName.toLowerCase().includes(q) || c.companyRegistrationNo.toLowerCase().includes(q)).slice(0, 3).map(c => ({ type: 'Customer' as const, label: c.customerName, sub: c.businessType, href: `/customers/${c.id}` })),
     ...cases.filter(c => c.caseTitle.toLowerCase().includes(q) || c.customerName.toLowerCase().includes(q) || (c.bondPrincipal ?? '').toLowerCase().includes(q) || c.caseType.toLowerCase().includes(q)).slice(0, 4).map(c => ({ type: 'Case' as const, label: c.caseTitle, sub: c.bondPrincipal && c.bondPrincipal !== c.customerName ? `${c.customerName} → ${c.bondPrincipal}` : c.customerName, href: `/cases/${c.id}` })),
-    ...inquiries.filter(i => i.inquiryTitle.toLowerCase().includes(q) || i.customerName.toLowerCase().includes(q)).slice(0, 2).map(i => ({ type: 'Inquiry' as const, label: i.inquiryTitle, sub: i.customerName, href: `/inquiries/${i.id}` })),
   ]
 
-  const typeColor: Record<string, string> = { Customer: 'bg-blue-100 text-blue-700', Case: 'bg-violet-100 text-violet-700', Inquiry: 'bg-teal-100 text-teal-700' }
+  const typeColor: Record<string, string> = { Customer: 'bg-blue-100 text-blue-700', Case: 'bg-violet-100 text-violet-700' }
 
   return (
     <div ref={ref} className="relative px-3 pb-2">
