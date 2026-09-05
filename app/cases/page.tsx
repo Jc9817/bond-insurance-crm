@@ -13,6 +13,7 @@ import StatusBadge from '@/components/ui/StatusBadge'
 import Modal from '@/components/ui/Modal'
 import KanbanBoard from '@/components/ui/KanbanBoard'
 import SearchableSelect from '@/components/ui/SearchableSelect'
+import CustomerForm, { emptyCustomerForm } from '@/components/ui/CustomerForm'
 
 type FormData = Omit<Case, 'id' | 'createdAt'>
 const emptyCase = (customers: { id: string; customerName: string }[]): FormData => ({
@@ -40,10 +41,17 @@ function CaseForm({ initial, customers, pics, onSave, onCancel }: {
   onSave: (d: FormData) => void
   onCancel: () => void
 }) {
-  const { workflowTemplates, settingsData, products, productPackages } = useStore()
+  const { workflowTemplates, settingsData, products, productPackages, addCustomer } = useStore()
   const [form, setForm] = useState<FormData>(initial)
   const [error, setError] = useState('')
   const [selectedPkgId, setSelectedPkgId] = useState('')
+  const [addingCustomer, setAddingCustomer] = useState(false)
+
+  const saveNewCustomer = (d: Parameters<typeof addCustomer>[0]) => {
+    const newId = addCustomer(d)
+    setForm(prev => ({ ...prev, customerId: newId, customerName: d.customerName }))
+    setAddingCustomer(false)
+  }
 
   const set = (k: keyof FormData) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -113,6 +121,7 @@ function CaseForm({ initial, customers, pics, onSave, onCancel }: {
   }
 
   return (
+    <>
     <form onSubmit={submit} className="px-6 py-5 space-y-4">
       {error && <p className="text-sm text-red-600 bg-red-50 rounded-xl p-3">{error}</p>}
 
@@ -139,7 +148,12 @@ function CaseForm({ initial, customers, pics, onSave, onCancel }: {
         </div>
       </div>
       <div>
-        <label className="label">Main Contractor *</label>
+        <div className="flex items-center justify-between">
+          <label className="label">Main Contractor *</label>
+          <button type="button" onClick={() => setAddingCustomer(true)} className="text-xs font-semibold text-blue-600 hover:underline mb-1.5">
+            + New Contractor
+          </button>
+        </div>
         <SearchableSelect
           required
           value={form.customerId}
@@ -252,6 +266,11 @@ function CaseForm({ initial, customers, pics, onSave, onCancel }: {
         <button type="submit" className="btn-primary flex-1">Save Case</button>
       </div>
     </form>
+
+    <Modal isOpen={addingCustomer} onClose={() => setAddingCustomer(false)} title="New Contractor">
+      <CustomerForm initial={emptyCustomerForm} onSave={saveNewCustomer} onCancel={() => setAddingCustomer(false)} />
+    </Modal>
+    </>
   )
 }
 

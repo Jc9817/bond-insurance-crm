@@ -21,6 +21,7 @@ import CustomerEmailPanel from '@/components/ui/CustomerEmailPanel'
 import OpsNotifyPanel from '@/components/ui/OpsNotifyPanel'
 import QuotationDocumentPanel from '@/components/ui/QuotationDocumentPanel'
 import SearchableSelect from '@/components/ui/SearchableSelect'
+import CustomerForm, { emptyCustomerForm } from '@/components/ui/CustomerForm'
 
 const statusSelectStyle: Record<CaseStatus, string> = {
   Created: 'border-gray-200 text-gray-700 bg-gray-100',
@@ -40,7 +41,7 @@ export default function CaseDetailPage() {
   const {
     cases, customers, contacts, caseNotes, followUps, pics, workflowTemplates,
     activityLogs, updateCase, addCase, addCaseNote, addFollowUp, toggleFollowUp, deleteFollowUp,
-    addActivityLog, caseFiles, settingsData, products, productPackages,
+    addActivityLog, caseFiles, settingsData, products, productPackages, addCustomer,
   } = useStore()
   const { currentUser } = useAuth()
 
@@ -56,6 +57,7 @@ export default function CaseDetailPage() {
   const [editInfoModal, setEditInfoModal] = useState(false)
   const [editInfoForm, setEditInfoForm] = useState({ caseTitle: '', caseType: '', amount: 0, personInCharge: '', bondPrincipal: '', bondExpiryDate: '', waitingFor: '', targetInsurer: '', customerId: '', requestType: '', selectedProducts: [] as CaseProduct[] })
   const [editPkgId, setEditPkgId] = useState('')
+  const [addingCustomer, setAddingCustomer] = useState(false)
   const [closingModal, setClosingModal] = useState(false)
   const [closingForm, setClosingForm] = useState({
     result: '', closingRemarks: '', lossReason: '', finalAmount: 0, finalInsurer: '', acceptanceDate: '', acceptedBy: '',
@@ -905,7 +907,12 @@ export default function CaseDetailPage() {
           className="px-6 py-5 space-y-4"
         >
           <div>
-            <label className="label">Main Contractor *</label>
+            <div className="flex items-center justify-between">
+              <label className="label">Main Contractor *</label>
+              <button type="button" onClick={() => setAddingCustomer(true)} className="text-xs font-semibold text-blue-600 hover:underline mb-1.5">
+                + New Contractor
+              </button>
+            </div>
             <SearchableSelect
               required
               value={editInfoForm.customerId}
@@ -1045,6 +1052,18 @@ export default function CaseDetailPage() {
             <button type="submit" className="btn-primary flex-1">Save Changes</button>
           </div>
         </form>
+      </Modal>
+
+      <Modal isOpen={addingCustomer} onClose={() => setAddingCustomer(false)} title="New Contractor">
+        <CustomerForm
+          initial={emptyCustomerForm}
+          onSave={d => {
+            const newId = addCustomer(d)
+            setEditInfoForm(p => ({ ...p, customerId: newId }))
+            setAddingCustomer(false)
+          }}
+          onCancel={() => setAddingCustomer(false)}
+        />
       </Modal>
 
       {/* ── Add Follow-Up Modal ───────────────────────────────────────────────── */}

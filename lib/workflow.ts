@@ -88,7 +88,7 @@ export function getStepDocumentCompleteness(
   const required = docs.filter(d => d.required)
   if (required.length === 0) return 100
   const uploaded = required.filter(doc =>
-    caseFiles.some(f => f.caseId === caseId && f.requiredDocumentId === doc.id)
+    caseFiles.some(f => f.caseId === caseId && f.requiredDocumentId === doc.id && f.aiStatus !== 'Failed')
   ).length
   return Math.round((uploaded / required.length) * 100)
 }
@@ -110,7 +110,7 @@ export function getDocumentCompleteness(
   const required = getRequiredDocs(template)
   if (required.length === 0) return 100
   const uploaded = required.filter(doc =>
-    caseFiles.some(f => f.caseId === caseId && f.requiredDocumentId === doc.id)
+    caseFiles.some(f => f.caseId === caseId && f.requiredDocumentId === doc.id && f.aiStatus !== 'Failed')
   ).length
   return Math.round((uploaded / required.length) * 100)
 }
@@ -153,7 +153,7 @@ export function getMissingRequiredDocs(
 ): RequiredDocument[] {
   if (!template) return []
   return getRequiredDocs(template).filter(
-    doc => !caseFiles.some(f => f.caseId === caseId && f.requiredDocumentId === doc.id)
+    doc => !caseFiles.some(f => f.caseId === caseId && f.requiredDocumentId === doc.id && f.aiStatus !== 'Failed')
   )
 }
 

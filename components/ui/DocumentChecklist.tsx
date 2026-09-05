@@ -167,7 +167,7 @@ export default function DocumentChecklist({ caseId, caseTitle, template, caseFil
   // Superseded files are legacy leftovers from the old per-slot upload model — hide them from the live list.
   const activeFiles = caseFiles.filter(f => f.caseId === caseId && !f.supersededBy)
 
-  const uploadedRequiredCount = requiredDocs.filter(doc => activeFiles.some(f => f.requiredDocumentId === doc.id)).length
+  const uploadedRequiredCount = requiredDocs.filter(doc => activeFiles.some(f => f.requiredDocumentId === doc.id && f.aiStatus !== 'Failed')).length
   const overallCompleteness = requiredDocs.length > 0 ? Math.round((uploadedRequiredCount / requiredDocs.length) * 100) : 100
 
   const uploadToStorage = async (file: File, caseId: string): Promise<string> => {
@@ -301,7 +301,6 @@ export default function DocumentChecklist({ caseId, caseTitle, template, caseFil
               }}
               onReview={() => onScanReady(f)}
               onView={() => setViewingFile(f)}
-              onDownload={() => downloadFile(f)}
               onSendToInbox={() => sendCaseFileToInbox(f)}
             />
           ))}
@@ -325,13 +324,12 @@ type FileRowProps = {
   onScan: () => void
   onReview: () => void
   onView: () => void
-  onDownload: () => void
   onSendToInbox: () => void
 }
 
 function FileRow({
   file, docs, deleteConfirmId, setDeleteConfirmId,
-  onRetag, onDelete, onScan, onReview, onView, onDownload, onSendToInbox,
+  onRetag, onDelete, onScan, onReview, onView, onSendToInbox,
 }: FileRowProps) {
   // Telegram-sourced files now default to a "Letter of Award" tag rather than
   // a fixed placeholder, so origin has to be read off `uploadedBy` instead.
@@ -397,30 +395,6 @@ function FileRow({
       </select>
 
       <div className="flex gap-1.5 shrink-0 items-center">
-        <button
-          onClick={file.fileDataUrl ? onView : undefined}
-          disabled={!file.fileDataUrl}
-          title={file.fileDataUrl ? 'View file' : 'File preview not available'}
-          className={`btn-xs flex items-center gap-1 ${
-            file.fileDataUrl
-              ? 'bg-white border border-gray-200 hover:bg-blue-50 text-gray-600 hover:text-blue-700'
-              : 'bg-gray-50 border border-gray-100 text-gray-300 cursor-not-allowed'
-          }`}
-        >
-          View
-        </button>
-        <button
-          onClick={file.fileDataUrl ? onDownload : undefined}
-          disabled={!file.fileDataUrl}
-          title={file.fileDataUrl ? 'Download file' : 'File not available for download'}
-          className={`btn-xs flex items-center gap-1 ${
-            file.fileDataUrl
-              ? 'bg-white border border-gray-200 hover:bg-green-50 text-gray-600 hover:text-green-700'
-              : 'bg-gray-50 border border-gray-100 text-gray-300 cursor-not-allowed'
-          }`}
-        >
-          Download
-        </button>
         {fromTelegram && (
           <button
             onClick={onSendToInbox}

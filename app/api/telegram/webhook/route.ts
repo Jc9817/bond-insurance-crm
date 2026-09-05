@@ -97,7 +97,10 @@ async function createCaseFromUpload(pending: PendingFile) {
     // FK check unconditionally; staff fill in the real customer afterward.
     customer_id: null,
     customer_name: '',
-    case_type: '',
+    // Every bot-created case starts from a Letter of Award, which only the
+    // Bond Workflow template defines — leaving this blank meant the Files
+    // tab had no workflow template to pull tag options from at all.
+    case_type: 'Bond Workflow',
     amount: 0,
     person_in_charge: '',
     current_status: 'Created',
