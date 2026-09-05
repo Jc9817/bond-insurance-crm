@@ -1,12 +1,14 @@
-// ─── n8n Doc Flow webhook ───────────────────────────────────────────────────
-// Shared by /api/notify-n8n (client-triggered case file uploads) and the
-// Telegram webhook (server-to-server, called directly to skip an extra hop).
+// ─── n8n webhooks ───────────────────────────────────────────────────────────
+// Shared by /api/notify-n8n (client-triggered events) and the Telegram
+// webhook (server-to-server, called directly to skip an extra hop).
+// webhookUrl defaults to the DocFlow workflow; pass a different one (e.g.
+// N8N_AI_SCAN_WEBHOOK_URL) to target a separate n8n workflow/webhook node.
 
 export async function notifyDocFlowWebhook(
-  payload: Record<string, unknown>
+  payload: Record<string, unknown>,
+  webhookUrl: string | undefined = process.env.N8N_DOCFLOW_WEBHOOK_URL
 ): Promise<{ ok: boolean; status?: number; error?: string }> {
-  const webhookUrl = process.env.N8N_DOCFLOW_WEBHOOK_URL
-  if (!webhookUrl) return { ok: false, error: 'N8N_DOCFLOW_WEBHOOK_URL not configured' }
+  if (!webhookUrl) return { ok: false, error: 'n8n webhook URL not configured' }
 
   try {
     const res = await fetch(webhookUrl, {
