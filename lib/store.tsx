@@ -11,7 +11,7 @@ import type {
 import {
   mockPics, mockUsers, mockWorkflowTemplates,
   mockSettingsCaseTypes, mockSettingsIndustries, mockSettingsContactTypes,
-  mockSettingsFollowUpCategories, mockSettingsDocumentTypes,
+  mockSettingsFollowUpCategories,
   mockSettingsInsurers, mockProducts, mockProductPackages,
   mockSubmissionLetterTemplates,
 } from './mock-data'
@@ -312,7 +312,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     industries: mockSettingsIndustries,
     contactTypes: mockSettingsContactTypes,
     followUpCategories: mockSettingsFollowUpCategories,
-    documentTypes: mockSettingsDocumentTypes,
     insurers: mockSettingsInsurers,
   })
   const [loading, setLoading] = useState(true)
@@ -822,7 +821,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [settingsState, setSettingsState] = useState<SettingsData>({
     caseTypes: mockSettingsCaseTypes, industries: mockSettingsIndustries,
     contactTypes: mockSettingsContactTypes, followUpCategories: mockSettingsFollowUpCategories,
-    documentTypes: mockSettingsDocumentTypes, insurers: mockSettingsInsurers,
+    insurers: mockSettingsInsurers,
   })
   const addSettingsItem = (category: SettingsCategory, name: string) =>
     setSettingsState(prev => ({ ...prev, [category]: [...prev[category], { id: generateId(), name, isActive: true }] }))

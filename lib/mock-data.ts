@@ -744,20 +744,6 @@ export const mockSettingsFollowUpCategories: SettingsItem[] = [
   { id: 'sfu7', name: 'Other', isActive: true },
 ]
 
-export const mockSettingsDocumentTypes: SettingsItem[] = [
-  { id: 'sdt1', name: 'Contract / Award Letter', isActive: true },
-  { id: 'sdt2', name: 'Financial Statement', isActive: true },
-  { id: 'sdt3', name: 'SSM Certificate', isActive: true },
-  { id: 'sdt4', name: 'Application Form', isActive: true },
-  { id: 'sdt5', name: 'Quotation', isActive: true },
-  { id: 'sdt6', name: 'Company Profile', isActive: true },
-  { id: 'sdt7', name: 'Bank Statement', isActive: true },
-  { id: 'sdt8', name: 'Identity Card', isActive: true },
-  { id: 'sdt9', name: 'Previous Policy / Bond', isActive: true },
-  { id: 'sdt10', name: 'Supporting Document', isActive: true },
-  { id: 'sdt11', name: 'Other', isActive: true },
-]
-
 export const mockSettingsInsurers: SettingsItem[] = [
   { id: 'sins1', name: 'Allianz Malaysia', isActive: true },
   { id: 'sins2', name: 'Etiqa Takaful', isActive: true },

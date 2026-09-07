@@ -10,7 +10,7 @@ import Modal from '@/components/ui/Modal'
 
 // ─── Tab type ─────────────────────────────────────────────────────────────────
 
-type Tab = 'users' | 'caseTypes' | 'industries' | 'contactTypes' | 'followUpCategories' | 'documentTypes' | 'documentTags' | 'pic' | 'workflowTemplates' | 'insurers' | 'productMaster' | 'productPackages' | 'submissionLetters' | 'emailTemplates'
+type Tab = 'users' | 'caseTypes' | 'industries' | 'contactTypes' | 'followUpCategories' | 'documentTags' | 'pic' | 'workflowTemplates' | 'insurers' | 'productMaster' | 'productPackages' | 'submissionLetters' | 'emailTemplates'
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'users', label: 'Users' },
@@ -24,7 +24,6 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'industries', label: 'Industries' },
   { key: 'contactTypes', label: 'Contact Types' },
   { key: 'followUpCategories', label: 'Follow-Up Categories' },
-  { key: 'documentTypes', label: 'Document Types' },
   { key: 'documentTags', label: 'Document Tags & AI Prompts' },
   { key: 'pic', label: 'Person in Charge' },
 ]
@@ -1810,15 +1809,6 @@ export default function SettingsPage() {
           <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-5">Follow-Up Categories</h2>
           <p className="text-sm text-gray-500 mb-5">Categories used to classify follow-up tasks.</p>
           <ListSection category="followUpCategories" />
-        </div>
-      )}
-
-      {/* ── Document Types tab ─────────────────────────────────────────────── */}
-      {tab === 'documentTypes' && (
-        <div className="card-section">
-          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-5">Document Types</h2>
-          <p className="text-sm text-gray-500 mb-5">Document categories used when uploading files to a case.</p>
-          <ListSection category="documentTypes" />
         </div>
       )}
 

@@ -354,7 +354,6 @@ export type SettingsCategory =
   | 'industries'
   | 'contactTypes'
   | 'followUpCategories'
-  | 'documentTypes'
   | 'insurers'
 
 // ─── Workflow Templates ───────────────────────────────────────────────────────
