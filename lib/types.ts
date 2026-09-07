@@ -394,20 +394,6 @@ export type WorkflowTemplate = {
   isActive: boolean
 }
 
-// ─── Document Tags ────────────────────────────────────────────────────────────
-// Centralized catalog of document tags (LOA, Bank Statement, SSM Certificate,
-// ...) with a per-tag AI prompt, editable in Settings. Resolved by name
-// against a case_file's documentType when triggering an AI scan, so the same
-// prompt is used regardless of which workflow template/step the file came
-// through.
-
-export type DocumentTag = {
-  id: string
-  name: string
-  aiPrompt: string
-  isActive: boolean
-}
-
 // ─── Submission Letter Templates ─────────────────────────────────────────────
 
 export type SubmissionLetterDocItem = {

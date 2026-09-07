@@ -5,7 +5,7 @@ import { createClient } from '@/utils/supabase/client'
 import type {
   Customer, Contact, Case, CaseNote, FollowUp, PicUser,
   User, CaseFile, ActivityLog, SettingsItem, SettingsCategory,
-  WorkflowTemplate, RequiredDocument, WorkflowStep, DocumentTag,
+  WorkflowTemplate, RequiredDocument, WorkflowStep,
   Product, ProductPackage, SubmissionLetterTemplate, EmailTemplate, CaseEmailLog, TelegramUpload,
 } from './types'
 import {
@@ -32,7 +32,6 @@ type StoreCtx = {
   activityLogs: ActivityLog[]
   settingsData: SettingsData
   workflowTemplates: WorkflowTemplate[]
-  documentTags: DocumentTag[]
   products: Product[]
   productPackages: ProductPackage[]
   emailTemplates: EmailTemplate[]
@@ -89,10 +88,6 @@ type StoreCtx = {
   addRequiredDocument: (templateId: string, doc: Omit<RequiredDocument, 'id' | 'caseTypeId'>) => void
   updateRequiredDocument: (templateId: string, docId: string, doc: Partial<RequiredDocument>) => void
   deleteRequiredDocument: (templateId: string, docId: string) => void
-
-  addDocumentTag: (t: Omit<DocumentTag, 'id'>) => void
-  updateDocumentTag: (id: string, t: Partial<DocumentTag>) => void
-  deleteDocumentTag: (id: string) => void
 
   addProduct: (p: Omit<Product, 'id'>) => void
   updateProduct: (id: string, p: Partial<Product>) => void
@@ -300,7 +295,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [caseFiles, setCaseFiles] = useState<CaseFile[]>([])
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([])
   const [workflowTemplates, setWorkflowTemplates] = useState<WorkflowTemplate[]>([])
-  const [documentTags, setDocumentTags] = useState<DocumentTag[]>([])
   const [products, setProducts] = useState<Product[]>(mockProducts)
   const [productPackages, setProductPackages] = useState<ProductPackage[]>(mockProductPackages)
   const [submissionLetterTemplates, setSubmissionLetterTemplates] = useState<SubmissionLetterTemplate[]>(mockSubmissionLetterTemplates)
@@ -346,7 +340,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       { data: templates },
       { data: steps },
       { data: docs },
-      { data: tagRows },
       { data: templateRows },
       { data: caseEmailRows },
       { data: telegramUploadRows },
@@ -361,7 +354,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       sb.from('workflow_templates').select('*'),
       sb.from('workflow_steps').select('*').order('order'),
       sb.from('required_documents').select('*'),
-      sb.from('document_tags').select('*').order('name'),
       sb.from('email_templates').select('*').order('created_at'),
       sb.from('case_emails').select('*').order('sent_at', { ascending: false }),
       sb.from('telegram_uploads').select('*').order('uploaded_at', { ascending: false }),
@@ -375,9 +367,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (fuRows) setFollowUps(fuRows.map(fromFollowUp))
     if (fileRows) setCaseFiles(fileRows.map(fromCaseFile))
     if (logRows) setActivityLogs(logRows.map(fromActivityLog))
-    if (tagRows) setDocumentTags(tagRows.map(r => ({
-      id: r.id, name: r.name ?? '', aiPrompt: r.ai_prompt ?? '', isActive: r.is_active ?? true,
-    })))
     if (caseEmailRows) setCaseEmails(caseEmailRows.map(fromCaseEmailLog))
     if (telegramUploadRows) setTelegramUploads(telegramUploadRows.map(fromTelegramUpload))
     if (templateRows) {
@@ -765,16 +754,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // Scanning itself happens in n8n, not here — this just fires the trigger
   // and flips the file to "Processing". n8n reports the actual result
   // (Extracted + data, or Failed) back via POST /api/ai-scan/callback.
-  // Resolve the file's tag (e.g. "Bank Statement") against the Document Tags
-  // catalog to find the AI prompt to send n8n — exact name match first, then
-  // partial, same lookup the callback route does for required-document tagging.
-  const resolveTagPrompt = (documentType: string): string | undefined => {
-    const needle = documentType.trim().toLowerCase()
-    if (!needle) return undefined
-    const active = documentTags.filter(t => t.isActive)
-    const match = active.find(t => t.name.toLowerCase() === needle)
-      ?? active.find(t => t.name.toLowerCase().includes(needle) || needle.includes(t.name.toLowerCase()))
-    return match?.aiPrompt?.trim() || undefined
+  //
+  // Prompt resolution: file.aiPrompt (an explicit per-file override, e.g.
+  // Quotation panel) if set, else the checklist slot's own prompt —
+  // required_documents.aiPrompt for file.requiredDocumentId, edited under
+  // Settings → Workflow Templates → Required Documents. Files are always
+  // tagged to a required document before being scanned, so there's no
+  // untagged case to fall back for.
+  const resolveRequiredDocPrompt = (requiredDocumentId: string | undefined): string | undefined => {
+    if (!requiredDocumentId) return undefined
+    for (const t of workflowTemplates) {
+      const doc = t.requiredDocuments.find(d => d.id === requiredDocumentId)
+      if (doc?.aiPrompt?.trim()) return doc.aiPrompt.trim()
+    }
+    return undefined
   }
 
   const startAiScan = (id: string) => {
@@ -793,7 +786,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         fileName: file.fileName,
         fileType: file.fileType,
         documentType: file.documentType,
-        aiPrompt: file.aiPrompt ?? resolveTagPrompt(file.documentType),
+        aiPrompt: file.aiPrompt ?? resolveRequiredDocPrompt(file.requiredDocumentId),
         fileUrl: file.fileDataUrl,
       }),
     })
@@ -928,28 +921,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     createClient().from('required_documents').delete().eq('id', docId).then()
   }
 
-  // ─── Document Tags ────────────────────────────────────────────────────────
-
-  const addDocumentTag = (t: Omit<DocumentTag, 'id'>) => {
-    const row: DocumentTag = { ...t, id: generateId() }
-    setDocumentTags(prev => [...prev, row])
-    createClient().from('document_tags').insert({
-      id: row.id, name: row.name, ai_prompt: row.aiPrompt, is_active: row.isActive,
-    }).then()
-  }
-  const updateDocumentTag = (id: string, t: Partial<DocumentTag>) => {
-    setDocumentTags(prev => prev.map(x => x.id === id ? { ...x, ...t } : x))
-    const payload: Record<string, unknown> = {}
-    if (t.name !== undefined) payload.name = t.name
-    if (t.aiPrompt !== undefined) payload.ai_prompt = t.aiPrompt
-    if (t.isActive !== undefined) payload.is_active = t.isActive
-    createClient().from('document_tags').update(payload).eq('id', id).then()
-  }
-  const deleteDocumentTag = (id: string) => {
-    setDocumentTags(prev => prev.filter(x => x.id !== id))
-    createClient().from('document_tags').delete().eq('id', id).then()
-  }
-
   // ─── Product Master (in-memory) ───────────────────────────────────────────
 
   const addProduct = (p: Omit<Product, 'id'>) =>
@@ -977,7 +948,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     <StoreContext.Provider value={{
       customers, contacts, cases, caseNotes, followUps, pics,
       users, caseFiles, activityLogs, settingsData: settingsState, workflowTemplates,
-      documentTags,
       products, productPackages, emailTemplates, caseEmails, telegramUploads, loading,
       addCustomer, updateCustomer, deleteCustomer,
       addContact, updateContact, deleteContact, setPrimaryContact,
@@ -992,7 +962,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       addWorkflowTemplate, updateWorkflowTemplate, deleteWorkflowTemplate,
       addWorkflowStep, updateWorkflowStep, deleteWorkflowStep,
       addRequiredDocument, updateRequiredDocument, deleteRequiredDocument,
-      addDocumentTag, updateDocumentTag, deleteDocumentTag,
       addProduct, updateProduct, deleteProduct,
       addProductPackage, updateProductPackage, deleteProductPackage,
       submissionLetterTemplates,

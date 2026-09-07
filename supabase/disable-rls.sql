@@ -11,4 +11,3 @@ alter table activity_logs disable row level security;
 alter table workflow_templates disable row level security;
 alter table workflow_steps disable row level security;
 alter table required_documents disable row level security;
-alter table document_tags disable row level security;

@@ -156,18 +156,3 @@ create table if not exists required_documents (
   ai_prompt text
 );
 alter table required_documents disable row level security;
-
--- ─── Document Tags ────────────────────────────────────────────────────────────
--- Centralized catalog of document tags (LOA, Bank Statement, SSM Certificate, ...)
--- with a per-tag AI prompt, editable from Settings → Document Tags & AI Prompts.
--- Resolved by name against case_files.document_type when triggering an AI scan,
--- so the same prompt is used no matter which workflow template/step the file
--- came through.
-create table if not exists document_tags (
-  id text primary key,
-  name text not null unique,
-  ai_prompt text default '',
-  is_active boolean default true,
-  created_at timestamptz default now()
-);
-alter table document_tags disable row level security;

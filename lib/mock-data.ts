@@ -4,11 +4,7 @@
   Product, ProductPackage, SubmissionLetterTemplate,
 } from './types'
 
-export const mockPics: PicUser[] = [
-  { id: 'pic1', name: 'Ahmad Farid', email: 'ahmad@bondinsurance.com' },
-  { id: 'pic2', name: 'Nurul Ain', email: 'nurul@bondinsurance.com' },
-  { id: 'pic3', name: 'David Lim', email: 'david@bondinsurance.com' },
-]
+export const mockPics: PicUser[] = []
 
 export const mockCustomers: Customer[] = [
   {
@@ -841,99 +837,7 @@ export const mockWorkflowTemplates: WorkflowTemplate[] = [
         name: 'Letter of Award (LOA)',
         description: 'Surat Setuju Terima (SST) or Letter of Award from the project owner confirming contract award',
         required: true, acceptedFileTypes: ['PDF', 'DOCX'], isActive: true,
-        aiPrompt: `This is a Surat Setuju Terima (SST) / Letter of Award / Contract Acceptance from a Malaysian government agency.
-
-Extract the following fields and return as a single JSON object:
-
-1. customerName
-   The CONTRACTOR's full company name AND registration number
-   Look for: company awarded the contract — "Enterprise", "Sdn. Bhd.", "Sdn Bhd", "Trading", "Resources"
-   NOT the government agency or university
-   Example: "MASAYU ENTERPRISE 198003027177 (000504744-H)"
-
-2. projectName
-   The full project/works description exactly as written in the document
-   Look for: "Kerja-Kerja", "Skop Kerja", "Perihal Kerja", or the bold heading after "Sebutharga Untuk"
-   Copy the full text — do not shorten or summarise
-
-3. caseType
-   The type of bond or security required
-   Look for: "Bon Pelaksanaan", "Wang Jaminan Perlaksanaan", "Jaminan Bank"
-   Return in English: "Performance Bond" or "Bank Guarantee" or "Cash Deposit"
-
-4. amount
-   The total awarded contract value
-   Look for: "Harga Kontrak", "Harga Sebutharga", "Harga Tender", "harga sebanyak Ringgit Malaysia"
-   Return as number only e.g. 267740
-
-5. bondValue
-   The performance bond / deposit amount
-   Look for: "Nilai Bon Pelaksanaan", "bon pelaksanaan...berjumlah", typically 5% of contract value
-   Return as number only e.g. 13387
-
-6. thirdPartyLiability
-   The public liability insurance value
-   Look for: "Polisi Insurans Tanggungan Awam", "Nilai Polisi" under Tanggungan Awam section
-   Return as number only e.g. 100000
-
-7. workStartDate
-   Look for: "Tarikh Mula Kerja", "Tarikh Milik Tapak"
-   Return as YYYY-MM-DD
-
-8. workEndDate
-   Look for: "Tarikh Siap", "Tarikh Tamat Kerja", "Tarikh Siap Kerja"
-   Return as YYYY-MM-DD
-
-9. dlpEndDate
-   STEP 1 — Look for explicit date under "Tempoh Sah Laku" or "Tempoh Perlindungan"
-   STEP 2 — If not found, CALCULATE: workEndDate + 12 months + 3 months + 14 days
-   Return as YYYY-MM-DD
-
-10. workInsuranceValue
-    Contractors All Risk (CAR) / Polisi Insurans Kerja policy value. Usually equals contract value.
-    Return as number only
-
-11. sebuthargaNo
-    Look for "No. Sebutharga", "No. Tender". Return null if not found.
-
-12. sstNo
-    Priority: (a) No. Surat Setuju Terima (b) No. Kontrak (c) Rujukan
-    Return as string
-
-13. issuingAgency
-    The government agency or university issuing this contract (NOT the contractor)
-
-14. latePenaltyRate
-    Daily late completion penalty. Return as number only.
-
-15. bondValidUntil
-    From "Tempoh Sah Laku" under "Bon Pelaksanaan".
-    If not explicit: amount ≤ RM10M → dlpEndDate + 12 months; > RM10M → dlpEndDate + 24 months
-    Return as YYYY-MM-DD
-
-16. dlpBreakdown
-    { "dlpMonths": number, "bufferMonths": number, "bufferDays": number, "label": string }
-    Default: { "dlpMonths": 12, "bufferMonths": 3, "bufferDays": 14, "label": "12MONTHS + 3MONTHS + 14DAYS" }
-
-Return this exact JSON structure:
-{
-  "customerName": string | null,
-  "projectName": string | null,
-  "caseType": string | null,
-  "amount": number | null,
-  "bondValue": number | null,
-  "thirdPartyLiability": number | null,
-  "workStartDate": string | null,
-  "workEndDate": string | null,
-  "dlpEndDate": string | null,
-  "workInsuranceValue": number | null,
-  "sebuthargaNo": string | null,
-  "sstNo": string | null,
-  "issuingAgency": string | null,
-  "latePenaltyRate": number | null,
-  "bondValidUntil": string | null,
-  "dlpBreakdown": { "dlpMonths": number, "bufferMonths": number, "bufferDays": number, "label": string }
-}`,
+        aiPrompt: `Extract the following fields from this contract/award letter document. Respond with raw JSON only — no markdown formatting, no code fences, no backticks. Shape: {"fields": {"projectName": "", "referenceNumber": "", "totalContractValue": "", "projectDuration": "", "defectLiabilityPeriod": "", "thirdPartyLiability": "", "contractorName": "", "contractorSSMNumber": "", "contractorAddress": ""}, "confidence": "high|medium|low", "reasoning": ""}. Field guidance: projectName is the full title of the work (the 'Tajuk Kerja' or the work description in the subject/heading). referenceNumber is the 'No. Kontrak' or 'No. Sebut Harga'. totalContractValue is the 'Harga Kontrak' in RM. projectDuration should combine the stated contract period (e.g. '16 minggu' or '1 tahun') with the start and end dates ('Tarikh Milik Tapak' to 'Tarikh Siap Kerja'), formatted like 'X minggu/tahun (DD.MM.YYYY - DD.MM.YYYY)'. defectLiabilityPeriod is frequently not stated as a single explicit figure — if no direct statement exists, derive it from the gap between the contract completion date and the expiry date shown in the Bon Pelaksanaan or Polisi Insurans Kerja sections, and explicitly note in your reasoning that this value was derived rather than directly stated. thirdPartyLiability is the insured value from 'Polisi Insurans Tanggungan Awam'. contractorName, contractorSSMNumber, and contractorAddress come from the recipient company's name, SSM/registration number, and address shown in the letter.`,
       },
       { id: 'wt_bond_d2', caseTypeId: 'wt_bond', workflowStepId: 'wt_bond_s4', name: 'Company Profile', description: 'Company background, business overview, and track record (minimum 2 pages)', required: true, acceptedFileTypes: ['PDF', 'DOCX'], isActive: true },
       { id: 'wt_bond_d3', caseTypeId: 'wt_bond', workflowStepId: 'wt_bond_s4', name: 'SSM Certificate', description: 'Companies Commission of Malaysia (SSM) registration certificate — Form 9, 13, 24, 49', required: true, acceptedFileTypes: ['PDF', 'JPG', 'PNG'], isActive: true },
@@ -967,7 +871,7 @@ Return this exact JSON structure:
         name: 'Letter of Award (LOA)',
         description: 'SST or letter of award from the project owner confirming contract award', required: true,
         acceptedFileTypes: ['PDF', 'DOCX'], isActive: true,
-        aiPrompt: `This is a Surat Setuju Terima (SST) / Letter of Award from a Malaysian government agency. Extract: customerName (contractor name + reg no), projectName (full works description), caseType (bond type in English), amount (contract value as number), bondValue (bond amount as number), workStartDate (YYYY-MM-DD), workEndDate (YYYY-MM-DD), dlpEndDate (explicit or workEndDate + 12m + 3m + 14d), bondValidUntil (explicit or dlpEndDate + 12m if ≤RM10M), sstNo (contract reference), issuingAgency (government body name). Return as JSON.`,
+        aiPrompt: `Extract the following fields from this contract/award letter document. Respond with raw JSON only — no markdown formatting, no code fences, no backticks. Shape: {"fields": {"projectName": "", "referenceNumber": "", "totalContractValue": "", "projectDuration": "", "defectLiabilityPeriod": "", "thirdPartyLiability": "", "contractorName": "", "contractorSSMNumber": "", "contractorAddress": ""}, "confidence": "high|medium|low", "reasoning": ""}. Field guidance: projectName is the full title of the work (the 'Tajuk Kerja' or the work description in the subject/heading). referenceNumber is the 'No. Kontrak' or 'No. Sebut Harga'. totalContractValue is the 'Harga Kontrak' in RM. projectDuration should combine the stated contract period (e.g. '16 minggu' or '1 tahun') with the start and end dates ('Tarikh Milik Tapak' to 'Tarikh Siap Kerja'), formatted like 'X minggu/tahun (DD.MM.YYYY - DD.MM.YYYY)'. defectLiabilityPeriod is frequently not stated as a single explicit figure — if no direct statement exists, derive it from the gap between the contract completion date and the expiry date shown in the Bon Pelaksanaan or Polisi Insurans Kerja sections, and explicitly note in your reasoning that this value was derived rather than directly stated. thirdPartyLiability is the insured value from 'Polisi Insurans Tanggungan Awam'. contractorName, contractorSSMNumber, and contractorAddress come from the recipient company's name, SSM/registration number, and address shown in the letter.`,
       },
       { id: 'wt_bond_sp_d2', caseTypeId: 'wt_bond_sp', workflowStepId: 'wt_bond_sp_s4', name: 'Bond Application Form', description: 'Completed and signed bond application form', required: true, acceptedFileTypes: ['PDF', 'DOCX'], isActive: true },
       { id: 'wt_bond_sp_d3', caseTypeId: 'wt_bond_sp', workflowStepId: 'wt_bond_sp_s4', name: 'SSM Business Certificate (Form D / ROB)', description: 'Business registration certificate from Suruhanjaya Syarikat Malaysia', required: true, acceptedFileTypes: ['PDF', 'JPG', 'PNG'], isActive: true },
