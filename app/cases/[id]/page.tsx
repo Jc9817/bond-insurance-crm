@@ -12,6 +12,7 @@ import {
   getMissingRequiredDocs, getCurrentStep, getNextStep, getUnassignedFiles, getNextRecommendedAction,
 } from '@/lib/workflow'
 import { formatDate, formatCurrency, timeAgo, getDaysUntil } from '@/lib/utils'
+import { isStorageFile } from '@/lib/storage'
 import StatusBadge from '@/components/ui/StatusBadge'
 import Modal from '@/components/ui/Modal'
 import DocumentChecklist from '@/components/ui/DocumentChecklist'
@@ -542,7 +543,7 @@ export default function CaseDetailPage() {
                   caseItem={caseItem}
                   step={emailStep}
                   customerName={customer?.customerName ?? caseItem.customerName}
-                  documentUrl={caseDocs.find(f => f.fileDataUrl?.startsWith('http'))?.fileDataUrl}
+                  documentUrl={caseDocs.find(f => isStorageFile(f.fileDataUrl))?.fileDataUrl}
                 />
               ))
             ) : (

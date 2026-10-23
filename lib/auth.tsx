@@ -18,14 +18,21 @@ type AuthCtx = {
 
 const AuthContext = createContext<AuthCtx | null>(null)
 
-function mapUser(supabaseUser: { email?: string } | null): AppUser | null {
+// Role and display name come from the user_roles table (see
+// supabase/migrate-add-user-roles.sql). A user with no row is treated as Staff.
+async function mapUser(supabaseUser: { id: string; email?: string } | null): Promise<AppUser | null> {
   if (!supabaseUser?.email) return null
   const email = supabaseUser.email.toLowerCase()
-  const isAdmin = email.startsWith('admin')
+  const { data } = await createClient()
+    .from('user_roles')
+    .select('role, full_name')
+    .eq('user_id', supabaseUser.id)
+    .maybeSingle()
+  const role: AppUser['role'] = data?.role === 'Admin' ? 'Admin' : 'Staff'
   return {
     email,
-    fullName: isAdmin ? 'Admin' : 'Staff',
-    role: isAdmin ? 'Admin' : 'Staff',
+    fullName: data?.full_name || role,
+    role,
   }
 }
 
@@ -36,13 +43,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const supabase = createClient()
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setCurrentUser(mapUser(session?.user ?? null))
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      setCurrentUser(await mapUser(session?.user ?? null))
       setReady(true)
     })
 
+    // Supabase warns against awaiting other Supabase calls inside this
+    // callback, so the role lookup runs after it returns.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setCurrentUser(mapUser(session?.user ?? null))
+      const user = session?.user ?? null
+      setTimeout(() => { mapUser(user).then(setCurrentUser) }, 0)
     })
 
     return () => subscription.unsubscribe()

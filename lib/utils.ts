@@ -46,7 +46,7 @@ export function timeAgo(dateStr: string): string {
 }
 
 export function generateId(): string {
-  return Math.random().toString(36).slice(2, 10)
+  return crypto.randomUUID()
 }
 
 export function nowIso(): string {

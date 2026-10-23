@@ -26,11 +26,6 @@ export async function proxy(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   const { pathname } = request.nextUrl
 
-  // Report pages are public (for print/PDF)
-  if (pathname.endsWith('/report')) {
-    return supabaseResponse
-  }
-
   // Login page: redirect to dashboard if already logged in
   if (pathname === '/login') {
     if (user) {
@@ -53,7 +48,8 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // Exclude static files, images, and Telegram bot API routes (they have their own auth via secret token)
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$|api/telegram).*)',
+    // Exclude static files, images, and routes called by outside services without a login
+    // (Telegram bot, n8n AI-scan callback) — they have their own auth via a shared secret
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$|api/telegram|api/ai-scan/callback).*)',
   ],
 }

@@ -17,6 +17,7 @@ import {
 } from './mock-data'
 import { generateId, nowIso } from './utils'
 import { getWorkflowTemplate } from './workflow'
+import { STORAGE_BUCKET, storagePath } from './storage'
 
 type SettingsData = Record<SettingsCategory, SettingsItem[]>
 
@@ -730,14 +731,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const sb = createClient()
     sb.from('case_files').delete().eq('id', id).then()
     // Also remove the actual file from Supabase Storage
-    if (file?.fileDataUrl?.startsWith('http')) {
-      const marker = '/object/public/case-files/'
-      const idx = file.fileDataUrl.indexOf(marker)
-      if (idx !== -1) {
-        const storagePath = decodeURIComponent(file.fileDataUrl.slice(idx + marker.length))
-        sb.storage.from('case-files').remove([storagePath]).then()
-      }
-    }
+    const path = storagePath(file?.fileDataUrl)
+    if (path) sb.storage.from(STORAGE_BUCKET).remove([path]).then()
   }
   const updateCaseFile = (id: string, f: Partial<CaseFile>) => {
     setCaseFiles(prev => prev.map(x => x.id === id ? { ...x, ...f } : x))
