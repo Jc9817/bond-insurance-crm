@@ -6,7 +6,7 @@ import { useAuth } from '@/lib/auth'
 import type { CaseFile } from '@/lib/types'
 import { formatFileSize, timeAgo } from '@/lib/utils'
 import { caseFolder } from '@/lib/storage'
-import { uploadFile } from '@/lib/upload'
+import { fileSha256, uploadFile } from '@/lib/upload'
 import FileViewerModal, { downloadFile as downloadViewable } from './FileViewerModal'
 
 const viewable = (file: CaseFile) => ({
@@ -45,6 +45,12 @@ export default function QuotationDocumentPanel({ caseId, caseTitle, caseFiles }:
     e.target.value = ''
     setUploading(true)
     try {
+      const fileHash = await fileSha256(file)
+      const same = caseFiles.find(f => f.fileHash === fileHash)
+      if (same && !confirm(`This exact file is already here as "${same.fileName}". Upload it again anyway?`)) {
+        setUploading(false)
+        return
+      }
       const fileDataUrl = await uploadFile(file, caseFolder(caseId))
       addCaseFile({
         caseId,
@@ -57,6 +63,7 @@ export default function QuotationDocumentPanel({ caseId, caseTitle, caseFiles }:
         aiStatus: 'Pending',
         aiExtractedData: null,
         fileDataUrl,
+        fileHash,
         aiPrompt: QUOTATION_AI_PROMPT,
       })
       addActivityLog({

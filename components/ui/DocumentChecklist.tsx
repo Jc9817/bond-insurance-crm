@@ -7,7 +7,7 @@ import type { WorkflowTemplate, CaseFile } from '@/lib/types'
 import { getActiveDocs } from '@/lib/workflow'
 import { formatFileSize, timeAgo } from '@/lib/utils'
 import { caseFolder } from '@/lib/storage'
-import { uploadFile } from '@/lib/upload'
+import { fileSha256, uploadFile } from '@/lib/upload'
 import FileViewerModal from './FileViewerModal'
 
 type Props = {
@@ -57,6 +57,12 @@ export default function DocumentChecklist({ caseId, caseTitle, template, caseFil
   const handleUpload = async (file: File) => {
     setUploading(true)
     try {
+      const fileHash = await fileSha256(file)
+      const same = activeFiles.find(f => f.fileHash === fileHash)
+      if (same && !confirm(`This exact file is already on this case as "${same.fileName}". Upload it again anyway?`)) {
+        setUploading(false)
+        return
+      }
       const fileDataUrl = await uploadFile(file, caseFolder(caseId))
       addCaseFile({
         caseId,
@@ -69,6 +75,7 @@ export default function DocumentChecklist({ caseId, caseTitle, template, caseFil
         aiStatus: 'Pending',
         aiExtractedData: null,
         fileDataUrl,
+        fileHash,
       })
       addActivityLog({
         caseId,

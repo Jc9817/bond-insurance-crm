@@ -7,6 +7,34 @@ _Last updated: 24 Oct 2026_
 
 ---
 
+## [ ] Putting the finished work live (do these in this order)
+
+Items 2.3–3.2 are finished on a chain of branches, each built on the one
+before: `stage2-files` → `stage2-load-per-page` → `stage2-email-graph` →
+`stage2-one-ai-path` → `stage3-intake`. Merging the last one brings in all of them.
+
+1. **Database first.** In Supabase → SQL Editor, paste and run
+   `supabase/migrations/20261024100000_intake_items.sql` (the new Inbox table).
+   The new code needs it — without it, Telegram uploads would fail.
+2. **Push and merge.** In the VS Code terminal:
+   ```
+   git push -u origin stage3-intake
+   ```
+   Then on GitHub open a pull request from `stage3-intake` into `master` and
+   merge it. Wait for Vercel to show **Ready**.
+3. **Move old files out of the database.** In the VS Code terminal, first a
+   dry run (only counts, changes nothing):
+   ```
+   node scripts/move-base64-files.mjs
+   ```
+   If the numbers look sensible:
+   ```
+   node scripts/move-base64-files.mjs --apply
+   ```
+4. Then work through the checks below.
+
+---
+
 ## [ ] 1.3 Limit the Microsoft 365 app to operation@ only
 
 **Why:** DocFlow sends email through an Azure app with the *application*
@@ -83,21 +111,9 @@ Deployed 24 Oct 2026 (PR #1). Check once:
 
 ---
 
-## [ ] 2.3 Put the new file storage live, then move the old files
+## [ ] 2.3 One way to store files — checks
 
-The `stage2-files` branch is pushed to GitHub but not merged into `master`, so
-the live site doesn't have it yet.
-
-1. On GitHub, open a pull request from `stage2-files` into `master` and merge it.
-   Wait for Vercel to show **Ready**.
-2. Only then, in the VS Code terminal, count the files still kept inside the database:
-   ```
-   node scripts/move-base64-files.mjs
-   ```
-3. If the numbers look sensible, move them:
-   ```
-   node scripts/move-base64-files.mjs --apply
-   ```
+Going live: see "Putting the finished work live" at the top.
 
 Checks afterwards:
 - [ ] Upload a quotation document, view it, download it
@@ -156,6 +172,19 @@ There is no "Haiku 5.5" yet, despite the example in the fix list.
 
 Tidy-up: the `AI_MOCK` setting is no longer used (delete from `.env.local`).
 Keep `ANTHROPIC_API_KEY`: it's for the email drafter planned in 5.3.
+
+---
+
+## [ ] 3.1 / 3.2 New Inbox and duplicate files — checks
+
+- [ ] Documents that were waiting in the Inbox before are still there
+- [ ] Send a file to the Telegram bot → "Add to Existing Case": it appears in
+      the Inbox with "Telegram" and the sender's name
+- [ ] Send the **same** file again: the bot replies that it was received
+      before, and the Inbox still shows it only once
+- [ ] Assign it to a case: it leaves the Inbox, appears on the case, and the
+      case's Activity tab shows "Filed from Inbox" with your name
+- [ ] Upload the same file twice on a case: DocFlow asks before adding it again
 
 ---
 

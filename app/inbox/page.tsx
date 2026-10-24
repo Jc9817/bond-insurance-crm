@@ -3,17 +3,31 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useStore } from '@/lib/store'
-import type { TelegramUpload } from '@/lib/types'
+import { useAuth } from '@/lib/auth'
+import type { IntakeItem, IntakeSource } from '@/lib/types'
 import { formatFileSize, timeAgo } from '@/lib/utils'
 import { getActiveDocs, resolveTemplate } from '@/lib/workflow'
 import PageHeader from '@/components/ui/PageHeader'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 import FileViewerModal from '@/components/ui/FileViewerModal'
 
+// The Unassigned Inbox: documents from every intake channel (intake_items)
+// waiting for a person to file them to a case or discard them. Every
+// decision is recorded on the item and in the activity log.
+
 type ActionMode = 'assign' | 'discard'
 
-function UploadCard({ upload }: { upload: TelegramUpload }) {
-  const { cases, workflowTemplates, addCaseFile, deleteTelegramUpload } = useStore()
+const SOURCE_LABELS: Record<IntakeSource, string> = {
+  telegram: 'Telegram',
+  email: 'Email',
+  sharepoint: 'SharePoint',
+  upload: 'Upload',
+}
+
+function UploadCard({ upload }: { upload: IntakeItem }) {
+  const { cases, workflowTemplates, fileIntakeItem, discardIntakeItem, addActivityLog } = useStore()
+  const { currentUser } = useAuth()
+  const decidedBy = currentUser?.fullName ?? 'Unknown'
   const [action, setAction] = useState<ActionMode | null>(null)
   const [viewing, setViewing] = useState(false)
   const [error, setError] = useState('')
@@ -26,37 +40,37 @@ function UploadCard({ upload }: { upload: TelegramUpload }) {
     setAction(prev => prev === mode ? null : mode)
   }
 
-  // New-case creation now happens directly in the upload bot (Bot 1) — this
-  // inbox exists purely to park a document onto an already-existing case.
-  // Bot 1 only ever sends the Letter of Award, so default the tag to that
-  // instead of a generic placeholder; staff can still retag it from the
-  // checklist if it's ever something else.
-  const attachFile = (caseId: string, loaDoc: { id: string; name: string } | null) => addCaseFile({
-    caseId,
-    fileName: upload.fileName,
-    fileSize: upload.fileSize,
-    fileType: upload.fileType,
-    documentType: loaDoc?.name ?? 'Letter of Award (LOA)',
-    requiredDocumentId: loaDoc?.id,
-    uploadedBy: upload.uploadedBy,
-    fileDataUrl: upload.fileDataUrl,
-    aiScanned: false,
-    aiStatus: 'Pending',
-    aiExtractedData: null,
-  })
-
+  // New-case creation happens directly in the Telegram bot — this Inbox
+  // files a document onto an existing case. The bot's documents are usually
+  // the Letter of Award, so the tag defaults to that; staff can retag it from
+  // the case checklist. (AI-suggested tags arrive with fix list 3.3.)
   const submitAssign = () => {
     if (!assignCaseId) { setError('Select a case to assign this file to.'); return }
-    if (!upload.fileDataUrl) { setError('The file is still loading — please try again in a moment.'); return }
+    if (!upload.fileRef) { setError('The file is still loading — please try again in a moment.'); return }
     const targetCase = cases.find(c => c.id === assignCaseId)
     const template = targetCase ? resolveTemplate(targetCase, workflowTemplates) : null
     const loaDoc = template ? getActiveDocs(template).find(d => d.name.toLowerCase().includes('letter of award')) ?? null : null
-    attachFile(assignCaseId, loaDoc)
-    // The case file now points at the same stored file — keep it
-    deleteTelegramUpload(upload.id, { keepFile: true })
+    const documentType = loaDoc?.name ?? 'Letter of Award (LOA)'
+    if (!fileIntakeItem(upload.id, { caseId: assignCaseId, documentType, requiredDocumentId: loaDoc?.id, decidedBy })) return
+    addActivityLog({
+      caseId: assignCaseId,
+      caseTitle: targetCase?.caseTitle,
+      actionType: 'DOCUMENT_UPLOADED',
+      title: 'Filed from Inbox',
+      description: `${upload.fileName} (from ${SOURCE_LABELS[upload.source]}, ${upload.sender}) filed as "${documentType}"`,
+      changedBy: decidedBy,
+    })
   }
 
-  const submitDiscard = () => deleteTelegramUpload(upload.id)
+  const submitDiscard = () => {
+    discardIntakeItem(upload.id, decidedBy)
+    addActivityLog({
+      actionType: 'DOCUMENT_DELETED',
+      title: 'Discarded from Inbox',
+      description: `${upload.fileName} (from ${SOURCE_LABELS[upload.source]}, ${upload.sender}) discarded`,
+      changedBy: decidedBy,
+    })
+  }
 
   const openCases = cases.filter(c => !c.archivedAt && c.currentStatus !== 'Done')
 
@@ -71,11 +85,12 @@ function UploadCard({ upload }: { upload: TelegramUpload }) {
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-gray-800 truncate">{upload.fileName}</p>
           <p className="text-xs text-gray-400">
-            {upload.uploadedBy} · {formatFileSize(upload.fileSize)} · {timeAgo(upload.uploadedAt)}
+            <span className="font-medium text-gray-500">{SOURCE_LABELS[upload.source]}</span>
+            {' · '}{upload.sender} · {formatFileSize(upload.fileSize)} · {timeAgo(upload.receivedAt)}
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          {upload.fileDataUrl && (
+          {upload.fileRef && (
             <button
               onClick={() => setViewing(true)}
               className="btn-xs bg-gray-100 hover:bg-gray-200 text-gray-700"
@@ -123,7 +138,7 @@ function UploadCard({ upload }: { upload: TelegramUpload }) {
 
       {viewing && (
         <FileViewerModal
-          file={{ fileName: upload.fileName, fileSize: upload.fileSize, fileType: upload.fileType, fileRef: upload.fileDataUrl }}
+          file={{ fileName: upload.fileName, fileSize: upload.fileSize, fileType: upload.fileType, fileRef: upload.fileRef }}
           onClose={() => setViewing(false)}
         />
       )}
@@ -134,14 +149,14 @@ function UploadCard({ upload }: { upload: TelegramUpload }) {
 type SortOrder = 'newest' | 'oldest'
 
 export default function InboxPage() {
-  const { telegramUploads, loadInbox } = useStore()
+  const { intakeItems, loadInbox } = useStore()
 
   // File links for View / Assign are loaded here, not at startup
   useEffect(() => { loadInbox() }, [loadInbox])
   const [sortOrder, setSortOrder] = useState<SortOrder>('newest')
 
-  const sortedUploads = [...telegramUploads].sort((a, b) => {
-    const diff = new Date(a.uploadedAt).getTime() - new Date(b.uploadedAt).getTime()
+  const sortedUploads = [...intakeItems].sort((a, b) => {
+    const diff = new Date(a.receivedAt).getTime() - new Date(b.receivedAt).getTime()
     return sortOrder === 'newest' ? -diff : diff
   })
 
@@ -149,8 +164,8 @@ export default function InboxPage() {
     <div className="p-8 max-w-screen-xl mx-auto">
       <PageHeader
         title="Unassigned Inbox"
-        subtitle={`${telegramUploads.length} document${telegramUploads.length === 1 ? '' : 's'} uploaded via Telegram, awaiting review`}
-        action={telegramUploads.length > 1 ? (
+        subtitle={`${intakeItems.length} document${intakeItems.length === 1 ? '' : 's'} awaiting review`}
+        action={intakeItems.length > 1 ? (
           <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
             <button
               onClick={() => setSortOrder('newest')}
@@ -168,7 +183,7 @@ export default function InboxPage() {
         ) : undefined}
       />
 
-      {telegramUploads.length === 0 ? (
+      {intakeItems.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-gray-200 py-16 text-center">
           <p className="text-sm text-gray-400">No unassigned uploads right now.</p>
           <p className="text-xs text-gray-300 mt-1">Documents sent to the Telegram bot will appear here.</p>

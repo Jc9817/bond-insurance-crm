@@ -10,6 +10,12 @@ import { STORAGE_BUCKET } from './storage'
  *
  * folder: caseFolder(caseId) or INBOX_FOLDER from lib/storage.
  */
+/** SHA-256 of a file, hex — the same fingerprint the server uses (lib/intake.ts). */
+export async function fileSha256(file: File): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', await file.arrayBuffer())
+  return Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('')
+}
+
 export async function uploadFile(file: File, folder: string): Promise<string> {
   const res = await fetch('/api/files/upload-url', {
     method: 'POST',

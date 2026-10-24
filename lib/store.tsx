@@ -6,14 +6,23 @@ import type {
   Customer, Contact, Case, CaseNote, FollowUp, PicUser,
   User, CaseFile, ActivityLog, SettingsItem, SettingsCategory,
   WorkflowTemplate, RequiredDocument, WorkflowStep,
-  Product, ProductPackage, SubmissionLetterTemplate, EmailTemplate, CaseEmailLog, TelegramUpload,
+  Product, ProductPackage, SubmissionLetterTemplate, EmailTemplate, CaseEmailLog, IntakeItem,
 } from './types'
+import { OPEN_INTAKE_STATUSES } from './types'
 import { mockWorkflowTemplates } from './mock-data'
 import { generateId, nowIso } from './utils'
 import { getWorkflowTemplate } from './workflow'
 import { STORAGE_BUCKET, storagePath } from './storage'
 
 type SettingsData = Record<SettingsCategory, SettingsItem[]>
+
+/** Where an Inbox item is filed: the case, the document tag, and who decided. */
+export type FileIntakeTarget = {
+  caseId: string
+  documentType: string
+  requiredDocumentId?: string
+  decidedBy: string
+}
 
 type StoreCtx = {
   customers: Customer[]
@@ -31,7 +40,7 @@ type StoreCtx = {
   productPackages: ProductPackage[]
   emailTemplates: EmailTemplate[]
   caseEmails: CaseEmailLog[]
-  telegramUploads: TelegramUpload[]
+  intakeItems: IntakeItem[]   // open Unassigned Inbox items
   loading: boolean
 
   // Load what the startup load leaves out (see loadAll): call when a case or
@@ -110,7 +119,10 @@ type StoreCtx = {
   notifyOpsTeam: (caseItem: Case) => Promise<void>
 
   // keepFile: the stored file now belongs to a case file (Inbox "Assign to Case")
-  deleteTelegramUpload: (id: string, opts?: { keepFile?: boolean }) => void
+  // Inbox decisions. fileIntakeItem returns the new case file's id (null if
+  // the item's file link hasn't loaded yet).
+  fileIntakeItem: (id: string, target: FileIntakeTarget) => string | null
+  discardIntakeItem: (id: string, decidedBy: string) => void
   sendCaseFileToInbox: (file: CaseFile) => void
 }
 
@@ -204,17 +216,22 @@ const toCaseEmailLog = (l: CaseEmailLog) => ({
   status: l.status, error_message: l.errorMessage ?? null, sent_at: l.sentAt,
 })
 
-const fromTelegramUpload = (r: Row): TelegramUpload => ({
-  id: r.id, fileName: r.file_name ?? '', fileSize: r.file_size ?? 0, fileType: r.file_type ?? '',
-  fileDataUrl: r.file_data_url ?? undefined, uploadedBy: r.uploaded_by ?? '', uploadedAt: r.uploaded_at,
-  telegramChatId: r.telegram_chat_id ?? undefined, telegramMessageId: r.telegram_message_id ?? undefined,
-  telegramFileId: r.telegram_file_id ?? undefined,
+const fromIntakeItem = (r: Row): IntakeItem => ({
+  id: r.id, source: r.source ?? 'telegram', sender: r.sender ?? '', receivedAt: r.received_at,
+  fileName: r.file_name ?? '', fileSize: r.file_size ?? 0, fileType: r.file_type ?? '',
+  fileRef: r.file_ref ?? undefined, fileHash: r.file_hash ?? undefined,
+  status: r.status ?? 'received', aiSuggestion: r.ai_suggestion ?? null, confidence: r.confidence ?? null,
+  duplicateOf: r.duplicate_of ?? undefined, caseId: r.case_id ?? undefined,
+  caseFileId: r.case_file_id ?? undefined, decidedBy: r.decided_by ?? undefined,
+  decidedAt: r.decided_at ?? undefined, sourceMeta: r.source_meta ?? {},
 })
-const toTelegramUpload = (u: TelegramUpload) => ({
-  id: u.id, file_name: u.fileName, file_size: u.fileSize, file_type: u.fileType,
-  file_data_url: u.fileDataUrl ?? null, uploaded_by: u.uploadedBy, uploaded_at: u.uploadedAt,
-  telegram_chat_id: u.telegramChatId ?? null, telegram_message_id: u.telegramMessageId ?? null,
-  telegram_file_id: u.telegramFileId ?? null,
+const toIntakeItem = (i: IntakeItem) => ({
+  id: i.id, source: i.source, sender: i.sender, received_at: i.receivedAt,
+  file_name: i.fileName, file_size: i.fileSize, file_type: i.fileType,
+  file_ref: i.fileRef ?? null, file_hash: i.fileHash ?? null, status: i.status,
+  ai_suggestion: i.aiSuggestion ?? null, confidence: i.confidence ?? null,
+  duplicate_of: i.duplicateOf ?? null, case_id: i.caseId ?? null, case_file_id: i.caseFileId ?? null,
+  decided_by: i.decidedBy ?? null, decided_at: i.decidedAt ?? null, source_meta: i.sourceMeta,
 })
 
 const fromCaseNote = (r: Row): CaseNote => ({
@@ -243,6 +260,7 @@ const fromCaseFile = (r: Row): CaseFile => ({
   fileDataUrl: r.file_data_url ?? undefined,
   aiScanned: r.ai_scanned ?? false, aiStatus: r.ai_status ?? 'Pending',
   aiExtractedData: r.ai_extracted_data ?? null, aiPrompt: r.ai_prompt ?? undefined,
+  fileHash: r.file_hash ?? undefined,
 })
 const toCaseFile = (f: CaseFile) => ({
   id: f.id, case_id: f.caseId, file_name: f.fileName, file_size: f.fileSize,
@@ -251,6 +269,7 @@ const toCaseFile = (f: CaseFile) => ({
   uploaded_at: f.uploadedAt, file_data_url: f.fileDataUrl ?? null,
   ai_scanned: f.aiScanned, ai_status: f.aiStatus,
   ai_extracted_data: f.aiExtractedData ?? null, ai_prompt: f.aiPrompt ?? null,
+  file_hash: f.fileHash ?? null,
 })
 
 const fromActivityLog = (r: Row): ActivityLog => ({
@@ -327,7 +346,7 @@ const CASE_FILE_LIST_COLUMNS =
   'id, case_id, file_name, file_size, file_type, document_type, required_document_id, uploaded_by, uploaded_at, ai_scanned, ai_status'
 // Inbox list and the sidebar count; file links come with loadInbox().
 const INBOX_LIST_COLUMNS =
-  'id, file_name, file_size, file_type, uploaded_by, uploaded_at, telegram_chat_id, telegram_message_id, telegram_file_id'
+  'id, source, sender, received_at, file_name, file_size, file_type, status, confidence, source_meta'
 // When each case entered a workflow step — the dashboard's SLA warnings.
 const STEP_LOG_COLUMNS = 'id, case_id, action_type, new_value, timestamp'
 const RECENT_ACTIVITY_LIMIT = 20
@@ -374,7 +393,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [submissionLetterTemplates, setSubmissionLetterTemplates] = useState<SubmissionLetterTemplate[]>([])
   const [emailTemplates, setEmailTemplates] = useState<EmailTemplate[]>([])
   const [caseEmails, setCaseEmails] = useState<CaseEmailLog[]>([])
-  const [telegramUploads, setTelegramUploads] = useState<TelegramUpload[]>([])
+  const [intakeItems, setIntakeItems] = useState<IntakeItem[]>([])
   const [settingsState, setSettingsState] = useState<SettingsData>(emptySettings)
   const [loading, setLoading] = useState(true)
 
@@ -402,7 +421,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       { data: steps },
       { data: docs },
       { data: templateRows },
-      { data: telegramUploadRows },
+      { data: intakeRows },
       { data: settingsRows },
       { data: productRows },
       { data: packageRows },
@@ -423,7 +442,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       sb.from('workflow_steps').select('*').order('order'),
       sb.from('required_documents').select('*'),
       sb.from('email_templates').select('*').order('created_at'),
-      sb.from('telegram_uploads').select(INBOX_LIST_COLUMNS).order('uploaded_at', { ascending: false }),
+      sb.from('intake_items').select(INBOX_LIST_COLUMNS).in('status', OPEN_INTAKE_STATUSES).order('received_at', { ascending: false }),
       sb.from('settings_items').select('*').order('sort_order').order('created_at'),
       sb.from('products').select('*').order('sort_order').order('created_at'),
       sb.from('product_packages').select('*').order('sort_order').order('created_at'),
@@ -440,7 +459,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (fileRows) setCaseFiles(fileRows.map(fromCaseFile))
     // Full recent rows listed last so they win over the slim step-change rows
     setActivityLogs(sortLogs(mergeById<ActivityLog>([], [...(stepLogRows ?? []), ...(recentLogRows ?? [])].map(fromActivityLog))))
-    if (telegramUploadRows) setTelegramUploads(telegramUploadRows.map(fromTelegramUpload))
+    if (intakeRows) setIntakeItems(intakeRows.map(fromIntakeItem))
     if (settingsRows) {
       const grouped = emptySettings()
       for (const r of settingsRows) grouped[r.category as SettingsCategory]?.push(fromSettingsItem(r))
@@ -504,9 +523,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const loadInbox = useCallback(async () => {
     const { data, error } = await createClient()
-      .from('telegram_uploads').select('*').order('uploaded_at', { ascending: false })
+      .from('intake_items').select('*').in('status', OPEN_INTAKE_STATUSES).order('received_at', { ascending: false })
     if (error) console.error('[Supabase] loadInbox failed:', error.message)
-    if (data) setTelegramUploads(data.map(fromTelegramUpload))
+    if (data) setIntakeItems(data.map(fromIntakeItem))
   }, [])
 
   async function seedEmailTemplates(sb: ReturnType<typeof createClient>) {
@@ -719,26 +738,60 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (status === 'failed') throw new Error(errorMessage)
   }
 
-  // ─── Telegram Inbox ─────────────────────────────────────────────────────────
+  // ─── Unassigned Inbox (intake_items) ──────────────────────────────────────
+  // Items stay in the table after a decision, as a record; the Inbox (and
+  // this state) only holds the open ones.
 
-  const deleteTelegramUpload = (id: string, opts?: { keepFile?: boolean }) => {
-    const upload = telegramUploads.find(x => x.id === id)
-    setTelegramUploads(prev => prev.filter(x => x.id !== id))
+  const fileIntakeItem = (id: string, target: FileIntakeTarget): string | null => {
+    const item = intakeItems.find(x => x.id === id)
+    if (!item?.fileRef) return null
+    const caseFileId = addCaseFile({
+      caseId: target.caseId,
+      fileName: item.fileName,
+      fileSize: item.fileSize,
+      fileType: item.fileType,
+      documentType: target.documentType,
+      requiredDocumentId: target.requiredDocumentId,
+      uploadedBy: item.sender,
+      fileDataUrl: item.fileRef,
+      fileHash: item.fileHash,
+      aiScanned: false,
+      aiStatus: 'Pending',
+      aiExtractedData: null,
+    })
+    setIntakeItems(prev => prev.filter(x => x.id !== id))
+    createClient().from('intake_items').update({
+      status: 'approved', case_id: target.caseId, case_file_id: caseFileId,
+      decided_by: target.decidedBy, decided_at: nowIso(),
+    }).eq('id', id).then(({ error }) => {
+      if (error) console.error('[Supabase] fileIntakeItem failed:', error.message)
+    })
+    return caseFileId
+  }
+
+  const discardIntakeItem = (id: string, decidedBy: string) => {
+    const item = intakeItems.find(x => x.id === id)
+    setIntakeItems(prev => prev.filter(x => x.id !== id))
     const sb = createClient()
-    sb.from('telegram_uploads').delete().eq('id', id).then()
-    const path = opts?.keepFile ? null : storagePath(upload?.fileDataUrl)
+    // Keep the row as a record; the file itself is deleted
+    sb.from('intake_items').update({
+      status: 'discarded', file_ref: null, decided_by: decidedBy, decided_at: nowIso(),
+    }).eq('id', id).then()
+    const path = storagePath(item?.fileRef)
     if (path) sb.storage.from(STORAGE_BUCKET).remove([path]).then()
   }
 
   const sendCaseFileToInbox = (file: CaseFile) => {
-    const row: TelegramUpload = {
-      id: generateId(), fileName: file.fileName, fileSize: file.fileSize, fileType: file.fileType,
-      fileDataUrl: file.fileDataUrl, uploadedBy: file.uploadedBy, uploadedAt: nowIso(),
+    const row: IntakeItem = {
+      id: generateId(), source: 'telegram', sender: file.uploadedBy, receivedAt: nowIso(),
+      fileName: file.fileName, fileSize: file.fileSize, fileType: file.fileType,
+      fileRef: file.fileDataUrl, fileHash: file.fileHash, status: 'received',
+      sourceMeta: { returnedFromCaseId: file.caseId },
     }
-    setTelegramUploads(prev => [row, ...prev])
+    setIntakeItems(prev => [row, ...prev])
     setCaseFiles(prev => prev.filter(x => x.id !== file.id))
     const sb = createClient()
-    sb.from('telegram_uploads').insert(toTelegramUpload(row)).then(({ error }) => {
+    sb.from('intake_items').insert(toIntakeItem(row)).then(({ error }) => {
       if (error) console.error('[Supabase] sendCaseFileToInbox insert failed:', error.message)
     })
     sb.from('case_files').delete().eq('id', file.id).then()
@@ -1123,7 +1176,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     <StoreContext.Provider value={{
       customers, contacts, cases, caseNotes, followUps, pics,
       users, caseFiles, activityLogs, settingsData: settingsState, workflowTemplates,
-      products, productPackages, emailTemplates, caseEmails, telegramUploads, loading,
+      products, productPackages, emailTemplates, caseEmails, intakeItems, loading,
       loadCase, loadInbox,
       addCustomer, updateCustomer, deleteCustomer,
       addContact, updateContact, deleteContact, setPrimaryContact,
@@ -1143,7 +1196,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       submissionLetterTemplates,
       addSubmissionLetterTemplate, updateSubmissionLetterTemplate, deleteSubmissionLetterTemplate,
       addEmailTemplate, updateEmailTemplate, deleteEmailTemplate, sendCaseEmail, notifyOpsTeam,
-      deleteTelegramUpload, sendCaseFileToInbox,
+      fileIntakeItem, discardIntakeItem, sendCaseFileToInbox,
     }}>
       {children}
     </StoreContext.Provider>

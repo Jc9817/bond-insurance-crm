@@ -146,7 +146,7 @@ export default function Sidebar() {
   const pathname = usePathname()
   const router = useRouter()
   const { currentUser, logout } = useAuth()
-  const { telegramUploads } = useStore()
+  const { intakeItems } = useStore()
 
   const isActive = (href: string) =>
     pathname === href || (href !== '/dashboard' && pathname.startsWith(href))
@@ -191,9 +191,9 @@ export default function Sidebar() {
               {item.icon}
             </span>
             <span className="flex-1">{item.label}</span>
-            {item.href === '/inbox' && telegramUploads.length > 0 && (
+            {item.href === '/inbox' && intakeItems.length > 0 && (
               <span className="text-[10px] font-bold bg-amber-100 text-amber-700 rounded-full px-1.5 py-0.5 leading-none">
-                {telegramUploads.length}
+                {intakeItems.length}
               </span>
             )}
           </Link>

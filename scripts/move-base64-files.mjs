@@ -35,9 +35,11 @@ const newPath = (folder, fileName) =>
   `${folder}/${Date.now()}_${String(fileName || 'file').replace(/[^a-zA-Z0-9._-]/g, '_')}`
 
 const TABLES = [
-  { table: 'case_files', key: 'id', extra: 'case_id', folder: r => `cases/${r.case_id}` },
-  { table: 'telegram_uploads', key: 'id', extra: null, folder: () => 'inbox' },
-  { table: 'telegram_pending_uploads', key: 'user_id', extra: null, folder: () => 'inbox' },
+  { table: 'case_files', key: 'id', col: 'file_data_url', extra: 'case_id', folder: r => `cases/${r.case_id}` },
+  { table: 'telegram_uploads', key: 'id', col: 'file_data_url', extra: null, folder: () => 'inbox' },
+  { table: 'telegram_pending_uploads', key: 'user_id', col: 'file_data_url', extra: null, folder: () => 'inbox' },
+  // Stage 3 Inbox — exists once 20261024100000_intake_items.sql has run
+  { table: 'intake_items', key: 'id', col: 'file_ref', extra: null, folder: () => 'inbox', optional: true },
 ]
 
 let moved = 0, failed = 0, found = 0
@@ -45,8 +47,11 @@ let moved = 0, failed = 0, found = 0
 for (const t of TABLES) {
   // Select only small columns here — the file data is fetched one row at a time
   const cols = [t.key, 'file_name', 'file_size', t.extra].filter(Boolean).join(', ')
-  const { data: rows, error } = await sb.from(t.table).select(cols).like('file_data_url', 'data:%')
-  if (error) { console.error(`${t.table}: ${error.message}`); failed++; continue }
+  const { data: rows, error } = await sb.from(t.table).select(cols).like(t.col, 'data:%')
+  if (error) {
+    if (t.optional) { console.log(`${t.table}: not created yet, skipped`); continue }
+    console.error(`${t.table}: ${error.message}`); failed++; continue
+  }
 
   const bytes = rows.reduce((n, r) => n + (r.file_size ?? 0), 0)
   console.log(`${t.table}: ${rows.length} file(s) in the database (${(bytes / 1024 / 1024).toFixed(1)} MB)`)
@@ -57,9 +62,9 @@ for (const t of TABLES) {
     const label = `  ${t.table} ${r[t.key]} ${r.file_name}`
     try {
       const { data: full, error: readErr } = await sb.from(t.table)
-        .select('file_data_url').eq(t.key, r[t.key]).single()
+        .select(t.col).eq(t.key, r[t.key]).single()
       if (readErr) throw readErr
-      const dataUrl = full.file_data_url
+      const dataUrl = full[t.col]
       if (!dataUrl?.startsWith('data:')) { console.log(`${label}: already moved`); continue }
 
       const comma = dataUrl.indexOf(',')
@@ -71,8 +76,8 @@ for (const t of TABLES) {
       if (upErr) throw upErr
 
       const { data: updated, error: updErr } = await sb.from(t.table)
-        .update({ file_data_url: `storage:${path}` })
-        .eq(t.key, r[t.key]).like('file_data_url', 'data:%')
+        .update({ [t.col]: `storage:${path}` })
+        .eq(t.key, r[t.key]).like(t.col, 'data:%')
         .select(t.key)
       if (updErr || !updated?.length) {
         await sb.storage.from(BUCKET).remove([path])

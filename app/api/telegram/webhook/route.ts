@@ -4,6 +4,7 @@ import { INBOX_FOLDER, SUPPORTED_MIME_TYPES } from '@/lib/storage'
 import { generateId } from '@/lib/utils'
 import { notifyDocFlowWebhook } from '@/lib/n8n'
 import { removeFile, saveFile, signFileUrlForServer } from '@/lib/storage-server'
+import { createIntakeItem, findDuplicate, sha256, type DuplicateMatch } from '@/lib/intake'
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN!
 const ALLOWED_CHAT_ID = Number(process.env.TELEGRAM_ALLOWED_CHAT_ID!)
@@ -74,8 +75,17 @@ type PendingFile = {
   fileSize: number
   mimeType: string
   fileDataUrl: string        // storage reference ("storage:inbox/..."), saved when the file arrived
+  fileHash: string           // SHA-256, for duplicate detection (fix list 3.2)
   telegramFileId: string
   uploadedBy: string
+}
+
+// Tells the sender the file was already received and where it is.
+async function replyDuplicate(chatId: number, msgId: number, fileName: string, match: DuplicateMatch) {
+  const where = match.kind === 'case_file'
+    ? `It is already filed in a case:\n${APP_URL}/cases/${match.caseId}`
+    : `It is already waiting in the Unassigned Inbox:\n${APP_URL}/inbox`
+  await send(chatId, `ℹ️ <b>${esc(fileName)}</b> was received before, so it was not added again.\n\n${where}`, msgId)
 }
 
 // ── Branch: "New Case — Letter of Award" ────────────────────────────────────
@@ -127,6 +137,7 @@ async function createCaseFromUpload(pending: PendingFile) {
     uploaded_by: pending.uploadedBy,
     uploaded_at: uploadedAt,
     file_data_url: pending.fileDataUrl,
+    file_hash: pending.fileHash || null,
     ai_scanned: false,
     ai_status: 'Pending',
   })
@@ -163,24 +174,31 @@ async function createCaseFromUpload(pending: PendingFile) {
 // Lands in the Unassigned Inbox — staff pick which case it belongs to
 // from the CRM (/inbox).
 async function sendToInbox(pending: PendingFile) {
-  const uploadId = generateId()
   const uploadedAt = new Date().toISOString()
 
-  const { error } = await supabase.from('telegram_uploads').insert({
-    id: uploadId,
-    file_name: pending.fileName,
-    file_size: pending.fileSize,
-    file_type: pending.mimeType,
-    file_data_url: pending.fileDataUrl,
-    uploaded_by: pending.uploadedBy,
-    uploaded_at: uploadedAt,
-    telegram_chat_id: pending.chatId,
-    telegram_message_id: pending.msgId,
-    telegram_file_id: pending.telegramFileId,
-  })
-
-  if (error) {
-    console.error('[Telegram] telegram_uploads insert failed:', error.message)
+  let uploadId: string
+  try {
+    const result = await createIntakeItem(supabase, {
+      source: 'telegram',
+      sender: pending.uploadedBy,
+      fileName: pending.fileName,
+      fileSize: pending.fileSize,
+      fileType: pending.mimeType,
+      fileRef: pending.fileDataUrl,
+      fileHash: pending.fileHash,
+      sourceMeta: {
+        telegramChatId: pending.chatId,
+        telegramMessageId: pending.msgId,
+        telegramFileId: pending.telegramFileId,
+      },
+    })
+    if (result.duplicate) {
+      await replyDuplicate(pending.chatId, pending.msgId, pending.fileName, result.duplicate)
+      return
+    }
+    uploadId = result.id
+  } catch (err) {
+    console.error('[Telegram] intake insert failed:', err instanceof Error ? err.message : err)
     await send(pending.chatId, `❌ Upload failed. Please try again.`, pending.msgId)
     return
   }
@@ -261,6 +279,7 @@ export async function POST(req: NextRequest) {
       fileSize: row.file_size,
       mimeType: row.file_type,
       fileDataUrl: row.file_data_url,
+      fileHash: row.file_hash ?? '',
       telegramFileId: row.telegram_file_id,
       uploadedBy: row.uploaded_by,
     }
@@ -373,17 +392,33 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true })
     }
 
+    const bytes = await fileRes.arrayBuffer()
+    const fileHash = sha256(bytes)
+    const uploadedBy = `Telegram: ${senderName}`
+
+    // Same file sent before? Record it as a duplicate and say where it is,
+    // instead of asking about it and filing it twice.
+    const earlier = await findDuplicate(supabase, fileHash)
+    if (earlier) {
+      await createIntakeItem(supabase, {
+        source: 'telegram', sender: uploadedBy, fileName, fileSize, fileType: mimeType,
+        fileRef: null, fileHash,
+        sourceMeta: { telegramChatId: chatId, telegramMessageId: msgId, telegramFileId: fileId },
+      }).catch(err => console.error('[Telegram] duplicate record failed:', err instanceof Error ? err.message : err))
+      await replyDuplicate(chatId, msgId, fileName, earlier)
+      return NextResponse.json({ ok: true })
+    }
+
     // Saved to storage straight away; the pending row and, after the user
     // answers, the case file or Inbox row only keep the reference.
     let fileDataUrl: string
     try {
-      fileDataUrl = await saveFile(INBOX_FOLDER, fileName, await fileRes.arrayBuffer(), mimeType)
+      fileDataUrl = await saveFile(INBOX_FOLDER, fileName, bytes, mimeType)
     } catch (err) {
       console.error('[Telegram] storage save failed:', err instanceof Error ? err.message : err)
       await send(chatId, `❌ Something went wrong saving the file. Please try again later.`, msgId)
       return NextResponse.json({ ok: true })
     }
-    const uploadedBy = `Telegram: ${senderName}`
     const userId: number = msg.from?.id ?? chatId
 
     // One pending decision per user — a new upload before they've answered
@@ -400,6 +435,7 @@ export async function POST(req: NextRequest) {
       file_size: fileSize,
       file_type: mimeType,
       file_data_url: fileDataUrl,
+      file_hash: fileHash,
       telegram_file_id: fileId,
       uploaded_by: uploadedBy,
       created_at: new Date().toISOString(),

@@ -287,24 +287,43 @@ export type CaseFile = {
   fileDataUrl?: string    // storage reference "storage:<path>" (lib/storage.ts), not file contents
   aiPrompt?: string            // extraction instructions copied from RequiredDocument at upload time
   supersededBy?: string        // id of the newer file that replaced this one
+  fileHash?: string            // SHA-256 of the file — spots the same file arriving again
 }
 
-// ─── Telegram Inbox ───────────────────────────────────────────────────────────
-// Documents dropped into the Telegram bot land here unassigned. Staff review
-// them from /inbox and either spin up a new case, attach to an existing case,
-// or discard — resolving an item deletes its row here.
 
-export type TelegramUpload = {
+// ─── Unassigned Inbox (intake_items) ──────────────────────────────────────────
+// One row per document that arrived from any channel, waiting to be filed.
+
+export const INTAKE_SOURCES = ['telegram', 'email', 'sharepoint', 'upload'] as const
+export type IntakeSource = (typeof INTAKE_SOURCES)[number]
+
+export const INTAKE_STATUSES = [
+  'received', 'processing', 'suggested', 'needs_review', 'approved', 'discarded', 'duplicate',
+] as const
+export type IntakeStatus = (typeof INTAKE_STATUSES)[number]
+
+/** Statuses still waiting for a person — what the Inbox shows and counts. */
+export const OPEN_INTAKE_STATUSES: readonly IntakeStatus[] = ['received', 'processing', 'suggested', 'needs_review']
+
+export type IntakeItem = {
   id: string
+  source: IntakeSource
+  sender: string
+  receivedAt: string
   fileName: string
   fileSize: number
   fileType: string
-  fileDataUrl?: string    // storage reference "storage:<path>" (lib/storage.ts), not file contents
-  uploadedBy: string
-  uploadedAt: string
-  telegramChatId?: number
-  telegramMessageId?: number
-  telegramFileId?: string
+  fileRef?: string        // storage reference "storage:<path>"; loaded with the Inbox page
+  fileHash?: string       // SHA-256 of the file
+  status: IntakeStatus
+  aiSuggestion?: Record<string, unknown> | null
+  confidence?: number | null
+  duplicateOf?: string
+  caseId?: string
+  caseFileId?: string
+  decidedBy?: string
+  decidedAt?: string
+  sourceMeta: Record<string, unknown>
 }
 
 // ─── Activity Log ─────────────────────────────────────────────────────────────
