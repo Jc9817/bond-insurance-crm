@@ -1,7 +1,7 @@
 # DocFlow: personal data note (PDPA)
 
-_Draft, 24 Oct 2026. The retention periods marked **TO DECIDE** need a
-decision by management before this note is final._
+_25 Oct 2026. Keep periods decided. Three questions in italics below are
+still open._
 
 This note records what personal data DocFlow holds, why, who can see it, and
 how long it is kept, as required by Malaysia's Personal Data Protection Act
@@ -49,14 +49,20 @@ statements**.
 
 | Data | Kept for | Then |
 |---|---|---|
-| Closed cases (Done / archived) and their files | **TO DECIDE** — e.g. 7 years after the last policy expires (matching typical record-keeping for financial records) | Archive, then delete files |
+| Closed cases and their files | 7 years after the case's last policy expires (or after closing, if it had no policy) | Archived automatically; an Admin deletes them for good |
+| Lost / cancelled cases that never went ahead | 2 years after closing | Archived automatically; an Admin deletes them for good |
+| Open cases | As long as they are open | — |
 | Discarded Inbox documents | File deleted immediately; a short record (name, sender, who discarded) kept | — |
 | Duplicate Inbox documents | Not stored; a short record kept | — |
-| Lost / cancelled cases that never went ahead | **TO DECIDE** — e.g. 2 years | Delete |
-| Deactivated user accounts | **TO DECIDE** | Delete |
+| Deactivated user accounts | _Not decided — their names stay on case history; an Admin can remove the login in Supabase when no longer needed_ | — |
 
-Once the periods above are decided, DocFlow can run the archive and delete
-rule on a schedule (the second half of fix list 5.6).
+**How the rule runs:** every morning DocFlow archives cases whose keep
+period has ended and emails a list to `OPS_NOTIFY_EMAIL`. Nothing is deleted
+automatically. An Admin reviews the list in **Settings → Data Retention**
+and clicks **Delete permanently**. That removes the case, its files (including
+the SharePoint copies, which go to the SharePoint recycle bin for 93 days),
+notes, emails, history and policies. A short record of each deletion (case
+number, title, who deleted it) is kept in the activity log.
 
 ## Customer requests
 

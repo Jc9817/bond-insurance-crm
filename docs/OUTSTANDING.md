@@ -9,8 +9,8 @@ _Last updated: 24 Oct 2026_
 
 ## [ ] Putting the finished work live (do these in this order)
 
-Every finished item since Stage 1 (2.3–2.6, 3.1–3.5, 4.1–4.5, 5.1–5.3) is on the
-branch **`stage4-sharepoint-storage`**. Each item was built on top of the one before,
+Every finished item since Stage 1 (2.3–2.6, 3.1–3.5, 4.1–4.6, 5.1–5.3, 5.6) is on the
+branch **`stage5-retention`**. Each item was built on top of the one before,
 so this one branch contains all of them.
 
 1. **Database first.** In Supabase → SQL Editor, paste and run these files,
@@ -28,9 +28,9 @@ so this one branch contains all of them.
      case numbers like 2026-005; existing cases are numbered in date order)
 2. **Push and merge.** In the VS Code terminal:
    ```
-   git push -u origin stage4-sharepoint-storage
+   git push -u origin stage5-retention
    ```
-   Then on GitHub open a pull request from `stage4-sharepoint-storage` into `master` and
+   Then on GitHub open a pull request from `stage5-retention` into `master` and
    merge it. Wait for Vercel to show **Ready**.
 3. **Move old files out of the database.** In the VS Code terminal, first a
    dry run (only counts, changes nothing):
@@ -299,12 +299,17 @@ to whoever handles WhatsApp documents.
 
 ---
 
-## [ ] 5.6 PDPA — decide how long data is kept
+## [ ] 5.6 PDPA — checks
 
-A draft note is in [docs/PDPA-note.md](PDPA-note.md). Fill in the
-**TO DECIDE** periods (closed cases, lost cases, old user accounts) and the
-two questions marked in italics. Once decided, the automatic archive and
-delete rule can be built.
+Keep periods are decided and the rule is built (see [docs/PDPA-note.md](PDPA-note.md);
+three small questions in italics there are still open).
+
+- [ ] Settings → **Data Retention** (Admins only) opens. It lists no cases
+      yet, unless some closed long ago
+- [ ] Test on a throwaway case: mark it Lost, set its closing date more than
+      2 years back (Supabase Table Editor → cases → closed_at), run the daily
+      job (Vercel → Cron Jobs → Run). It is archived, the email arrives,
+      and it appears in Data Retention. "Delete permanently" removes it
 
 ---
 

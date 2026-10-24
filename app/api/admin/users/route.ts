@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient as createServiceClient } from '@supabase/supabase-js'
-import { createClient } from '@/utils/supabase/server'
+import { serviceClient } from '@/lib/supabase-service'
+import { requireAdmin } from '@/lib/admin-auth'
 
 // ─── Settings → Users (Admins only) ─────────────────────────────────────────
 // DocFlow users are Supabase Auth accounts; their name, role and status live
@@ -13,24 +13,6 @@ import { createClient } from '@/utils/supabase/server'
 const ROLES = ['Admin', 'Staff']
 const STATUSES = ['Active', 'Inactive']
 const BAN_FOREVER = '876000h' // ~100 years
-
-function serviceClient() {
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (!key) throw new Error('SUPABASE_SERVICE_ROLE_KEY is not set')
-  return createServiceClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, key, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  })
-}
-
-/** Returns the caller's user id if they are an Admin, else an error response. */
-async function requireAdmin(): Promise<{ userId: string } | NextResponse> {
-  const sb = await createClient()
-  const { data: { user } } = await sb.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Not logged in' }, { status: 401 })
-  const { data: isAdmin } = await sb.rpc('is_admin')
-  if (!isAdmin) return NextResponse.json({ error: 'Only Admins can manage users' }, { status: 403 })
-  return { userId: user.id }
-}
 
 // Create a user: { fullName, email, password, role }
 export async function POST(req: NextRequest) {
