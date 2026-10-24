@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { IntakeSource } from './types'
 import { generateId } from './utils'
 import { removeFile } from './storage-server'
+import { requestIntakeClassification } from './intake-ai'
 
 // Server-only. How a document enters the Unassigned Inbox (intake_items),
 // whatever channel it came from — Telegram today; email, the SharePoint
@@ -73,5 +74,12 @@ export async function createIntakeItem(
     source_meta: item.sourceMeta ?? {},
   })
   if (error) throw new Error(`intake_items insert failed: ${error.message}`)
+
+  // Have the AI read it (fix list 3.3); without the n8n workflow it simply
+  // stays "received" for a person to file.
+  if (!duplicate) {
+    await requestIntakeClassification(sb, id)
+      .catch(err => console.error('[intake] AI request failed:', err instanceof Error ? err.message : err))
+  }
   return { id, duplicate }
 }

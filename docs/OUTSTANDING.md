@@ -9,10 +9,9 @@ _Last updated: 24 Oct 2026_
 
 ## [ ] Putting the finished work live (do these in this order)
 
-Items 2.3–3.2, 3.4, 4.3 and 5.3 are finished on a chain of branches, each built on the one
-before: `stage2-files` → `stage2-load-per-page` → `stage2-email-graph` →
-`stage2-one-ai-path` → `stage3-intake` → `stage4-bulk-upload` → `stage5-email-log` → `stage3-ssm-key`. Merging the last
-one brings in all of them.
+Every finished item since Stage 1 (2.3–2.6, 3.1–3.5, 4.3, 5.3) is on the
+branch **`stage3-ai-suggestions`**. Each item was built on top of the one before,
+so this one branch contains all of them.
 
 1. **Database first.** In Supabase → SQL Editor, paste and run these files,
    one at a time, in this order:
@@ -23,9 +22,9 @@ one brings in all of them.
      correct them, then run it again until the list is empty.
 2. **Push and merge.** In the VS Code terminal:
    ```
-   git push -u origin stage3-ssm-key
+   git push -u origin stage3-ai-suggestions
    ```
-   Then on GitHub open a pull request from `stage3-ssm-key` into `master` and
+   Then on GitHub open a pull request from `stage3-ai-suggestions` into `master` and
    merge it. Wait for Vercel to show **Ready**.
 3. **Move old files out of the database.** In the VS Code terminal, first a
    dry run (only counts, changes nothing):
@@ -218,6 +217,30 @@ notices and reminders all need someone to click Send.
       the existing customer
 - [ ] Add a customer whose name matches an existing one (e.g. "ABC Sdn Bhd"
       vs "ABC SDN. BHD."): DocFlow asks before saving
+
+---
+
+## [ ] 3.3 / 3.5 AI suggestions in the Inbox — set up the n8n workflow, then check
+
+The AI reading runs in n8n, so it needs one new n8n workflow. The full recipe
+(what DocFlow sends, what n8n must send back) is in
+[docs/n8n-intake-classify.md](n8n-intake-classify.md). Until it is set up,
+Inbox items wait as "New" and are filed by hand as before.
+
+1. Build the workflow in n8n as described there and activate it.
+2. In Vercel → Settings → Environment Variables, add `N8N_INTAKE_WEBHOOK_URL`
+   (the workflow's Production webhook URL) and redeploy.
+
+Checks afterwards:
+- [ ] Send a Letter of Award for an existing customer to the Telegram bot →
+      "Add to Existing Case": in the Inbox it shows "AI reading…", then a
+      suggested customer, case and document type
+- [ ] Approve it: it lands on that case, in the right checklist slot
+- [ ] A document for a company DocFlow doesn't know shows "Needs review",
+      suggesting a new customer and case; approving creates them
+- [ ] Upload 10 documents at once, "Select all", "Approve selected": all filed
+- [ ] "Change…" lets you pick a different case and document type
+- [ ] Each filing shows in the case's Activity tab with your name
 
 ---
 

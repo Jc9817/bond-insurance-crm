@@ -4,9 +4,10 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useStore } from '@/lib/store'
 import { useAuth } from '@/lib/auth'
-import type { IntakeItem, IntakeSource } from '@/lib/types'
+import type { IntakeItem, IntakeSource, IntakeStatus } from '@/lib/types'
 import { formatFileSize, timeAgo } from '@/lib/utils'
-import { getActiveDocs, resolveTemplate } from '@/lib/workflow'
+import { getActiveDocs, getWorkflowTemplate, resolveTemplate } from '@/lib/workflow'
+import { matchCustomer } from '@/lib/ssm'
 import PageHeader from '@/components/ui/PageHeader'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 import FileViewerModal from '@/components/ui/FileViewerModal'
@@ -14,10 +15,17 @@ import { INBOX_FOLDER, INBOX_UPLOAD_TYPES, isZipFile } from '@/lib/storage'
 import { fileSha256, uploadFile } from '@/lib/upload'
 
 // The Unassigned Inbox: documents from every intake channel (intake_items)
-// waiting for a person to file them to a case or discard them. Every
-// decision is recorded on the item and in the activity log.
+// waiting for a person to file them. The AI suggests a customer, case and
+// document type for each (fix list 3.3); a person approves — one at a time
+// or several together — changes the suggestion, or discards (3.5). A new
+// customer or case is only created on approval, and every decision is
+// recorded on the item and in the activity log.
 
 type ActionMode = 'assign' | 'discard'
+
+// New cases created from the Inbox start on the same workflow as the
+// Telegram bot's "New case" (every intake case starts from a Letter of Award).
+const NEW_CASE_TYPE = 'Bond Workflow'
 
 const SOURCE_LABELS: Record<IntakeSource, string> = {
   telegram: 'Telegram',
@@ -26,40 +34,143 @@ const SOURCE_LABELS: Record<IntakeSource, string> = {
   upload: 'Upload',
 }
 
-function UploadCard({ upload }: { upload: IntakeItem }) {
+const STATUS_BADGES: Partial<Record<IntakeStatus, { label: string; className: string }>> = {
+  received: { label: 'New', className: 'bg-gray-100 text-gray-600' },
+  processing: { label: 'AI reading…', className: 'bg-blue-100 text-blue-700' },
+  suggested: { label: 'Suggested', className: 'bg-green-100 text-green-700' },
+  needs_review: { label: 'Needs review', className: 'bg-amber-100 text-amber-700' },
+}
+
+/** True when an item's suggestion names everything needed to file it in one click. */
+const canApprove = (item: IntakeItem) => {
+  const s = item.aiSuggestion
+  return !!item.fileRef && !!s?.customer && !!s.case && (!!s.case.id || s.case.isNew) && !!s.documentType
+}
+
+// ─── Approving suggestions ───────────────────────────────────────────────────
+
+function useApprove() {
+  const { customers, cases, workflowTemplates, addCustomer, addCase, fileIntakeItem, addActivityLog } = useStore()
+  const { currentUser } = useAuth()
+  const decidedBy = currentUser?.fullName ?? 'Unknown'
+
+  // Files the given items as the AI suggested. New customers and cases are
+  // created once per batch, even when several items point at the same one.
+  return (items: IntakeItem[]): number => {
+    const newCustomerIds = new Map<string, string>()   // suggested name|ssm -> created id
+    const newCaseIds = new Map<string, { id: string; title: string }>()
+    let filed = 0
+
+    for (const item of items) {
+      const s = item.aiSuggestion
+      if (!canApprove(item) || !s?.customer || !s.case) continue
+
+      // Customer: the suggested one, or one that now matches, or a new one
+      let customerId = s.customer.id
+      let customerName = s.customer.name
+      if (!customerId) {
+        const key = `${s.customer.ssm ?? ''}|${s.customer.name.toLowerCase()}`
+        const existing = matchCustomer(customers, { ssm: s.customer.ssm, name: s.customer.name })
+        customerId = existing?.id ?? newCustomerIds.get(key)
+        if (existing) customerName = existing.customerName
+        if (!customerId) {
+          customerId = addCustomer({
+            customerName: s.customer.name, companyRegistrationNo: s.customer.ssm ?? '',
+            businessType: '', industry: '', mainPhone: '', mainEmail: '',
+            notes: `Created from the Inbox (${item.fileName}).`,
+          })
+          newCustomerIds.set(key, customerId)
+          addActivityLog({ title: 'Customer created from Inbox', description: `${s.customer.name} created when filing ${item.fileName}`, changedBy: decidedBy })
+        }
+      }
+
+      // Case: the suggested one, or a new one for this customer
+      let caseId = s.case.id
+      let caseTitle = s.case.title
+      if (!caseId) {
+        const key = `${customerId}|${s.case.title}`
+        const made = newCaseIds.get(key)
+        if (made) {
+          caseId = made.id
+        } else {
+          caseId = addCase({
+            caseTitle: s.case.title, customerId, customerName, caseType: NEW_CASE_TYPE, amount: 0,
+            personInCharge: '', currentStatus: 'Created', result: '', closingRemarks: '',
+          })
+          newCaseIds.set(key, { id: caseId, title: s.case.title })
+          addActivityLog({ caseId, caseTitle, actionType: 'CASE_CREATED', title: 'Case created from Inbox', description: `Created when filing ${item.fileName}`, changedBy: decidedBy })
+        }
+      } else {
+        caseTitle = cases.find(c => c.id === caseId)?.caseTitle ?? caseTitle
+      }
+
+      // Checklist slot: from the suggestion, or by name in the new case's workflow
+      const documentType = s.documentType!
+      const requiredDocumentId = s.requiredDocumentId ?? getActiveDocs(getWorkflowTemplate(NEW_CASE_TYPE, workflowTemplates))
+        .find(d => d.name.toLowerCase() === documentType.toLowerCase())?.id
+
+      if (!fileIntakeItem(item.id, { caseId, documentType, requiredDocumentId, decidedBy })) continue
+      addActivityLog({
+        caseId, caseTitle,
+        actionType: 'DOCUMENT_ASSIGNED',
+        title: 'Filed from Inbox',
+        description: `${item.fileName} (from ${SOURCE_LABELS[item.source]}, ${item.sender}) filed as "${documentType}"`
+          + (item.confidence != null ? ` — AI suggestion, ${Math.round(item.confidence * 100)}% sure` : ''),
+        changedBy: decidedBy,
+      })
+      filed++
+    }
+    return filed
+  }
+}
+
+// ─── One Inbox item ──────────────────────────────────────────────────────────
+
+function UploadCard({ upload, selected, onToggleSelect, onApprove, onAskAi }: {
+  upload: IntakeItem
+  selected: boolean
+  onToggleSelect: () => void
+  onApprove: () => void
+  onAskAi: () => void
+}) {
   const { cases, workflowTemplates, fileIntakeItem, discardIntakeItem, addActivityLog } = useStore()
   const { currentUser } = useAuth()
   const decidedBy = currentUser?.fullName ?? 'Unknown'
+  const s = upload.aiSuggestion
   const [action, setAction] = useState<ActionMode | null>(null)
   const [viewing, setViewing] = useState(false)
   const [error, setError] = useState('')
 
-  // Assign form state
-  const [assignCaseId, setAssignCaseId] = useState('')
+  // "Change" form, started from the AI's suggestion when there is one
+  const [assignCaseId, setAssignCaseId] = useState(s?.case?.id ?? '')
+  const targetCase = cases.find(c => c.id === assignCaseId)
+  const caseDocs = targetCase ? getActiveDocs(resolveTemplate(targetCase, workflowTemplates)) : []
+  const defaultDocId = (name?: string) => (name
+    ? caseDocs.find(d => d.name.toLowerCase() === name.toLowerCase())?.id
+    : undefined) ?? caseDocs.find(d => d.name.toLowerCase().includes('letter of award'))?.id ?? ''
+  const [assignDocId, setAssignDocId] = useState<string | null>(null)   // null = use the default
+  const chosenDocId = assignDocId ?? defaultDocId(s?.documentType)
 
   const toggle = (mode: ActionMode) => {
     setError('')
+    // A suggestion may have arrived after this card first showed
+    if (mode === 'assign' && !assignCaseId && s?.case?.id) setAssignCaseId(s.case.id)
     setAction(prev => prev === mode ? null : mode)
   }
 
-  // New-case creation happens directly in the Telegram bot — this Inbox
-  // files a document onto an existing case. The bot's documents are usually
-  // the Letter of Award, so the tag defaults to that; staff can retag it from
-  // the case checklist. (AI-suggested tags arrive with fix list 3.3.)
   const submitAssign = () => {
     if (!assignCaseId) { setError('Select a case to assign this file to.'); return }
     if (!upload.fileRef) { setError('The file is still loading — please try again in a moment.'); return }
-    const targetCase = cases.find(c => c.id === assignCaseId)
-    const template = targetCase ? resolveTemplate(targetCase, workflowTemplates) : null
-    const loaDoc = template ? getActiveDocs(template).find(d => d.name.toLowerCase().includes('letter of award')) ?? null : null
-    const documentType = loaDoc?.name ?? 'Letter of Award (LOA)'
-    if (!fileIntakeItem(upload.id, { caseId: assignCaseId, documentType, requiredDocumentId: loaDoc?.id, decidedBy })) return
+    const doc = caseDocs.find(d => d.id === chosenDocId)
+    const documentType = doc?.name ?? s?.documentType ?? 'Supporting Document'
+    if (!fileIntakeItem(upload.id, { caseId: assignCaseId, documentType, requiredDocumentId: doc?.id, decidedBy })) return
     addActivityLog({
       caseId: assignCaseId,
       caseTitle: targetCase?.caseTitle,
-      actionType: 'DOCUMENT_UPLOADED',
+      actionType: 'DOCUMENT_ASSIGNED',
       title: 'Filed from Inbox',
-      description: `${upload.fileName} (from ${SOURCE_LABELS[upload.source]}, ${upload.sender}) filed as "${documentType}"`,
+      description: `${upload.fileName} (from ${SOURCE_LABELS[upload.source]}, ${upload.sender}) filed as "${documentType}"`
+        + (s ? ' — AI suggestion changed by hand' : ''),
       changedBy: decidedBy,
     })
   }
@@ -67,7 +178,6 @@ function UploadCard({ upload }: { upload: IntakeItem }) {
   const submitDiscard = () => {
     discardIntakeItem(upload.id, decidedBy)
     addActivityLog({
-      actionType: 'DOCUMENT_DELETED',
       title: 'Discarded from Inbox',
       description: `${upload.fileName} (from ${SOURCE_LABELS[upload.source]}, ${upload.sender}) discarded`,
       changedBy: decidedBy,
@@ -75,17 +185,29 @@ function UploadCard({ upload }: { upload: IntakeItem }) {
   }
 
   const openCases = cases.filter(c => !c.archivedAt && c.currentStatus !== 'Done')
+  const badge = STATUS_BADGES[upload.status]
+  const approvable = canApprove(upload)
 
   return (
-    <div className="rounded-2xl border border-gray-150 bg-white">
+    <div className={`rounded-2xl border bg-white ${selected ? 'border-violet-300 ring-1 ring-violet-200' : 'border-gray-150'}`}>
       <div className="flex items-center gap-3 px-5 py-4">
-        <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-          <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-          </svg>
-        </div>
+        <input
+          type="checkbox"
+          className="w-4 h-4 accent-violet-600 shrink-0 disabled:opacity-30"
+          checked={selected}
+          disabled={!approvable}
+          onChange={onToggleSelect}
+          title={approvable ? 'Select for "Approve selected"' : 'Nothing to approve yet — use Assign to Case'}
+        />
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-gray-800 truncate">{upload.fileName}</p>
+          <div className="flex items-center gap-2 min-w-0">
+            <p className="text-sm font-semibold text-gray-800 truncate">{upload.fileName}</p>
+            {badge && (
+              <span className={`text-xs font-medium rounded-full px-2 py-0.5 shrink-0 ${badge.className}`}>
+                {badge.label}{upload.confidence != null && upload.status !== 'processing' ? ` · ${Math.round(upload.confidence * 100)}%` : ''}
+              </span>
+            )}
+          </div>
           <p className="text-xs text-gray-400">
             <span className="font-medium text-gray-500">{SOURCE_LABELS[upload.source]}</span>
             {' · '}{upload.sender} · {formatFileSize(upload.fileSize)} · {timeAgo(upload.receivedAt)}
@@ -93,21 +215,41 @@ function UploadCard({ upload }: { upload: IntakeItem }) {
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {upload.fileRef && (
-            <button
-              onClick={() => setViewing(true)}
-              className="btn-xs bg-gray-100 hover:bg-gray-200 text-gray-700"
-            >
-              View
-            </button>
+            <button onClick={() => setViewing(true)} className="btn-xs bg-gray-100 hover:bg-gray-200 text-gray-700">View</button>
+          )}
+          {approvable && (
+            <button onClick={onApprove} className="btn-xs bg-green-600 hover:bg-green-700 text-white">Approve</button>
           )}
           <button onClick={() => toggle('assign')} className={`btn-xs ${action === 'assign' ? 'bg-violet-700' : 'bg-violet-600 hover:bg-violet-700'} text-white`}>
-            Assign to Case
+            {s ? 'Change…' : 'Assign to Case'}
           </button>
-          <button onClick={() => toggle('discard')} className="btn-xs bg-red-50 text-red-500 hover:bg-red-100">
-            Discard
-          </button>
+          <button onClick={() => toggle('discard')} className="btn-xs bg-red-50 text-red-500 hover:bg-red-100">Discard</button>
         </div>
       </div>
+
+      {/* What the AI suggests */}
+      {s && (s.customer || s.case || s.documentType || s.note) && (
+        <div className="mx-5 mb-4 rounded-xl bg-gray-50 border border-gray-100 px-4 py-3 text-xs space-y-1">
+          {s.documentType && <p><span className="text-gray-400 w-20 inline-block">Document</span> <strong className="text-gray-700">{s.documentType}</strong></p>}
+          {s.customer && (
+            <p><span className="text-gray-400 w-20 inline-block">Customer</span> <strong className="text-gray-700">{s.customer.name}</strong>
+              {s.customer.isNew && <span className="ml-1.5 text-amber-700">(new — will be created)</span>}
+              {s.customer.ssm && <span className="ml-1.5 text-gray-400">SSM {s.customer.ssm}</span>}</p>
+          )}
+          {s.case && (
+            <p><span className="text-gray-400 w-20 inline-block">Case</span> <strong className="text-gray-700">{s.case.title}</strong>
+              {s.case.isNew && <span className="ml-1.5 text-amber-700">(new — will be created)</span>}</p>
+          )}
+          {s.note && <p className="text-amber-700 pt-1">{s.note}</p>}
+        </div>
+      )}
+      {(upload.status === 'received' || upload.status === 'needs_review') && (
+        <div className="mx-5 mb-3 -mt-1">
+          <button onClick={onAskAi} className="text-xs text-violet-600 hover:underline">
+            {s ? 'Ask the AI to read it again' : 'Ask the AI to suggest where it goes'}
+          </button>
+        </div>
+      )}
 
       {action === 'assign' && (
         <div className="px-5 py-4 border-t border-gray-100 bg-gray-50 rounded-b-2xl space-y-3">
@@ -115,11 +257,20 @@ function UploadCard({ upload }: { upload: IntakeItem }) {
             <label className="label">Case *</label>
             <SearchableSelect
               value={assignCaseId}
-              onChange={setAssignCaseId}
+              onChange={v => { setAssignCaseId(v); setAssignDocId(null) }}
               options={openCases.map(c => ({ value: c.id, label: `${c.caseTitle} — ${c.customerName}` }))}
               placeholder="— Select a case —"
             />
           </div>
+          {caseDocs.length > 0 && (
+            <div>
+              <label className="label">Document type</label>
+              <select className="input" value={chosenDocId} onChange={e => setAssignDocId(e.target.value)}>
+                <option value="">Supporting Document (no checklist slot)</option>
+                {caseDocs.map(d => <option key={d.id} value={d.id}>{d.name}{d.required ? ' *' : ''}</option>)}
+              </select>
+            </div>
+          )}
           {error && <p className="text-xs text-red-500">{error}</p>}
           <div className="flex gap-2">
             <button onClick={submitAssign} className="btn-primary text-sm">Attach File to Case</button>
@@ -242,19 +393,56 @@ function BulkUpload({ onDone }: { onDone: () => void }) {
   )
 }
 
+// ─── Page ────────────────────────────────────────────────────────────────────
+
 type SortOrder = 'newest' | 'oldest'
 
 export default function InboxPage() {
   const { intakeItems, loadInbox } = useStore()
-
-  // File links for View / Assign are loaded here, not at startup
-  useEffect(() => { loadInbox() }, [loadInbox])
+  const approve = useApprove()
   const [sortOrder, setSortOrder] = useState<SortOrder>('newest')
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [notice, setNotice] = useState('')
+
+  // File links and suggestions are loaded here, not at startup
+  useEffect(() => { loadInbox() }, [loadInbox])
+
+  // While the AI is reading something, check every few seconds for its suggestion
+  const aiReading = intakeItems.some(i => i.status === 'processing')
+  useEffect(() => {
+    if (!aiReading) return
+    const timer = setInterval(() => loadInbox(), 5000)
+    return () => clearInterval(timer)
+  }, [aiReading, loadInbox])
 
   const sortedUploads = [...intakeItems].sort((a, b) => {
     const diff = new Date(a.receivedAt).getTime() - new Date(b.receivedAt).getTime()
     return sortOrder === 'newest' ? -diff : diff
   })
+  const approvable = sortedUploads.filter(canApprove)
+  const selected = approvable.filter(i => selectedIds.has(i.id))
+
+  const toggleSelect = (id: string) => setSelectedIds(prev => {
+    const next = new Set(prev)
+    if (next.has(id)) next.delete(id); else next.add(id)
+    return next
+  })
+
+  const approveItems = (items: IntakeItem[]) => {
+    const filed = approve(items)
+    setSelectedIds(new Set())
+    setNotice(`${filed} document${filed === 1 ? '' : 's'} filed.`)
+  }
+
+  const askAi = async (id: string) => {
+    setNotice('')
+    const res = await fetch('/api/intake/classify', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) setNotice(data.error ?? 'The AI could not be asked — please try again.')
+    loadInbox()
+  }
 
   return (
     <div className="p-8 max-w-screen-xl mx-auto">
@@ -281,6 +469,23 @@ export default function InboxPage() {
 
       <BulkUpload onDone={loadInbox} />
 
+      {approvable.length > 0 && (
+        <div className="flex items-center gap-3 mb-3 text-sm">
+          <button
+            onClick={() => setSelectedIds(selected.length === approvable.length ? new Set() : new Set(approvable.map(i => i.id)))}
+            className="text-violet-600 hover:underline"
+          >
+            {selected.length === approvable.length ? 'Clear selection' : `Select all ${approvable.length} with a suggestion`}
+          </button>
+          {selected.length > 0 && (
+            <button onClick={() => approveItems(selected)} className="btn-xs bg-green-600 hover:bg-green-700 text-white">
+              Approve selected ({selected.length})
+            </button>
+          )}
+        </div>
+      )}
+      {notice && <p className="text-sm text-gray-700 bg-gray-50 rounded-xl p-3 mb-3">{notice}</p>}
+
       {intakeItems.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-gray-200 py-16 text-center">
           <p className="text-sm text-gray-400">No unassigned uploads right now.</p>
@@ -288,7 +493,16 @@ export default function InboxPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          {sortedUploads.map(u => <UploadCard key={u.id} upload={u} />)}
+          {sortedUploads.map(u => (
+            <UploadCard
+              key={u.id}
+              upload={u}
+              selected={selectedIds.has(u.id)}
+              onToggleSelect={() => toggleSelect(u.id)}
+              onApprove={() => approveItems([u])}
+              onAskAi={() => askAi(u.id)}
+            />
+          ))}
         </div>
       )}
 
