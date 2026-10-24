@@ -323,6 +323,19 @@ checks are listed at the end of each part of that guide.
 
 ---
 
+## [ ] 5.5 Telegram: keep for phone photos, or remove
+
+Telegram is now marked as an optional extra in DocFlow. Once email intake
+and the SharePoint `_Inbox` (4.1 / 4.2) have worked for a few weeks, decide:
+
+- **Keep** it for quick phone photos: nothing to do.
+- **Remove** it: in Telegram, delete the bot via @BotFather. In Vercel, delete
+  `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_CHAT_ID` and
+  `TELEGRAM_WEBHOOK_SECRET`. Then ask for the code and the two Telegram
+  tables to be removed.
+
+---
+
 ## [ ] Old `users` table in the database
 
 The live database has a `public.users` table (`id, full_name, email, password,

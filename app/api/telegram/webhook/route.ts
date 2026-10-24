@@ -7,6 +7,12 @@ import { removeFile, saveFile, signFileUrlForServer } from '@/lib/storage-server
 import { createIntakeItem, findDuplicate, sha256, type DuplicateMatch } from '@/lib/intake'
 import { sharePointStorageEnabled, syncCaseFile } from '@/lib/sharepoint-files'
 
+// OPTIONAL intake channel (fix list 5.5). The main ways documents come in are
+// email to operation@ (4.1), the SharePoint _Inbox folder (4.2) and bulk upload
+// on the Inbox page (4.3). This bot stays for quick phone photos; with
+// TELEGRAM_BOT_TOKEN / TELEGRAM_WEBHOOK_SECRET unset it does nothing (every
+// call is refused). Removing it: delete app/api/telegram and the
+// telegram_uploads / telegram_pending_uploads tables.
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN!
 const ALLOWED_CHAT_ID = Number(process.env.TELEGRAM_ALLOWED_CHAT_ID!)
 const WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET!
