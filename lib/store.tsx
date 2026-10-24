@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import type {
   Customer, Contact, Case, CaseNote, FollowUp, PicUser,
@@ -33,6 +33,11 @@ type StoreCtx = {
   caseEmails: CaseEmailLog[]
   telegramUploads: TelegramUpload[]
   loading: boolean
+
+  // Load what the startup load leaves out (see loadAll): call when a case or
+  // the Inbox is opened.
+  loadCase: (caseId: string) => Promise<void>
+  loadInbox: () => Promise<void>
 
   addCustomer: (c: Omit<Customer, 'id' | 'createdAt'>) => string
   updateCustomer: (id: string, c: Partial<Customer>) => void
@@ -314,6 +319,34 @@ const fromUser = (r: Row): User => ({
   createdAt: r.created_at,
 })
 
+// ─── What the startup load fetches (see loadAll) ─────────────────────────────
+
+// Enough for lists, the dashboard and reports ("missing documents"). The file
+// link, AI-extracted data and AI prompt come with loadCase().
+const CASE_FILE_LIST_COLUMNS =
+  'id, case_id, file_name, file_size, file_type, document_type, required_document_id, uploaded_by, uploaded_at, ai_scanned, ai_status'
+// Inbox list and the sidebar count; file links come with loadInbox().
+const INBOX_LIST_COLUMNS =
+  'id, file_name, file_size, file_type, uploaded_by, uploaded_at, telegram_chat_id, telegram_message_id, telegram_file_id'
+// When each case entered a workflow step — the dashboard's SLA warnings.
+const STEP_LOG_COLUMNS = 'id, case_id, action_type, new_value, timestamp'
+const RECENT_ACTIVITY_LIMIT = 20
+
+/** prev with rows added; a row with an id already in prev replaces it. */
+function mergeById<T extends { id: string }>(prev: T[], rows: T[]): T[] {
+  const map = new Map(prev.map(x => [x.id, x]))
+  for (const r of rows) map.set(r.id, r)
+  return [...map.values()]
+}
+
+/** prev with everything belonging to caseId replaced by rows. */
+function replaceForCase<T extends { caseId?: string }>(prev: T[], caseId: string, rows: T[]): T[] {
+  return [...rows, ...prev.filter(x => x.caseId !== caseId)]
+}
+
+const sortLogs = (logs: ActivityLog[]) =>
+  [...logs].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+
 /** Drops undefined fields so a partial update only touches the columns it changes. */
 const defined = (o: Row) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined))
 
@@ -345,38 +378,30 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [settingsState, setSettingsState] = useState<SettingsData>(emptySettings)
   const [loading, setLoading] = useState(true)
 
-  // ─── Load all data from Supabase on mount ──────────────────────────────────
+  // ─── Loading ───────────────────────────────────────────────────────────────
+  // On startup we load what the lists, dashboard and reports need: every
+  // customer, contact, case and follow-up, the settings, and a slim version
+  // of the case files and Inbox (name, tag and status only — no file link,
+  // no AI-extracted data). Things only shown inside one case — its notes,
+  // emails, full history and full file rows — are loaded by loadCase() when
+  // that case is opened, and the Inbox's file links by loadInbox().
 
-  useEffect(() => {
-    loadAll()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
+  // `loading` starts true and is cleared once this finishes
   async function loadAll() {
     const sb = createClient()
-    setLoading(true)
-
-    // Connection test — visible in browser DevTools console
-    const { error: pingError } = await sb.from('customers').select('id').limit(1)
-    if (pingError) {
-      console.error('[Supabase] Connection failed:', pingError.message, pingError.code)
-    } else {
-      console.log('[Supabase] Connected successfully')
-    }
 
     const [
       { data: cust, error: custErr },
       { data: cont },
       { data: caseRows },
-      { data: noteRows },
       { data: fuRows },
       { data: fileRows },
-      { data: logRows },
+      { data: recentLogRows },
+      { data: stepLogRows },
       { data: templates },
       { data: steps },
       { data: docs },
       { data: templateRows },
-      { data: caseEmailRows },
       { data: telegramUploadRows },
       { data: settingsRows },
       { data: productRows },
@@ -388,16 +413,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       sb.from('customers').select('*').order('created_at', { ascending: false }),
       sb.from('contacts').select('*'),
       sb.from('cases').select('*').order('created_at', { ascending: false }),
-      sb.from('case_notes').select('*').order('created_at', { ascending: false }),
       sb.from('follow_ups').select('*').order('created_at', { ascending: false }),
-      sb.from('case_files').select('*').order('uploaded_at', { ascending: false }),
-      sb.from('activity_logs').select('*').order('timestamp', { ascending: false }),
+      sb.from('case_files').select(CASE_FILE_LIST_COLUMNS).order('uploaded_at', { ascending: false }),
+      // Dashboard: "Recent activity" ...
+      sb.from('activity_logs').select('*').order('timestamp', { ascending: false }).limit(RECENT_ACTIVITY_LIMIT),
+      // ... and when each case entered its current step (SLA warnings)
+      sb.from('activity_logs').select(STEP_LOG_COLUMNS).eq('action_type', 'WORKFLOW_STEP_CHANGED'),
       sb.from('workflow_templates').select('*'),
       sb.from('workflow_steps').select('*').order('order'),
       sb.from('required_documents').select('*'),
       sb.from('email_templates').select('*').order('created_at'),
-      sb.from('case_emails').select('*').order('sent_at', { ascending: false }),
-      sb.from('telegram_uploads').select('*').order('uploaded_at', { ascending: false }),
+      sb.from('telegram_uploads').select(INBOX_LIST_COLUMNS).order('uploaded_at', { ascending: false }),
       sb.from('settings_items').select('*').order('sort_order').order('created_at'),
       sb.from('products').select('*').order('sort_order').order('created_at'),
       sb.from('product_packages').select('*').order('sort_order').order('created_at'),
@@ -410,11 +436,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (cust) setCustomers(cust.map(fromCustomer))
     if (cont) setContacts(cont.map(fromContact))
     if (caseRows) setCases(caseRows.map(fromCase))
-    if (noteRows) setCaseNotes(noteRows.map(fromCaseNote))
     if (fuRows) setFollowUps(fuRows.map(fromFollowUp))
     if (fileRows) setCaseFiles(fileRows.map(fromCaseFile))
-    if (logRows) setActivityLogs(logRows.map(fromActivityLog))
-    if (caseEmailRows) setCaseEmails(caseEmailRows.map(fromCaseEmailLog))
+    // Full recent rows listed last so they win over the slim step-change rows
+    setActivityLogs(sortLogs(mergeById<ActivityLog>([], [...(stepLogRows ?? []), ...(recentLogRows ?? [])].map(fromActivityLog))))
     if (telegramUploadRows) setTelegramUploads(telegramUploadRows.map(fromTelegramUpload))
     if (settingsRows) {
       const grouped = emptySettings()
@@ -449,6 +474,40 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
     setLoading(false)
   }
+
+  // Everything about one case that the startup load leaves out. Also picks up
+  // changes made elsewhere since (e.g. an AI scan result from n8n).
+  // Stable across renders so pages can call it from useEffect without looping.
+  // (React Compiler is not enabled, so its memoization lint does not apply.)
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
+  const loadCase = useCallback(async (caseId: string) => {
+    const sb = createClient()
+    const [
+      { data: fileRows, error: fileErr },
+      { data: noteRows },
+      { data: logRows },
+      { data: emailRows },
+    ] = await Promise.all([
+      sb.from('case_files').select('*').eq('case_id', caseId).order('uploaded_at', { ascending: false }),
+      sb.from('case_notes').select('*').eq('case_id', caseId).order('created_at', { ascending: false }),
+      sb.from('activity_logs').select('*').eq('case_id', caseId).order('timestamp', { ascending: false }),
+      sb.from('case_emails').select('*').eq('case_id', caseId).order('sent_at', { ascending: false }),
+    ])
+    if (fileErr) console.error('[Supabase] loadCase failed:', fileErr.message)
+    if (fileRows) setCaseFiles(prev => replaceForCase(prev, caseId, fileRows.map(fromCaseFile)))
+    if (noteRows) setCaseNotes(prev => replaceForCase(prev, caseId, noteRows.map(fromCaseNote)))
+    if (logRows) setActivityLogs(prev => sortLogs(replaceForCase(prev, caseId, logRows.map(fromActivityLog))))
+    if (emailRows) setCaseEmails(prev => replaceForCase(prev, caseId, emailRows.map(fromCaseEmailLog)))
+  }, [])
+
+  // The Inbox page's file links (the startup load only has names and sizes).
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
+  const loadInbox = useCallback(async () => {
+    const { data, error } = await createClient()
+      .from('telegram_uploads').select('*').order('uploaded_at', { ascending: false })
+    if (error) console.error('[Supabase] loadInbox failed:', error.message)
+    if (data) setTelegramUploads(data.map(fromTelegramUpload))
+  }, [])
 
   async function seedEmailTemplates(sb: ReturnType<typeof createClient>) {
     const row: EmailTemplate = {
@@ -489,6 +548,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
     setWorkflowTemplates(mockWorkflowTemplates)
   }
+
+  // Fetch on mount; loadAll only sets state after its queries come back
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadAll()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // ─── Customers ────────────────────────────────────────────────────────────
 
@@ -1058,6 +1124,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       customers, contacts, cases, caseNotes, followUps, pics,
       users, caseFiles, activityLogs, settingsData: settingsState, workflowTemplates,
       products, productPackages, emailTemplates, caseEmails, telegramUploads, loading,
+      loadCase, loadInbox,
       addCustomer, updateCustomer, deleteCustomer,
       addContact, updateContact, deleteContact, setPrimaryContact,
       addCase, updateCase, deleteCase, archiveCase, restoreCase,

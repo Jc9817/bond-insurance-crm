@@ -43,10 +43,23 @@ export default function CaseDetailPage() {
     cases, customers, contacts, caseNotes, followUps, pics, workflowTemplates,
     activityLogs, updateCase, addCase, addCaseNote, addFollowUp, toggleFollowUp, deleteFollowUp,
     addActivityLog, caseFiles, settingsData, products, productPackages, addCustomer,
+    loadCase, loading,
   } = useStore()
   const { currentUser } = useAuth()
 
   const caseItem = cases.find(c => c.id === id)
+
+  // This case's files, notes, emails and history are loaded when it opens.
+  useEffect(() => { loadCase(id) }, [id, loadCase])
+
+  // While an AI scan is running, check every few seconds so the result shows
+  // up without reloading the page.
+  const scanRunning = caseFiles.some(f => f.caseId === id && f.aiStatus === 'Processing')
+  useEffect(() => {
+    if (!scanRunning) return
+    const timer = setInterval(() => loadCase(id), 5000)
+    return () => clearInterval(timer)
+  }, [scanRunning, id, loadCase])
 
   // ── state ──────────────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<'files' | 'ai' | 'emails' | 'info' | 'notes' | 'milestones' | 'activity'>('files')
@@ -70,7 +83,7 @@ export default function CaseDetailPage() {
   if (!caseItem) {
     return (
       <div className="p-8">
-        <p className="text-gray-500 text-lg">Case not found.</p>
+        <p className="text-gray-500 text-lg">{loading ? 'Loading…' : 'Case not found.'}</p>
         <Link href="/cases" className="text-blue-600 hover:underline text-sm mt-3 inline-block">← Back to Cases</Link>
       </div>
     )

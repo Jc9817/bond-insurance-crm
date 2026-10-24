@@ -83,6 +83,47 @@ Deployed 24 Oct 2026 (PR #1). Check once:
 
 ---
 
+## [ ] 2.3 Put the new file storage live, then move the old files
+
+The `stage2-files` branch is pushed to GitHub but not merged into `master`, so
+the live site doesn't have it yet.
+
+1. On GitHub, open a pull request from `stage2-files` into `master` and merge it.
+   Wait for Vercel to show **Ready**.
+2. Only then, in the VS Code terminal, count the files still kept inside the database:
+   ```
+   node scripts/move-base64-files.mjs
+   ```
+3. If the numbers look sensible, move them:
+   ```
+   node scripts/move-base64-files.mjs --apply
+   ```
+
+Checks afterwards:
+- [ ] Upload a quotation document, view it, download it
+- [ ] Send a file to the Telegram bot, open it in the Inbox, assign it to a case
+- [ ] Discard an Inbox file: it disappears
+- [ ] AI scan on a quotation file works
+- [ ] Old quotation and Telegram files (from before) still open
+
+---
+
+## [ ] 2.4 Faster loading — checks
+
+Branch `stage2-load-per-page` (builds on `stage2-files`; merging it brings
+both in). After it is live:
+
+- [ ] Dashboard opens and shows "Recent activity" and the "needs attention" list
+- [ ] Open a case: files, notes, emails and the Activity tab all appear
+- [ ] Add a note and a follow-up inside a case: they stay after refresh
+- [ ] Start an AI scan and stay on the case page: the result appears by itself
+      within a few seconds of finishing (no refresh needed)
+- [ ] Inbox: View a file, then Assign it to a case
+- [ ] Case report page shows the AI-extracted details
+- [ ] Cases list / board still show the "missing documents" counts
+
+---
+
 ## [ ] Old `users` table in the database
 
 The live database has a `public.users` table (`id, full_name, email, password,

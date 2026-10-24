@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useStore } from '@/lib/store'
 import type { TelegramUpload } from '@/lib/types'
@@ -47,6 +47,7 @@ function UploadCard({ upload }: { upload: TelegramUpload }) {
 
   const submitAssign = () => {
     if (!assignCaseId) { setError('Select a case to assign this file to.'); return }
+    if (!upload.fileDataUrl) { setError('The file is still loading — please try again in a moment.'); return }
     const targetCase = cases.find(c => c.id === assignCaseId)
     const template = targetCase ? resolveTemplate(targetCase, workflowTemplates) : null
     const loaDoc = template ? getActiveDocs(template).find(d => d.name.toLowerCase().includes('letter of award')) ?? null : null
@@ -133,7 +134,10 @@ function UploadCard({ upload }: { upload: TelegramUpload }) {
 type SortOrder = 'newest' | 'oldest'
 
 export default function InboxPage() {
-  const { telegramUploads } = useStore()
+  const { telegramUploads, loadInbox } = useStore()
+
+  // File links for View / Assign are loaded here, not at startup
+  useEffect(() => { loadInbox() }, [loadInbox])
   const [sortOrder, setSortOrder] = useState<SortOrder>('newest')
 
   const sortedUploads = [...telegramUploads].sort((a, b) => {
