@@ -104,7 +104,8 @@ type StoreCtx = {
   sendCaseEmail: (data: { caseId: string; templateName?: string; toEmail: string; subject: string; body: string }) => Promise<void>
   notifyOpsTeam: (caseItem: Case) => Promise<void>
 
-  deleteTelegramUpload: (id: string) => void
+  // keepFile: the stored file now belongs to a case file (Inbox "Assign to Case")
+  deleteTelegramUpload: (id: string, opts?: { keepFile?: boolean }) => void
   sendCaseFileToInbox: (file: CaseFile) => void
 }
 
@@ -654,9 +655,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   // ─── Telegram Inbox ─────────────────────────────────────────────────────────
 
-  const deleteTelegramUpload = (id: string) => {
+  const deleteTelegramUpload = (id: string, opts?: { keepFile?: boolean }) => {
+    const upload = telegramUploads.find(x => x.id === id)
     setTelegramUploads(prev => prev.filter(x => x.id !== id))
-    createClient().from('telegram_uploads').delete().eq('id', id).then()
+    const sb = createClient()
+    sb.from('telegram_uploads').delete().eq('id', id).then()
+    const path = opts?.keepFile ? null : storagePath(upload?.fileDataUrl)
+    if (path) sb.storage.from(STORAGE_BUCKET).remove([path]).then()
   }
 
   const sendCaseFileToInbox = (file: CaseFile) => {

@@ -3,6 +3,8 @@ import { createClient } from '@supabase/supabase-js'
 import { SUPPORTED_MIME_TYPES } from '@/lib/ai-scan'
 import { generateId } from '@/lib/utils'
 import { notifyDocFlowWebhook } from '@/lib/n8n'
+import { INBOX_FOLDER } from '@/lib/storage'
+import { removeFile, saveFile, signFileUrlForServer } from '@/lib/storage-server'
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN!
 const ALLOWED_CHAT_ID = Number(process.env.TELEGRAM_ALLOWED_CHAT_ID!)
@@ -72,7 +74,7 @@ type PendingFile = {
   fileName: string
   fileSize: number
   mimeType: string
-  fileDataUrl: string
+  fileDataUrl: string        // storage reference ("storage:inbox/..."), saved when the file arrived
   telegramFileId: string
   uploadedBy: string
 }
@@ -144,7 +146,7 @@ async function createCaseFromUpload(pending: PendingFile) {
     fileSize: pending.fileSize,
     uploadedBy: pending.uploadedBy,
     uploadedAt,
-    fileUrl: pending.fileDataUrl,
+    fileUrl: await signFileUrlForServer(pending.fileDataUrl),
     telegramChatId: pending.chatId,
     telegramMessageId: pending.msgId,
     status: 'pending',
@@ -192,7 +194,7 @@ async function sendToInbox(pending: PendingFile) {
     fileSize: pending.fileSize,
     uploadedBy: pending.uploadedBy,
     uploadedAt,
-    fileUrl: pending.fileDataUrl,
+    fileUrl: await signFileUrlForServer(pending.fileDataUrl),
     telegramChatId: pending.chatId,
     telegramMessageId: pending.msgId,
     status: 'pending',
@@ -241,6 +243,10 @@ export async function POST(req: NextRequest) {
     const isFresh = !!row && (Date.now() - new Date(row.created_at).getTime()) < PENDING_TTL_MS
 
     if (!isFresh) {
+      if (row) {
+        await removeFile(row.file_data_url)
+        await supabase.from('telegram_pending_uploads').delete().eq('user_id', userId)
+      }
       await answerCallback(callback.id, 'This request has expired — please resend the document.')
       return NextResponse.json({ ok: true })
     }
@@ -368,15 +374,27 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true })
     }
 
-    const buffer = await fileRes.arrayBuffer()
-    const base64 = Buffer.from(buffer).toString('base64')
-    const fileDataUrl = `data:${mimeType};base64,${base64}`
+    // Saved to storage straight away; the pending row and, after the user
+    // answers, the case file or Inbox row only keep the reference.
+    let fileDataUrl: string
+    try {
+      fileDataUrl = await saveFile(INBOX_FOLDER, fileName, await fileRes.arrayBuffer(), mimeType)
+    } catch (err) {
+      console.error('[Telegram] storage save failed:', err instanceof Error ? err.message : err)
+      await send(chatId, `❌ Something went wrong saving the file. Please try again later.`, msgId)
+      return NextResponse.json({ ok: true })
+    }
     const uploadedBy = `Telegram: ${senderName}`
+    const userId: number = msg.from?.id ?? chatId
 
     // One pending decision per user — a new upload before they've answered
-    // replaces whatever was waiting.
+    // replaces whatever was waiting, so drop the file that was waiting too.
+    const { data: previous } = await supabase
+      .from('telegram_pending_uploads').select('file_data_url').eq('user_id', userId).maybeSingle()
+    if (previous) await removeFile(previous.file_data_url)
+
     const { error: pendingError } = await supabase.from('telegram_pending_uploads').upsert({
-      user_id: msg.from?.id ?? chatId,
+      user_id: userId,
       chat_id: chatId,
       message_id: msgId,
       file_name: fileName,
@@ -390,6 +408,7 @@ export async function POST(req: NextRequest) {
 
     if (pendingError) {
       console.error('[Telegram] pending upload save failed:', pendingError.message)
+      await removeFile(fileDataUrl)
       await send(chatId, `❌ Something went wrong. Please try again later.`, msgId)
       return NextResponse.json({ ok: true })
     }

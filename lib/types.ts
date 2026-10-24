@@ -284,7 +284,7 @@ export type CaseFile = {
   aiScanned: boolean
   aiStatus: AiStatus
   aiExtractedData: AiExtractedData | null
-  fileDataUrl?: string
+  fileDataUrl?: string    // storage reference "storage:<path>" (lib/storage.ts), not file contents
   aiPrompt?: string            // extraction instructions copied from RequiredDocument at upload time
   supersededBy?: string        // id of the newer file that replaced this one
 }
@@ -299,7 +299,7 @@ export type TelegramUpload = {
   fileName: string
   fileSize: number
   fileType: string
-  fileDataUrl?: string
+  fileDataUrl?: string    // storage reference "storage:<path>" (lib/storage.ts), not file contents
   uploadedBy: string
   uploadedAt: string
   telegramChatId?: number

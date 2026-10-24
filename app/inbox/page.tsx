@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
 import { useStore } from '@/lib/store'
 import type { TelegramUpload } from '@/lib/types'
@@ -8,82 +8,9 @@ import { formatFileSize, timeAgo } from '@/lib/utils'
 import { getActiveDocs, resolveTemplate } from '@/lib/workflow'
 import PageHeader from '@/components/ui/PageHeader'
 import SearchableSelect from '@/components/ui/SearchableSelect'
+import FileViewerModal from '@/components/ui/FileViewerModal'
 
 type ActionMode = 'assign' | 'discard'
-
-// Browsers won't render/navigate large base64 data: URIs reliably (some treat
-// them as a download instead of a view). Converting to a blob: URL first is
-// the same fix already used for case-file PDFs elsewhere in this app.
-function UploadViewerModal({ upload, onClose }: { upload: TelegramUpload; onClose: () => void }) {
-  const isPdf = upload.fileType === 'application/pdf'
-  const isImage = upload.fileType.startsWith('image/')
-  const [blobUrl, setBlobUrl] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!upload.fileDataUrl) return
-    const [header, b64] = upload.fileDataUrl.split(',')
-    const mimeType = header.match(/:(.*?);/)?.[1] ?? upload.fileType
-    const bytes = atob(b64)
-    const arr = new Uint8Array(bytes.length)
-    for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i)
-    const blob = new Blob([arr], { type: mimeType })
-    const url = URL.createObjectURL(blob)
-    setBlobUrl(url)
-    return () => URL.revokeObjectURL(url)
-  }, [upload.fileDataUrl, upload.fileType])
-
-  return (
-    <div className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-100 shrink-0">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="text-xs font-semibold bg-gray-100 text-gray-600 rounded px-1.5 py-0.5 shrink-0">{upload.fileType}</span>
-            <p className="text-sm font-semibold text-gray-800 truncate">{upload.fileName}</p>
-            <span className="text-xs text-gray-400 shrink-0">{formatFileSize(upload.fileSize)}</span>
-          </div>
-          <div className="flex items-center gap-2 shrink-0 ml-4">
-            {blobUrl && (
-              <a
-                href={blobUrl}
-                download={upload.fileName}
-                className="flex items-center gap-1.5 text-xs font-medium bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg transition-colors"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                </svg>
-                Download
-              </a>
-            )}
-            <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors text-base leading-none">✕</button>
-          </div>
-        </div>
-        <div className="flex-1 overflow-auto min-h-0">
-          {!upload.fileDataUrl ? (
-            <div className="flex items-center justify-center h-48 text-sm text-gray-400">File data not available</div>
-          ) : isImage && blobUrl ? (
-            <div className="flex items-center justify-center p-6 bg-gray-50 min-h-[300px]">
-              <img src={blobUrl} alt={upload.fileName} className="max-w-full max-h-[75vh] object-contain rounded-lg shadow-sm" />
-            </div>
-          ) : isPdf ? (
-            blobUrl ? (
-              <iframe src={blobUrl} className="w-full h-[75vh] border-0" title={upload.fileName} />
-            ) : (
-              <div className="flex items-center justify-center h-48 gap-2 text-gray-400">
-                <span className="w-5 h-5 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" />
-                <span className="text-sm">Loading PDF…</span>
-              </div>
-            )
-          ) : (
-            <div className="flex flex-col items-center justify-center py-16 gap-3 text-gray-400">
-              <p className="text-sm">Preview not available for this file type.</p>
-              {blobUrl && <a href={blobUrl} download={upload.fileName} className="text-sm text-blue-600 hover:underline">Download to view</a>}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
 
 function UploadCard({ upload }: { upload: TelegramUpload }) {
   const { cases, workflowTemplates, addCaseFile, deleteTelegramUpload } = useStore()
@@ -124,7 +51,8 @@ function UploadCard({ upload }: { upload: TelegramUpload }) {
     const template = targetCase ? resolveTemplate(targetCase, workflowTemplates) : null
     const loaDoc = template ? getActiveDocs(template).find(d => d.name.toLowerCase().includes('letter of award')) ?? null : null
     attachFile(assignCaseId, loaDoc)
-    deleteTelegramUpload(upload.id)
+    // The case file now points at the same stored file — keep it
+    deleteTelegramUpload(upload.id, { keepFile: true })
   }
 
   const submitDiscard = () => deleteTelegramUpload(upload.id)
@@ -192,7 +120,12 @@ function UploadCard({ upload }: { upload: TelegramUpload }) {
         </div>
       )}
 
-      {viewing && <UploadViewerModal upload={upload} onClose={() => setViewing(false)} />}
+      {viewing && (
+        <FileViewerModal
+          file={{ fileName: upload.fileName, fileSize: upload.fileSize, fileType: upload.fileType, fileRef: upload.fileDataUrl }}
+          onClose={() => setViewing(false)}
+        />
+      )}
     </div>
   )
 }
