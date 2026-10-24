@@ -49,7 +49,7 @@ export async function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     // Exclude static files, images, and routes called by outside services without a login
-    // (Telegram bot, n8n AI-scan and Inbox callbacks) — they have their own auth via a shared secret
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$|api/telegram|api/ai-scan/callback|api/intake/callback).*)',
+    // (Telegram bot, n8n AI-scan and Inbox callbacks, Vercel Cron) — they have their own auth via a shared secret
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$|api/telegram|api/ai-scan/callback|api/intake/callback|api/cron/).*)',
   ],
 }

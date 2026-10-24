@@ -9,8 +9,8 @@ _Last updated: 24 Oct 2026_
 
 ## [ ] Putting the finished work live (do these in this order)
 
-Every finished item since Stage 1 (2.3–2.6, 3.1–3.5, 4.3, 5.1, 5.3) is on the
-branch **`stage5-policies`**. Each item was built on top of the one before,
+Every finished item since Stage 1 (2.3–2.6, 3.1–3.5, 4.3, 5.1–5.3) is on the
+branch **`stage5-reminders`**. Each item was built on top of the one before,
 so this one branch contains all of them.
 
 1. **Database first.** In Supabase → SQL Editor, paste and run these files,
@@ -24,9 +24,9 @@ so this one branch contains all of them.
      have a bond expiry date get a first policy row automatically)
 2. **Push and merge.** In the VS Code terminal:
    ```
-   git push -u origin stage5-policies
+   git push -u origin stage5-reminders
    ```
-   Then on GitHub open a pull request from `stage5-policies` into `master` and
+   Then on GitHub open a pull request from `stage5-reminders` into `master` and
    merge it. Wait for Vercel to show **Ready**.
 3. **Move old files out of the database.** In the VS Code terminal, first a
    dry run (only counts, changes nothing):
@@ -255,6 +255,26 @@ Checks afterwards:
 - [ ] "Renew" a policy: a new row starts the day after the old expiry and
       runs a year; the old one moves under "earlier (renewed) policies"
 - [ ] Policies page filters "Expiring ≤ 30 days" etc. show the right ones
+
+---
+
+## [ ] 5.2 Daily renewal reminders — set up, then check
+
+Every morning at 8am (Malaysia time), DocFlow checks for policies expiring
+within 60 and 30 days, creates a renewal follow-up for each, and emails one
+summary from operation@ to `OPS_NOTIFY_EMAIL`. Each policy is reminded once
+at 60 days and once at 30 days. Active policies past their expiry date are
+marked Expired.
+
+Set up (Vercel → Settings → Environment Variables), then redeploy:
+- `CRON_SECRET`: any long random text (Vercel uses it to call the job safely)
+- `OPS_NOTIFY_EMAIL`: who receives the summary (already used for ops notices)
+
+Checks:
+- [ ] Vercel → Settings → Cron Jobs shows `/api/cron/policy-reminders` daily
+- [ ] Give a test policy an expiry date 30 days from today. Next morning (or
+      use "Run" on the Cron Jobs page): the summary email arrives, the
+      policy has a "Renew …" follow-up, and running it again sends nothing new
 
 ---
 
