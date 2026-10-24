@@ -29,25 +29,36 @@ const TABS: { key: Tab; label: string }[] = [
 
 // ─── User form modal ──────────────────────────────────────────────────────────
 
+// Users are Supabase Auth accounts. When adding, the password is the user's
+// first password; when editing, it is optional and only set if filled in.
 type UserFormData = { fullName: string; email: string; password: string; role: UserRole; status: UserStatus }
 const emptyUserForm = (): UserFormData => ({ fullName: '', email: '', password: '', role: 'Staff', status: 'Active' })
 
-function UserModal({ initial, onSave, onClose, title }: {
-  initial: UserFormData; onSave: (d: UserFormData) => void; onClose: () => void; title: string
+function UserModal({ initial, isNew, onSave, onClose, title }: {
+  initial: UserFormData; isNew: boolean; onSave: (d: UserFormData) => Promise<void>; onClose: () => void; title: string
 }) {
   const [form, setForm] = useState<UserFormData>(initial)
   const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
 
   const set = (k: keyof UserFormData) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
       setForm(prev => ({ ...prev, [k]: e.target.value }))
 
-  const submit = (e: React.FormEvent) => {
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!form.fullName.trim()) { setError('Full name is required.'); return }
     if (!form.email.trim()) { setError('Email is required.'); return }
-    if (!form.password.trim()) { setError('Password is required.'); return }
-    onSave(form)
+    if (isNew && !form.password) { setError('Password is required.'); return }
+    if (form.password && form.password.length < 8) { setError('Password must be at least 8 characters.'); return }
+    setSaving(true)
+    setError('')
+    try {
+      await onSave(form)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save user.')
+      setSaving(false)
+    }
   }
 
   return (
@@ -60,29 +71,31 @@ function UserModal({ initial, onSave, onClose, title }: {
         </div>
         <div>
           <label className="label">Email *</label>
-          <input className="input" type="email" value={form.email} onChange={set('email')} placeholder="ahmad@bondinsurance.com" />
+          <input className="input disabled:bg-gray-50 disabled:text-gray-500" type="email" value={form.email} onChange={set('email')} placeholder="name@tridentmanagement.com.my" disabled={!isNew} />
         </div>
         <div>
-          <label className="label">Password *</label>
-          <input className="input" type="password" value={form.password} onChange={set('password')} placeholder="Set a password" />
+          <label className="label">{isNew ? 'Password *' : 'New Password'}</label>
+          <input className="input" type="password" autoComplete="new-password" value={form.password} onChange={set('password')} placeholder={isNew ? 'At least 8 characters' : 'Leave blank to keep the current password'} />
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className={isNew ? '' : 'grid grid-cols-2 gap-4'}>
           <div>
             <label className="label">Role</label>
             <select className="input" value={form.role} onChange={set('role')}>
               {USER_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
             </select>
           </div>
-          <div>
-            <label className="label">Status</label>
-            <select className="input" value={form.status} onChange={set('status')}>
-              {USER_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </div>
+          {!isNew && (
+            <div>
+              <label className="label">Status</label>
+              <select className="input" value={form.status} onChange={set('status')}>
+                {USER_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+          )}
         </div>
         <div className="flex gap-3 pt-1">
           <button type="button" onClick={onClose} className="btn-secondary flex-1">Cancel</button>
-          <button type="submit" className="btn-primary flex-1">Save User</button>
+          <button type="submit" disabled={saving} className="btn-primary flex-1 disabled:opacity-60">{saving ? 'Saving…' : 'Save User'}</button>
         </div>
       </form>
     </Modal>
@@ -1536,7 +1549,8 @@ export default function SettingsPage() {
 
           <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 mb-5">
             <p className="text-xs text-blue-700">
-              <strong>Roles:</strong> Admin — full access · Manager — cases & reports · Staff — customers, cases & follow-ups · Viewer — read only
+              <strong>Roles:</strong> Admin — full access, manages users · Staff — customers, cases & follow-ups.
+              Inactive users can no longer sign in.
             </p>
           </div>
 
@@ -1558,10 +1572,7 @@ export default function SettingsPage() {
                     <td className="py-3 text-gray-500">{u.email}</td>
                     <td className="py-3">
                       <span className={`text-xs font-medium rounded-full px-2.5 py-1 ${
-                        u.role === 'Admin' ? 'bg-blue-100 text-blue-700' :
-                        u.role === 'Manager' ? 'bg-violet-100 text-violet-700' :
-                        u.role === 'Staff' ? 'bg-green-100 text-green-700' :
-                        'bg-gray-100 text-gray-600'
+                        u.role === 'Admin' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'
                       }`}>
                         {u.role}
                       </span>
@@ -1576,7 +1587,8 @@ export default function SettingsPage() {
                         <div className="flex items-center gap-2 justify-end">
                           <button onClick={() => { setSelectedUser(u); setUserModal('edit') }} className="btn-xs bg-gray-100 hover:bg-gray-200 text-gray-700">Edit</button>
                           <button
-                            onClick={() => updateUser(u.id, { status: u.status === 'Active' ? 'Inactive' : 'Active' })}
+                            onClick={() => updateUser(u.id, { status: u.status === 'Active' ? 'Inactive' : 'Active' })
+                              .catch(err => alert(err instanceof Error ? err.message : 'Could not update user'))}
                             className={`btn-xs ${u.status === 'Active' ? 'bg-amber-50 text-amber-700 hover:bg-amber-100' : 'bg-green-50 text-green-700 hover:bg-green-100'}`}
                           >
                             {u.status === 'Active' ? 'Deactivate' : 'Activate'}
@@ -1722,16 +1734,27 @@ export default function SettingsPage() {
       {userModal === 'add' && (
         <UserModal
           title="Add User"
+          isNew
           initial={emptyUserForm()}
-          onSave={d => { addUser(d); closeUserModal() }}
+          onSave={async d => {
+            await addUser({ fullName: d.fullName, email: d.email, password: d.password, role: d.role })
+            closeUserModal()
+          }}
           onClose={closeUserModal}
         />
       )}
       {userModal === 'edit' && selectedUser && (
         <UserModal
           title="Edit User"
-          initial={{ fullName: selectedUser.fullName, email: selectedUser.email, password: selectedUser.password, role: selectedUser.role, status: selectedUser.status }}
-          onSave={d => { updateUser(selectedUser.id, d); closeUserModal() }}
+          isNew={false}
+          initial={{ fullName: selectedUser.fullName, email: selectedUser.email, password: '', role: selectedUser.role, status: selectedUser.status }}
+          onSave={async d => {
+            await updateUser(selectedUser.id, {
+              fullName: d.fullName, role: d.role, status: d.status,
+              ...(d.password ? { password: d.password } : {}),
+            })
+            closeUserModal()
+          }}
           onClose={closeUserModal}
         />
       )}

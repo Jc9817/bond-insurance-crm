@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { notifyDocFlowWebhook } from '@/lib/n8n'
+import { signFileUrlForServer } from '@/lib/storage-server'
 
 // ─── n8n Doc Flow webhook ───────────────────────────────────────────────────
 // Forwards a "document uploaded" event to the n8n workflow configured in
@@ -8,6 +9,16 @@ import { notifyDocFlowWebhook } from '@/lib/n8n'
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
+  // Case files are in a private bucket — give n8n a short-lived signed URL
+  // instead of the stored reference.
+  if (typeof body.fileUrl === 'string') {
+    try {
+      body.fileUrl = await signFileUrlForServer(body.fileUrl)
+    } catch (err) {
+      const error = err instanceof Error ? err.message : 'Could not sign file URL'
+      return NextResponse.json({ error }, { status: 500 })
+    }
+  }
   // AI scan requests go to their own dedicated n8n webhook, separate from
   // the shared DocFlow one used for upload/case-creation events.
   const webhookUrl = body.event === 'ai_scan_requested'

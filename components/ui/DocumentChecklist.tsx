@@ -7,19 +7,22 @@ import { createClient } from '@/utils/supabase/client'
 import type { WorkflowTemplate, CaseFile } from '@/lib/types'
 import { getActiveDocs } from '@/lib/workflow'
 import { formatFileSize, timeAgo } from '@/lib/utils'
-
-const STORAGE_BUCKET = 'case-files'
-
-function isStorageUrl(url?: string) {
-  return !!url && url.startsWith('http')
-}
+import { STORAGE_BUCKET, isStorageFile, resolveFileUrl, toStorageRef } from '@/lib/storage'
 
 async function downloadFile(file: CaseFile) {
   if (!file.fileDataUrl) return
-  if (isStorageUrl(file.fileDataUrl)) {
-    // Fetch from storage and force-download via blob
+  if (isStorageFile(file.fileDataUrl)) {
+    // Bucket is private — get a short-lived signed URL, then force-download via blob
+    let signedUrl: string
     try {
-      const res = await fetch(file.fileDataUrl)
+      signedUrl = await resolveFileUrl(createClient(), file.fileDataUrl)
+    } catch (err) {
+      console.error('[Storage] Signed URL failed:', err)
+      alert('Could not open this file. Please try again.')
+      return
+    }
+    try {
+      const res = await fetch(signedUrl)
       const blob = await res.blob()
       const blobUrl = URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -30,7 +33,7 @@ async function downloadFile(file: CaseFile) {
       document.body.removeChild(a)
       setTimeout(() => URL.revokeObjectURL(blobUrl), 10000)
     } catch {
-      window.open(file.fileDataUrl, '_blank')
+      window.open(signedUrl, '_blank')
     }
   } else {
     const a = document.createElement('a')
@@ -44,11 +47,24 @@ async function downloadFile(file: CaseFile) {
 
 function FileViewerModal({ file, onClose }: { file: CaseFile; onClose: () => void }) {
   const ext = file.fileName.split('.').pop()?.toLowerCase() ?? ''
-  const storageFile = isStorageUrl(file.fileDataUrl)
+  const storageFile = isStorageFile(file.fileDataUrl)
 
-  // Type detection: check URL for storage files, check MIME for base64
+  // Type detection: check extension for storage files, check MIME for base64
   const isPdf = storageFile ? ext === 'pdf' : file.fileDataUrl?.split(';')[0].split(':')[1] === 'application/pdf'
   const isImage = storageFile ? ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].includes(ext) : (file.fileDataUrl?.split(';')[0].split(':')[1]?.startsWith('image/') ?? false)
+
+  // Storage files: the bucket is private, so preview through a short-lived signed URL
+  const [signedUrl, setSignedUrl] = useState<string | null>(null)
+  const [signError, setSignError] = useState(false)
+  useEffect(() => {
+    if (!storageFile || !file.fileDataUrl) return
+    let cancelled = false
+    resolveFileUrl(createClient(), file.fileDataUrl)
+      .then(url => { if (!cancelled) setSignedUrl(url) })
+      .catch(err => { console.error('[Storage] Signed URL failed:', err); if (!cancelled) setSignError(true) })
+    return () => { cancelled = true }
+  }, [storageFile, file.fileDataUrl])
+  const previewSrc = storageFile ? signedUrl : file.fileDataUrl
 
   // For base64 PDFs: browsers block data: URIs in iframes — convert to blob URL
   const [blobUrl, setBlobUrl] = useState<string | null>(null)
@@ -96,20 +112,25 @@ function FileViewerModal({ file, onClose }: { file: CaseFile; onClose: () => voi
         </div>
         {/* Content */}
         <div className="flex-1 overflow-auto min-h-0">
-          {!file.fileDataUrl ? (
+          {!file.fileDataUrl || signError ? (
             <div className="flex flex-col items-center justify-center h-48 gap-2 text-gray-400">
               <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
               </svg>
               <p className="text-sm">File data not available</p>
             </div>
+          ) : (isImage || isPdf) && storageFile && !signedUrl ? (
+            <div className="flex items-center justify-center h-48 gap-2 text-gray-400">
+              <span className="w-5 h-5 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" />
+              <span className="text-sm">Loading file…</span>
+            </div>
           ) : isImage ? (
             <div className="flex items-center justify-center p-6 bg-gray-50 min-h-[300px]">
-              <img src={file.fileDataUrl} alt={file.fileName} className="max-w-full max-h-[75vh] object-contain rounded-lg shadow-sm" />
+              <img src={previewSrc ?? undefined} alt={file.fileName} className="max-w-full max-h-[75vh] object-contain rounded-lg shadow-sm" />
             </div>
           ) : isPdf ? (
             storageFile ? (
-              <iframe src={file.fileDataUrl} className="w-full h-[75vh] border-0" title={file.fileName} />
+              <iframe src={signedUrl ?? undefined} className="w-full h-[75vh] border-0" title={file.fileName} />
             ) : blobUrl ? (
               <iframe src={blobUrl} className="w-full h-[75vh] border-0" title={file.fileName} />
             ) : (
@@ -176,8 +197,8 @@ export default function DocumentChecklist({ caseId, caseTitle, template, caseFil
     const path = `cases/${caseId}/${Date.now()}_${safeName}`
     const { error } = await sb.storage.from(STORAGE_BUCKET).upload(path, file, { upsert: false })
     if (error) throw error
-    const { data } = sb.storage.from(STORAGE_BUCKET).getPublicUrl(path)
-    return data.publicUrl
+    // Store a reference, not a public URL — the bucket is private
+    return toStorageRef(path)
   }
 
   const handleRetag = (file: CaseFile, docId: string | null, docName: string) => {

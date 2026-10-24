@@ -8,15 +8,10 @@ import type {
   WorkflowTemplate, RequiredDocument, WorkflowStep,
   Product, ProductPackage, SubmissionLetterTemplate, EmailTemplate, CaseEmailLog, TelegramUpload,
 } from './types'
-import {
-  mockPics, mockUsers, mockWorkflowTemplates,
-  mockSettingsCaseTypes, mockSettingsIndustries, mockSettingsContactTypes,
-  mockSettingsFollowUpCategories,
-  mockSettingsInsurers, mockProducts, mockProductPackages,
-  mockSubmissionLetterTemplates,
-} from './mock-data'
+import { mockWorkflowTemplates } from './mock-data'
 import { generateId, nowIso } from './utils'
 import { getWorkflowTemplate } from './workflow'
+import { STORAGE_BUCKET, storagePath } from './storage'
 
 type SettingsData = Record<SettingsCategory, SettingsItem[]>
 
@@ -64,8 +59,9 @@ type StoreCtx = {
   addPic: (p: Omit<PicUser, 'id'>) => void
   deletePic: (id: string) => void
 
-  addUser: (u: Omit<User, 'id' | 'createdAt'>) => void
-  updateUser: (id: string, u: Partial<Omit<User, 'id' | 'createdAt'>>) => void
+  // Both go through /api/admin/users (Admins only) and throw on failure
+  addUser: (u: Omit<User, 'id' | 'createdAt' | 'status'> & { password: string }) => Promise<void>
+  updateUser: (id: string, u: Partial<Omit<User, 'id' | 'createdAt' | 'email'>> & { password?: string }) => Promise<void>
 
   addCaseFile: (f: Omit<CaseFile, 'id' | 'uploadedAt'>) => string
   deleteCaseFile: (id: string) => void
@@ -280,6 +276,50 @@ const fromDoc = (r: Row): RequiredDocument => ({
   aiPrompt: r.ai_prompt ?? undefined,
 })
 
+const fromSettingsItem = (r: Row): SettingsItem => ({
+  id: r.id, name: r.name ?? '', isActive: r.is_active ?? true,
+})
+
+const fromProduct = (r: Row): Product => ({
+  id: r.id, name: r.name ?? '', category: r.category ?? 'Bond',
+  description: r.description ?? '', isActive: r.is_active ?? true,
+})
+const toProduct = (p: Partial<Product>) => ({
+  id: p.id, name: p.name, category: p.category, description: p.description, is_active: p.isActive,
+})
+
+const fromProductPackage = (r: Row): ProductPackage => ({
+  id: r.id, name: r.name ?? '', description: r.description ?? '',
+  productIds: r.product_ids ?? [], isActive: r.is_active ?? true,
+})
+const toProductPackage = (p: Partial<ProductPackage>) => ({
+  id: p.id, name: p.name, description: p.description, product_ids: p.productIds, is_active: p.isActive,
+})
+
+const fromSubmissionLetterTemplate = (r: Row): SubmissionLetterTemplate => ({
+  id: r.id, name: r.name ?? '', isActive: r.is_active ?? true,
+  subjectLine: r.subject_line ?? '', letterBody: r.letter_body ?? '', docItems: r.doc_items ?? [],
+})
+const toSubmissionLetterTemplate = (t: Partial<SubmissionLetterTemplate>) => ({
+  id: t.id, name: t.name, is_active: t.isActive,
+  subject_line: t.subjectLine, letter_body: t.letterBody, doc_items: t.docItems,
+})
+
+const fromPic = (r: Row): PicUser => ({ id: r.id, name: r.name ?? '', email: r.email ?? '' })
+
+const fromUser = (r: Row): User => ({
+  id: r.user_id, fullName: r.full_name ?? '', email: r.email ?? '',
+  role: r.role === 'Admin' ? 'Admin' : 'Staff', status: r.status === 'Inactive' ? 'Inactive' : 'Active',
+  createdAt: r.created_at,
+})
+
+/** Drops undefined fields so a partial update only touches the columns it changes. */
+const defined = (o: Row) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined))
+
+const emptySettings = (): SettingsData => ({
+  caseTypes: [], industries: [], contactTypes: [], followUpCategories: [], insurers: [],
+})
+
 // ─── Context ──────────────────────────────────────────────────────────────────
 
 const StoreContext = createContext<StoreCtx | null>(null)
@@ -290,24 +330,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [cases, setCases] = useState<Case[]>([])
   const [caseNotes, setCaseNotes] = useState<CaseNote[]>([])
   const [followUps, setFollowUps] = useState<FollowUp[]>([])
-  const [pics, setPics] = useState<PicUser[]>(mockPics)
-  const [users, setUsers] = useState<User[]>(mockUsers)
+  const [pics, setPics] = useState<PicUser[]>([])
+  const [users, setUsers] = useState<User[]>([])
   const [caseFiles, setCaseFiles] = useState<CaseFile[]>([])
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([])
   const [workflowTemplates, setWorkflowTemplates] = useState<WorkflowTemplate[]>([])
-  const [products, setProducts] = useState<Product[]>(mockProducts)
-  const [productPackages, setProductPackages] = useState<ProductPackage[]>(mockProductPackages)
-  const [submissionLetterTemplates, setSubmissionLetterTemplates] = useState<SubmissionLetterTemplate[]>(mockSubmissionLetterTemplates)
+  const [products, setProducts] = useState<Product[]>([])
+  const [productPackages, setProductPackages] = useState<ProductPackage[]>([])
+  const [submissionLetterTemplates, setSubmissionLetterTemplates] = useState<SubmissionLetterTemplate[]>([])
   const [emailTemplates, setEmailTemplates] = useState<EmailTemplate[]>([])
   const [caseEmails, setCaseEmails] = useState<CaseEmailLog[]>([])
   const [telegramUploads, setTelegramUploads] = useState<TelegramUpload[]>([])
-  const [settingsData] = useState<SettingsData>({
-    caseTypes: mockSettingsCaseTypes,
-    industries: mockSettingsIndustries,
-    contactTypes: mockSettingsContactTypes,
-    followUpCategories: mockSettingsFollowUpCategories,
-    insurers: mockSettingsInsurers,
-  })
+  const [settingsState, setSettingsState] = useState<SettingsData>(emptySettings)
   const [loading, setLoading] = useState(true)
 
   // ─── Load all data from Supabase on mount ──────────────────────────────────
@@ -343,6 +377,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       { data: templateRows },
       { data: caseEmailRows },
       { data: telegramUploadRows },
+      { data: settingsRows },
+      { data: productRows },
+      { data: packageRows },
+      { data: letterRows },
+      { data: picRows },
+      { data: userRows },
     ] = await Promise.all([
       sb.from('customers').select('*').order('created_at', { ascending: false }),
       sb.from('contacts').select('*'),
@@ -357,6 +397,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       sb.from('email_templates').select('*').order('created_at'),
       sb.from('case_emails').select('*').order('sent_at', { ascending: false }),
       sb.from('telegram_uploads').select('*').order('uploaded_at', { ascending: false }),
+      sb.from('settings_items').select('*').order('sort_order').order('created_at'),
+      sb.from('products').select('*').order('sort_order').order('created_at'),
+      sb.from('product_packages').select('*').order('sort_order').order('created_at'),
+      sb.from('submission_letter_templates').select('*').order('created_at'),
+      sb.from('pics').select('*').order('created_at'),
+      sb.from('user_roles').select('*').order('created_at'),
     ])
 
     if (custErr) console.error('[Supabase] customers load error:', custErr.message)
@@ -369,6 +415,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (logRows) setActivityLogs(logRows.map(fromActivityLog))
     if (caseEmailRows) setCaseEmails(caseEmailRows.map(fromCaseEmailLog))
     if (telegramUploadRows) setTelegramUploads(telegramUploadRows.map(fromTelegramUpload))
+    if (settingsRows) {
+      const grouped = emptySettings()
+      for (const r of settingsRows) grouped[r.category as SettingsCategory]?.push(fromSettingsItem(r))
+      setSettingsState(grouped)
+    }
+    if (productRows) setProducts(productRows.map(fromProduct))
+    if (packageRows) setProductPackages(packageRows.map(fromProductPackage))
+    if (letterRows) setSubmissionLetterTemplates(letterRows.map(fromSubmissionLetterTemplate))
+    if (picRows) setPics(picRows.map(fromPic))
+    if (userRows) setUsers(userRows.map(fromUser))
     if (templateRows) {
       setEmailTemplates(templateRows.map(fromEmailTemplate))
       if (templateRows.length === 0) seedEmailTemplates(sb)
@@ -677,24 +733,40 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (fu) createClient().from('follow_ups').update({ status: fu.status === 'Open' ? 'Done' : 'Open' }).eq('id', id).then()
   }
 
-  // ─── PICs (local only for now) ────────────────────────────────────────────
+  // ─── PICs ─────────────────────────────────────────────────────────────────
 
   const addPic = (p: Omit<PicUser, 'id'>) => {
     const row = { ...p, id: generateId() }
     setPics(prev => [...prev, row])
-    createClient().from('pics').insert(row).then()
+    createClient().from('pics').insert(row).then(({ error }) => {
+      if (error) console.error('[Supabase] addPic failed:', error.message)
+    })
   }
   const deletePic = (id: string) => {
     setPics(prev => prev.filter(x => x.id !== id))
     createClient().from('pics').delete().eq('id', id).then()
   }
 
-  // ─── Users (local only for now) ───────────────────────────────────────────
+  // ─── Users (Supabase Auth accounts + user_roles, Admins only) ─────────────
 
-  const addUser = (u: Omit<User, 'id' | 'createdAt'>) =>
-    setUsers(prev => [...prev, { ...u, id: generateId(), createdAt: nowIso() }])
-  const updateUser = (id: string, u: Partial<Omit<User, 'id' | 'createdAt'>>) =>
-    setUsers(prev => prev.map(x => x.id === id ? { ...x, ...u } : x))
+  const callUsersApi = async (method: 'POST' | 'PATCH', body: Row): Promise<Row> => {
+    const res = await fetch('/api/admin/users', {
+      method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`)
+    return data
+  }
+  const addUser = async (u: Omit<User, 'id' | 'createdAt' | 'status'> & { password: string }) => {
+    const data = await callUsersApi('POST', u)
+    setUsers(prev => [...prev, fromUser(data.user)])
+  }
+  const updateUser = async (id: string, u: Partial<Omit<User, 'id' | 'createdAt' | 'email'>> & { password?: string }) => {
+    await callUsersApi('PATCH', { id, ...u })
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { password, ...shown } = u
+    setUsers(prev => prev.map(x => x.id === id ? { ...x, ...shown } : x))
+  }
 
   // ─── Case Files ───────────────────────────────────────────────────────────
 
@@ -730,14 +802,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const sb = createClient()
     sb.from('case_files').delete().eq('id', id).then()
     // Also remove the actual file from Supabase Storage
-    if (file?.fileDataUrl?.startsWith('http')) {
-      const marker = '/object/public/case-files/'
-      const idx = file.fileDataUrl.indexOf(marker)
-      if (idx !== -1) {
-        const storagePath = decodeURIComponent(file.fileDataUrl.slice(idx + marker.length))
-        sb.storage.from('case-files').remove([storagePath]).then()
-      }
-    }
+    const path = storagePath(file?.fileDataUrl)
+    if (path) sb.storage.from(STORAGE_BUCKET).remove([path]).then()
   }
   const updateCaseFile = (id: string, f: Partial<CaseFile>) => {
     setCaseFiles(prev => prev.map(x => x.id === id ? { ...x, ...f } : x))
@@ -809,21 +875,32 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     createClient().from('activity_logs').insert(toActivityLog(row)).then()
   }
 
-  // ─── Settings (local only — no DB table) ─────────────────────────────────
+  // ─── Settings lists (settings_items) ──────────────────────────────────────
 
-  const [settingsState, setSettingsState] = useState<SettingsData>({
-    caseTypes: mockSettingsCaseTypes, industries: mockSettingsIndustries,
-    contactTypes: mockSettingsContactTypes, followUpCategories: mockSettingsFollowUpCategories,
-    insurers: mockSettingsInsurers,
-  })
-  const addSettingsItem = (category: SettingsCategory, name: string) =>
-    setSettingsState(prev => ({ ...prev, [category]: [...prev[category], { id: generateId(), name, isActive: true }] }))
-  const updateSettingsItem = (category: SettingsCategory, id: string, name: string) =>
+  const addSettingsItem = (category: SettingsCategory, name: string) => {
+    const row: SettingsItem = { id: generateId(), name, isActive: true }
+    const sortOrder = settingsState[category].length
+    setSettingsState(prev => ({ ...prev, [category]: [...prev[category], row] }))
+    createClient().from('settings_items').insert({
+      id: row.id, category, name: row.name, is_active: row.isActive, sort_order: sortOrder,
+    }).then(({ error }) => {
+      if (error) console.error('[Supabase] addSettingsItem failed:', error.message)
+    })
+  }
+  const updateSettingsItem = (category: SettingsCategory, id: string, name: string) => {
     setSettingsState(prev => ({ ...prev, [category]: prev[category].map(x => x.id === id ? { ...x, name } : x) }))
-  const toggleSettingsItem = (category: SettingsCategory, id: string) =>
+    createClient().from('settings_items').update({ name }).eq('id', id).then()
+  }
+  const toggleSettingsItem = (category: SettingsCategory, id: string) => {
+    const item = settingsState[category].find(x => x.id === id)
+    if (!item) return
     setSettingsState(prev => ({ ...prev, [category]: prev[category].map(x => x.id === id ? { ...x, isActive: !x.isActive } : x) }))
-  const deleteSettingsItem = (category: SettingsCategory, id: string) =>
+    createClient().from('settings_items').update({ is_active: !item.isActive }).eq('id', id).then()
+  }
+  const deleteSettingsItem = (category: SettingsCategory, id: string) => {
     setSettingsState(prev => ({ ...prev, [category]: prev[category].filter(x => x.id !== id) }))
+    createClient().from('settings_items').delete().eq('id', id).then()
+  }
 
   // ─── Workflow Templates ───────────────────────────────────────────────────
 
@@ -921,28 +998,55 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     createClient().from('required_documents').delete().eq('id', docId).then()
   }
 
-  // ─── Product Master (in-memory) ───────────────────────────────────────────
+  // ─── Product Master ───────────────────────────────────────────────────────
 
-  const addProduct = (p: Omit<Product, 'id'>) =>
-    setProducts(prev => [...prev, { ...p, id: generateId() }])
-  const updateProduct = (id: string, p: Partial<Product>) =>
+  const addProduct = (p: Omit<Product, 'id'>) => {
+    const row: Product = { ...p, id: generateId() }
+    setProducts(prev => [...prev, row])
+    createClient().from('products').insert({ ...toProduct(row), sort_order: products.length }).then(({ error }) => {
+      if (error) console.error('[Supabase] addProduct failed:', error.message)
+    })
+  }
+  const updateProduct = (id: string, p: Partial<Product>) => {
     setProducts(prev => prev.map(x => x.id === id ? { ...x, ...p } : x))
-  const deleteProduct = (id: string) =>
+    createClient().from('products').update(defined(toProduct({ ...p, id }))).eq('id', id).then()
+  }
+  const deleteProduct = (id: string) => {
     setProducts(prev => prev.filter(x => x.id !== id))
+    createClient().from('products').delete().eq('id', id).then()
+  }
 
-  const addProductPackage = (p: Omit<ProductPackage, 'id'>) =>
-    setProductPackages(prev => [...prev, { ...p, id: generateId() }])
-  const updateProductPackage = (id: string, p: Partial<ProductPackage>) =>
+  const addProductPackage = (p: Omit<ProductPackage, 'id'>) => {
+    const row: ProductPackage = { ...p, id: generateId() }
+    setProductPackages(prev => [...prev, row])
+    createClient().from('product_packages').insert({ ...toProductPackage(row), sort_order: productPackages.length }).then(({ error }) => {
+      if (error) console.error('[Supabase] addProductPackage failed:', error.message)
+    })
+  }
+  const updateProductPackage = (id: string, p: Partial<ProductPackage>) => {
     setProductPackages(prev => prev.map(x => x.id === id ? { ...x, ...p } : x))
-  const deleteProductPackage = (id: string) =>
+    createClient().from('product_packages').update(defined(toProductPackage({ ...p, id }))).eq('id', id).then()
+  }
+  const deleteProductPackage = (id: string) => {
     setProductPackages(prev => prev.filter(x => x.id !== id))
+    createClient().from('product_packages').delete().eq('id', id).then()
+  }
 
-  const addSubmissionLetterTemplate = (t: Omit<SubmissionLetterTemplate, 'id'>) =>
-    setSubmissionLetterTemplates(prev => [...prev, { ...t, id: generateId() }])
-  const updateSubmissionLetterTemplate = (id: string, t: Partial<SubmissionLetterTemplate>) =>
+  const addSubmissionLetterTemplate = (t: Omit<SubmissionLetterTemplate, 'id'>) => {
+    const row: SubmissionLetterTemplate = { ...t, id: generateId() }
+    setSubmissionLetterTemplates(prev => [...prev, row])
+    createClient().from('submission_letter_templates').insert(toSubmissionLetterTemplate(row)).then(({ error }) => {
+      if (error) console.error('[Supabase] addSubmissionLetterTemplate failed:', error.message)
+    })
+  }
+  const updateSubmissionLetterTemplate = (id: string, t: Partial<SubmissionLetterTemplate>) => {
     setSubmissionLetterTemplates(prev => prev.map(x => x.id === id ? { ...x, ...t } : x))
-  const deleteSubmissionLetterTemplate = (id: string) =>
+    createClient().from('submission_letter_templates').update(defined(toSubmissionLetterTemplate({ ...t, id }))).eq('id', id).then()
+  }
+  const deleteSubmissionLetterTemplate = (id: string) => {
     setSubmissionLetterTemplates(prev => prev.filter(x => x.id !== id))
+    createClient().from('submission_letter_templates').delete().eq('id', id).then()
+  }
 
   return (
     <StoreContext.Provider value={{

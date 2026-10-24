@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { signFileUrlForServer } from '@/lib/storage-server'
 
 export async function POST(req: NextRequest) {
   try {
@@ -60,7 +61,8 @@ ${senderName ?? ''}`
 
     if (documentUrl) {
       try {
-        const docRes = await fetch(documentUrl)
+        // Private bucket: fetch through a short-lived signed URL
+        const docRes = await fetch(await signFileUrlForServer(documentUrl, 60))
         if (docRes.ok) {
           const buffer = Buffer.from(await docRes.arrayBuffer())
           const rawName = decodeURIComponent(documentUrl.split('/').pop()?.split('?')[0] ?? 'document.pdf')

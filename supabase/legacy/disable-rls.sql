@@ -1,3 +1,6 @@
+-- DO NOT RUN. Superseded by migrate-enable-rls.sql (RLS must stay ON).
+-- Kept only for history; running this re-opens every table to anyone with the anon key.
+
 -- Disable Row Level Security on all tables
 -- Run in Supabase Dashboard → SQL Editor → New Query
 
