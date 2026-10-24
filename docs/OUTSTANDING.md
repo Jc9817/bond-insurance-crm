@@ -278,6 +278,32 @@ Checks:
 
 ---
 
+## [ ] 4.6 WhatsApp documents — share the guide
+
+The steps are written in plain words in
+[docs/whatsapp-to-docflow.md](whatsapp-to-docflow.md). Print it or send it
+to whoever handles WhatsApp documents.
+
+---
+
+## [ ] 5.4 Paid plans and a tested backup (before going live)
+
+- [ ] Supabase → Billing: upgrade to **Pro** (daily backups, project never pauses)
+- [ ] Vercel → Settings → Billing: upgrade to **Pro** (Hobby is for non-commercial use)
+- [ ] Test a restore once: Supabase → Database → Backups → restore the latest
+      backup into a **new** project (not the live one), log in to it, check a case opens
+
+---
+
+## [ ] 5.6 PDPA — decide how long data is kept
+
+A draft note is in [docs/PDPA-note.md](PDPA-note.md). Fill in the
+**TO DECIDE** periods (closed cases, lost cases, old user accounts) and the
+two questions marked in italics. Once decided, the automatic archive and
+delete rule can be built.
+
+---
+
 ## [ ] Old `users` table in the database
 
 The live database has a `public.users` table (`id, full_name, email, password,
