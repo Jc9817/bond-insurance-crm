@@ -118,6 +118,7 @@ export type LoaAiStatus = (typeof LOA_AI_STATUSES)[number]
 
 export type Case = {
   id: string
+  caseNumber?: string     // readable "2026-005", given by the database when the case is created
   caseTitle: string
   customerId: string
   customerName: string
@@ -144,6 +145,32 @@ export type Case = {
   requestType?: string         // New Business | Renewal | Endorsement | Cancellation | Claim | Servicing
   selectedProducts?: CaseProduct[]  // products selected for this case (from Product Master)
   loaAiStatus?: LoaAiStatus     // defaults to 'Pending' when unset
+}
+
+// ─── Policies (fix list 5.1) ─────────────────────────────────────────────────
+// One row per policy or bond; a case (one contract) can have several. A
+// yearly renewal is a new row whose renewedFrom points at the old one, which
+// becomes 'Renewed'.
+
+export const POLICY_STATUSES = ['Pending', 'Active', 'Renewed', 'Expired', 'Cancelled'] as const
+export type PolicyStatus = (typeof POLICY_STATUSES)[number]
+
+export type Policy = {
+  id: string
+  caseId: string
+  policyType: string          // e.g. Performance Bond, CAR, TPL
+  policyNumber: string
+  insurer: string
+  sumInsured?: number
+  premium?: number
+  startDate?: string          // YYYY-MM-DD
+  expiryDate?: string         // YYYY-MM-DD
+  status: PolicyStatus
+  caseFileId?: string         // the policy / bond document on the case
+  renewedFrom?: string
+  notes: string
+  createdAt: string
+  updatedAt?: string
 }
 
 export type CaseNote = {
@@ -284,27 +311,64 @@ export type CaseFile = {
   aiScanned: boolean
   aiStatus: AiStatus
   aiExtractedData: AiExtractedData | null
-  fileDataUrl?: string
+  fileDataUrl?: string    // storage reference "storage:<path>" (lib/storage.ts), not file contents
   aiPrompt?: string            // extraction instructions copied from RequiredDocument at upload time
   supersededBy?: string        // id of the newer file that replaced this one
+  fileHash?: string            // SHA-256 of the file — spots the same file arriving again
+  sharepointItemId?: string    // its copy in the SharePoint Customers library (fix list 4.4)
+  sharepointUrl?: string       // link to open that copy
 }
 
-// ─── Telegram Inbox ───────────────────────────────────────────────────────────
-// Documents dropped into the Telegram bot land here unassigned. Staff review
-// them from /inbox and either spin up a new case, attach to an existing case,
-// or discard — resolving an item deletes its row here.
 
-export type TelegramUpload = {
+// ─── Unassigned Inbox (intake_items) ──────────────────────────────────────────
+// One row per document that arrived from any channel, waiting to be filed.
+
+export const INTAKE_SOURCES = ['telegram', 'email', 'sharepoint', 'upload'] as const
+export type IntakeSource = (typeof INTAKE_SOURCES)[number]
+
+export const INTAKE_STATUSES = [
+  'received', 'processing', 'suggested', 'needs_review', 'approved', 'discarded', 'duplicate',
+] as const
+export type IntakeStatus = (typeof INTAKE_STATUSES)[number]
+
+/** Statuses still waiting for a person — what the Inbox shows and counts. */
+export const OPEN_INTAKE_STATUSES: readonly IntakeStatus[] = ['received', 'processing', 'suggested', 'needs_review']
+
+/**
+ * What the AI suggests for an Inbox item (fix list 3.3), stored in
+ * intake_items.ai_suggestion. Customer and case are either existing records
+ * (id set) or new ones to create on approval (isNew) — nothing is created
+ * until a person approves.
+ */
+export type IntakeSuggestion = {
+  documentType?: string
+  requiredDocumentId?: string           // checklist slot in the suggested case, when it exists
+  customer?: { id?: string; name: string; ssm?: string; isNew: boolean }
+  case?: { id?: string; title: string; isNew: boolean }
+  projectName?: string
+  extracted?: Record<string, unknown>   // everything else the AI read off the document
+  note?: string                         // why it needs review, in plain words
+}
+
+export type IntakeItem = {
   id: string
+  source: IntakeSource
+  sender: string
+  receivedAt: string
   fileName: string
   fileSize: number
   fileType: string
-  fileDataUrl?: string
-  uploadedBy: string
-  uploadedAt: string
-  telegramChatId?: number
-  telegramMessageId?: number
-  telegramFileId?: string
+  fileRef?: string        // storage reference "storage:<path>"; loaded with the Inbox page
+  fileHash?: string       // SHA-256 of the file
+  status: IntakeStatus
+  aiSuggestion?: IntakeSuggestion | null
+  confidence?: number | null
+  duplicateOf?: string
+  caseId?: string
+  caseFileId?: string
+  decidedBy?: string
+  decidedAt?: string
+  sourceMeta: Record<string, unknown>
 }
 
 // ─── Activity Log ─────────────────────────────────────────────────────────────

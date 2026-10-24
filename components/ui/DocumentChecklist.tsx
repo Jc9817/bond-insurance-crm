@@ -1,171 +1,14 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useStore } from '@/lib/store'
 import { useAuth } from '@/lib/auth'
-import { createClient } from '@/utils/supabase/client'
 import type { WorkflowTemplate, CaseFile } from '@/lib/types'
 import { getActiveDocs } from '@/lib/workflow'
 import { formatFileSize, timeAgo } from '@/lib/utils'
-import { STORAGE_BUCKET, isStorageFile, resolveFileUrl, toStorageRef } from '@/lib/storage'
-
-async function downloadFile(file: CaseFile) {
-  if (!file.fileDataUrl) return
-  if (isStorageFile(file.fileDataUrl)) {
-    // Bucket is private — get a short-lived signed URL, then force-download via blob
-    let signedUrl: string
-    try {
-      signedUrl = await resolveFileUrl(createClient(), file.fileDataUrl)
-    } catch (err) {
-      console.error('[Storage] Signed URL failed:', err)
-      alert('Could not open this file. Please try again.')
-      return
-    }
-    try {
-      const res = await fetch(signedUrl)
-      const blob = await res.blob()
-      const blobUrl = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = blobUrl
-      a.download = file.fileName
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 10000)
-    } catch {
-      window.open(signedUrl, '_blank')
-    }
-  } else {
-    const a = document.createElement('a')
-    a.href = file.fileDataUrl
-    a.download = file.fileName
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-  }
-}
-
-function FileViewerModal({ file, onClose }: { file: CaseFile; onClose: () => void }) {
-  const ext = file.fileName.split('.').pop()?.toLowerCase() ?? ''
-  const storageFile = isStorageFile(file.fileDataUrl)
-
-  // Type detection: check extension for storage files, check MIME for base64
-  const isPdf = storageFile ? ext === 'pdf' : file.fileDataUrl?.split(';')[0].split(':')[1] === 'application/pdf'
-  const isImage = storageFile ? ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].includes(ext) : (file.fileDataUrl?.split(';')[0].split(':')[1]?.startsWith('image/') ?? false)
-
-  // Storage files: the bucket is private, so preview through a short-lived signed URL
-  const [signedUrl, setSignedUrl] = useState<string | null>(null)
-  const [signError, setSignError] = useState(false)
-  useEffect(() => {
-    if (!storageFile || !file.fileDataUrl) return
-    let cancelled = false
-    resolveFileUrl(createClient(), file.fileDataUrl)
-      .then(url => { if (!cancelled) setSignedUrl(url) })
-      .catch(err => { console.error('[Storage] Signed URL failed:', err); if (!cancelled) setSignError(true) })
-    return () => { cancelled = true }
-  }, [storageFile, file.fileDataUrl])
-  const previewSrc = storageFile ? signedUrl : file.fileDataUrl
-
-  // For base64 PDFs: browsers block data: URIs in iframes — convert to blob URL
-  const [blobUrl, setBlobUrl] = useState<string | null>(null)
-  useEffect(() => {
-    if (!isPdf || !file.fileDataUrl || storageFile) return
-    const [header, b64] = file.fileDataUrl.split(',')
-    const mimeType = header.match(/:(.*?);/)?.[1] ?? 'application/pdf'
-    const bytes = atob(b64)
-    const arr = new Uint8Array(bytes.length)
-    for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i)
-    const blob = new Blob([arr], { type: mimeType })
-    const url = URL.createObjectURL(blob)
-    setBlobUrl(url)
-    return () => URL.revokeObjectURL(url)
-  }, [isPdf, file.fileDataUrl, storageFile])
-
-  return (
-    <div
-      className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4"
-      onClick={onClose}
-    >
-      <div
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden"
-        onClick={e => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-100 shrink-0">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="text-xs font-semibold bg-gray-100 text-gray-600 rounded px-1.5 py-0.5 shrink-0">{file.fileType}</span>
-            <p className="text-sm font-semibold text-gray-800 truncate">{file.fileName}</p>
-            <span className="text-xs text-gray-400 shrink-0">{formatFileSize(file.fileSize)}</span>
-          </div>
-          <div className="flex items-center gap-2 shrink-0 ml-4">
-            <button
-              onClick={() => downloadFile(file)}
-              className="flex items-center gap-1.5 text-xs font-medium bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg transition-colors"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-              </svg>
-              Download
-            </button>
-            <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors text-base leading-none">✕</button>
-          </div>
-        </div>
-        {/* Content */}
-        <div className="flex-1 overflow-auto min-h-0">
-          {!file.fileDataUrl || signError ? (
-            <div className="flex flex-col items-center justify-center h-48 gap-2 text-gray-400">
-              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
-              </svg>
-              <p className="text-sm">File data not available</p>
-            </div>
-          ) : (isImage || isPdf) && storageFile && !signedUrl ? (
-            <div className="flex items-center justify-center h-48 gap-2 text-gray-400">
-              <span className="w-5 h-5 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" />
-              <span className="text-sm">Loading file…</span>
-            </div>
-          ) : isImage ? (
-            <div className="flex items-center justify-center p-6 bg-gray-50 min-h-[300px]">
-              <img src={previewSrc ?? undefined} alt={file.fileName} className="max-w-full max-h-[75vh] object-contain rounded-lg shadow-sm" />
-            </div>
-          ) : isPdf ? (
-            storageFile ? (
-              <iframe src={signedUrl ?? undefined} className="w-full h-[75vh] border-0" title={file.fileName} />
-            ) : blobUrl ? (
-              <iframe src={blobUrl} className="w-full h-[75vh] border-0" title={file.fileName} />
-            ) : (
-              <div className="flex items-center justify-center h-48 gap-2 text-gray-400">
-                <span className="w-5 h-5 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" />
-                <span className="text-sm">Loading PDF…</span>
-              </div>
-            )
-          ) : (
-            <div className="flex flex-col items-center justify-center py-16 gap-4">
-              <div className="w-14 h-14 bg-gray-100 rounded-2xl flex items-center justify-center">
-                <svg className="w-7 h-7 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-                </svg>
-              </div>
-              <div className="text-center">
-                <p className="text-sm font-medium text-gray-700 mb-1">In-browser preview not available for {file.fileType} files</p>
-                <p className="text-xs text-gray-400 mb-4">Download the file to open it in the appropriate application</p>
-                <button
-                  onClick={() => downloadFile(file)}
-                  className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-xl transition-colors"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                  </svg>
-                  Download {file.fileName}
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
+import { caseFolder } from '@/lib/storage'
+import { fileSha256, uploadFile } from '@/lib/upload'
+import FileViewerModal from './FileViewerModal'
 
 type Props = {
   caseId: string
@@ -191,16 +34,6 @@ export default function DocumentChecklist({ caseId, caseTitle, template, caseFil
   const uploadedRequiredCount = requiredDocs.filter(doc => activeFiles.some(f => f.requiredDocumentId === doc.id && f.aiStatus !== 'Failed')).length
   const overallCompleteness = requiredDocs.length > 0 ? Math.round((uploadedRequiredCount / requiredDocs.length) * 100) : 100
 
-  const uploadToStorage = async (file: File, caseId: string): Promise<string> => {
-    const sb = createClient()
-    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
-    const path = `cases/${caseId}/${Date.now()}_${safeName}`
-    const { error } = await sb.storage.from(STORAGE_BUCKET).upload(path, file, { upsert: false })
-    if (error) throw error
-    // Store a reference, not a public URL — the bucket is private
-    return toStorageRef(path)
-  }
-
   const handleRetag = (file: CaseFile, docId: string | null, docName: string) => {
     const oldDoc = file.requiredDocumentId ? docs.find(d => d.id === file.requiredDocumentId) : null
     updateCaseFile(file.id, {
@@ -224,7 +57,13 @@ export default function DocumentChecklist({ caseId, caseTitle, template, caseFil
   const handleUpload = async (file: File) => {
     setUploading(true)
     try {
-      const fileDataUrl = await uploadToStorage(file, caseId)
+      const fileHash = await fileSha256(file)
+      const same = activeFiles.find(f => f.fileHash === fileHash)
+      if (same && !confirm(`This exact file is already on this case as "${same.fileName}". Upload it again anyway?`)) {
+        setUploading(false)
+        return
+      }
+      const fileDataUrl = await uploadFile(file, caseFolder(caseId))
       addCaseFile({
         caseId,
         fileName: file.name,
@@ -236,6 +75,7 @@ export default function DocumentChecklist({ caseId, caseTitle, template, caseFil
         aiStatus: 'Pending',
         aiExtractedData: null,
         fileDataUrl,
+        fileHash,
       })
       addActivityLog({
         caseId,
@@ -247,7 +87,7 @@ export default function DocumentChecklist({ caseId, caseTitle, template, caseFil
       })
     } catch (err) {
       console.error('[Storage] Upload failed:', err)
-      alert('File upload failed. Please check your Supabase storage bucket is set up and try again.')
+      alert(`File upload failed: ${err instanceof Error ? err.message : 'please try again.'}`)
     }
     setUploading(false)
   }
@@ -328,7 +168,12 @@ export default function DocumentChecklist({ caseId, caseTitle, template, caseFil
         </div>
       )}
 
-      {viewingFile && <FileViewerModal file={viewingFile} onClose={() => setViewingFile(null)} />}
+      {viewingFile && (
+        <FileViewerModal
+          file={{ fileName: viewingFile.fileName, fileSize: viewingFile.fileSize, fileType: viewingFile.fileType, fileRef: viewingFile.fileDataUrl }}
+          onClose={() => setViewingFile(null)}
+        />
+      )}
     </div>
   )
 }
@@ -375,6 +220,9 @@ function FileRow({
         </button>
         <p className="text-xs text-gray-400 truncate">
           {formatFileSize(file.fileSize)} · {timeAgo(file.uploadedAt)} · {file.uploadedBy}
+          {file.sharepointUrl && (
+            <> · <a href={file.sharepointUrl} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">SharePoint</a></>
+          )}
         </p>
       </div>
 

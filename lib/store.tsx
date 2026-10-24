@@ -1,19 +1,28 @@
 'use client'
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import type {
   Customer, Contact, Case, CaseNote, FollowUp, PicUser,
   User, CaseFile, ActivityLog, SettingsItem, SettingsCategory,
   WorkflowTemplate, RequiredDocument, WorkflowStep,
-  Product, ProductPackage, SubmissionLetterTemplate, EmailTemplate, CaseEmailLog, TelegramUpload,
+  Product, ProductPackage, SubmissionLetterTemplate, EmailTemplate, CaseEmailLog, IntakeItem, Policy,
 } from './types'
+import { OPEN_INTAKE_STATUSES } from './types'
 import { mockWorkflowTemplates } from './mock-data'
 import { generateId, nowIso } from './utils'
 import { getWorkflowTemplate } from './workflow'
 import { STORAGE_BUCKET, storagePath } from './storage'
 
 type SettingsData = Record<SettingsCategory, SettingsItem[]>
+
+/** Where an Inbox item is filed: the case, the document tag, and who decided. */
+export type FileIntakeTarget = {
+  caseId: string
+  documentType: string
+  requiredDocumentId?: string
+  decidedBy: string
+}
 
 type StoreCtx = {
   customers: Customer[]
@@ -31,8 +40,14 @@ type StoreCtx = {
   productPackages: ProductPackage[]
   emailTemplates: EmailTemplate[]
   caseEmails: CaseEmailLog[]
-  telegramUploads: TelegramUpload[]
+  intakeItems: IntakeItem[]   // open Unassigned Inbox items
+  policies: Policy[]
   loading: boolean
+
+  // Load what the startup load leaves out (see loadAll): call when a case or
+  // the Inbox is opened.
+  loadCase: (caseId: string) => Promise<void>
+  loadInbox: () => Promise<void>
 
   addCustomer: (c: Omit<Customer, 'id' | 'createdAt'>) => string
   updateCustomer: (id: string, c: Partial<Customer>) => void
@@ -104,8 +119,18 @@ type StoreCtx = {
   sendCaseEmail: (data: { caseId: string; templateName?: string; toEmail: string; subject: string; body: string }) => Promise<void>
   notifyOpsTeam: (caseItem: Case) => Promise<void>
 
-  deleteTelegramUpload: (id: string) => void
+  // keepFile: the stored file now belongs to a case file (Inbox "Assign to Case")
+  // Inbox decisions. fileIntakeItem returns the new case file's id (null if
+  // the item's file link hasn't loaded yet).
+  fileIntakeItem: (id: string, target: FileIntakeTarget) => string | null
+  discardIntakeItem: (id: string, decidedBy: string) => void
   sendCaseFileToInbox: (file: CaseFile) => void
+
+  addPolicy: (p: Omit<Policy, 'id' | 'createdAt'>) => string
+  updatePolicy: (id: string, p: Partial<Policy>) => void
+  deletePolicy: (id: string) => void
+  // New policy row continuing `id` (with the new dates/number); `id` becomes Renewed
+  renewPolicy: (id: string, next: Partial<Omit<Policy, 'id' | 'caseId'>>) => string
 }
 
 // ─── DB row → TypeScript mappers ──────────────────────────────────────────────
@@ -137,7 +162,7 @@ const toContact = (c: Contact) => ({
 })
 
 const fromCase = (r: Row): Case => ({
-  id: r.id, caseTitle: r.case_title, customerId: r.customer_id ?? '',
+  id: r.id, caseNumber: r.case_number ?? undefined, caseTitle: r.case_title, customerId: r.customer_id ?? '',
   customerName: r.customer_name ?? '', caseType: r.case_type ?? '',
   amount: r.amount ?? 0, personInCharge: r.person_in_charge ?? '',
   currentStatus: r.current_status ?? 'Created', currentWorkflowStepId: r.current_workflow_step_id ?? undefined,
@@ -198,17 +223,22 @@ const toCaseEmailLog = (l: CaseEmailLog) => ({
   status: l.status, error_message: l.errorMessage ?? null, sent_at: l.sentAt,
 })
 
-const fromTelegramUpload = (r: Row): TelegramUpload => ({
-  id: r.id, fileName: r.file_name ?? '', fileSize: r.file_size ?? 0, fileType: r.file_type ?? '',
-  fileDataUrl: r.file_data_url ?? undefined, uploadedBy: r.uploaded_by ?? '', uploadedAt: r.uploaded_at,
-  telegramChatId: r.telegram_chat_id ?? undefined, telegramMessageId: r.telegram_message_id ?? undefined,
-  telegramFileId: r.telegram_file_id ?? undefined,
+const fromIntakeItem = (r: Row): IntakeItem => ({
+  id: r.id, source: r.source ?? 'telegram', sender: r.sender ?? '', receivedAt: r.received_at,
+  fileName: r.file_name ?? '', fileSize: r.file_size ?? 0, fileType: r.file_type ?? '',
+  fileRef: r.file_ref ?? undefined, fileHash: r.file_hash ?? undefined,
+  status: r.status ?? 'received', aiSuggestion: r.ai_suggestion ?? null, confidence: r.confidence ?? null,
+  duplicateOf: r.duplicate_of ?? undefined, caseId: r.case_id ?? undefined,
+  caseFileId: r.case_file_id ?? undefined, decidedBy: r.decided_by ?? undefined,
+  decidedAt: r.decided_at ?? undefined, sourceMeta: r.source_meta ?? {},
 })
-const toTelegramUpload = (u: TelegramUpload) => ({
-  id: u.id, file_name: u.fileName, file_size: u.fileSize, file_type: u.fileType,
-  file_data_url: u.fileDataUrl ?? null, uploaded_by: u.uploadedBy, uploaded_at: u.uploadedAt,
-  telegram_chat_id: u.telegramChatId ?? null, telegram_message_id: u.telegramMessageId ?? null,
-  telegram_file_id: u.telegramFileId ?? null,
+const toIntakeItem = (i: IntakeItem) => ({
+  id: i.id, source: i.source, sender: i.sender, received_at: i.receivedAt,
+  file_name: i.fileName, file_size: i.fileSize, file_type: i.fileType,
+  file_ref: i.fileRef ?? null, file_hash: i.fileHash ?? null, status: i.status,
+  ai_suggestion: i.aiSuggestion ?? null, confidence: i.confidence ?? null,
+  duplicate_of: i.duplicateOf ?? null, case_id: i.caseId ?? null, case_file_id: i.caseFileId ?? null,
+  decided_by: i.decidedBy ?? null, decided_at: i.decidedAt ?? null, source_meta: i.sourceMeta,
 })
 
 const fromCaseNote = (r: Row): CaseNote => ({
@@ -237,6 +267,8 @@ const fromCaseFile = (r: Row): CaseFile => ({
   fileDataUrl: r.file_data_url ?? undefined,
   aiScanned: r.ai_scanned ?? false, aiStatus: r.ai_status ?? 'Pending',
   aiExtractedData: r.ai_extracted_data ?? null, aiPrompt: r.ai_prompt ?? undefined,
+  fileHash: r.file_hash ?? undefined,
+  sharepointItemId: r.sharepoint_item_id ?? undefined, sharepointUrl: r.sharepoint_url ?? undefined,
 })
 const toCaseFile = (f: CaseFile) => ({
   id: f.id, case_id: f.caseId, file_name: f.fileName, file_size: f.fileSize,
@@ -245,6 +277,24 @@ const toCaseFile = (f: CaseFile) => ({
   uploaded_at: f.uploadedAt, file_data_url: f.fileDataUrl ?? null,
   ai_scanned: f.aiScanned, ai_status: f.aiStatus,
   ai_extracted_data: f.aiExtractedData ?? null, ai_prompt: f.aiPrompt ?? null,
+  file_hash: f.fileHash ?? null,
+})
+
+const fromPolicy = (r: Row): Policy => ({
+  id: r.id, caseId: r.case_id, policyType: r.policy_type ?? '', policyNumber: r.policy_number ?? '',
+  insurer: r.insurer ?? '', sumInsured: r.sum_insured ?? undefined, premium: r.premium ?? undefined,
+  startDate: r.start_date ?? undefined, expiryDate: r.expiry_date ?? undefined, status: r.status ?? 'Active',
+  caseFileId: r.case_file_id ?? undefined, renewedFrom: r.renewed_from ?? undefined, notes: r.notes ?? '',
+  createdAt: r.created_at, updatedAt: r.updated_at ?? undefined,
+})
+const toPolicy = (p: Partial<Policy>) => ({
+  id: p.id, case_id: p.caseId, policy_type: p.policyType, policy_number: p.policyNumber, insurer: p.insurer,
+  sum_insured: p.sumInsured === undefined ? undefined : p.sumInsured ?? null,
+  premium: p.premium === undefined ? undefined : p.premium ?? null,
+  start_date: p.startDate === undefined ? undefined : p.startDate || null,
+  expiry_date: p.expiryDate === undefined ? undefined : p.expiryDate || null,
+  status: p.status, case_file_id: p.caseFileId === undefined ? undefined : p.caseFileId || null,
+  renewed_from: p.renewedFrom, notes: p.notes, created_at: p.createdAt, updated_at: p.updatedAt,
 })
 
 const fromActivityLog = (r: Row): ActivityLog => ({
@@ -313,6 +363,41 @@ const fromUser = (r: Row): User => ({
   createdAt: r.created_at,
 })
 
+/** Asks the server to update a case file's SharePoint copy (fix list 4.4). Fire and forget. */
+const syncToSharePoint = (body: { caseFileId: string } | { action: 'delete'; itemId: string }) => {
+  fetch('/api/files/sharepoint', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  }).catch(err => console.error('[SharePoint] sync request failed:', err))
+}
+
+// ─── What the startup load fetches (see loadAll) ─────────────────────────────
+
+// Enough for lists, the dashboard and reports ("missing documents"). The file
+// link, AI-extracted data and AI prompt come with loadCase().
+const CASE_FILE_LIST_COLUMNS =
+  'id, case_id, file_name, file_size, file_type, document_type, required_document_id, uploaded_by, uploaded_at, ai_scanned, ai_status'
+// Inbox list and the sidebar count; file links come with loadInbox().
+const INBOX_LIST_COLUMNS =
+  'id, source, sender, received_at, file_name, file_size, file_type, status, confidence, source_meta'
+// When each case entered a workflow step — the dashboard's SLA warnings.
+const STEP_LOG_COLUMNS = 'id, case_id, action_type, new_value, timestamp'
+const RECENT_ACTIVITY_LIMIT = 20
+
+/** prev with rows added; a row with an id already in prev replaces it. */
+function mergeById<T extends { id: string }>(prev: T[], rows: T[]): T[] {
+  const map = new Map(prev.map(x => [x.id, x]))
+  for (const r of rows) map.set(r.id, r)
+  return [...map.values()]
+}
+
+/** prev with everything belonging to caseId replaced by rows. */
+function replaceForCase<T extends { caseId?: string }>(prev: T[], caseId: string, rows: T[]): T[] {
+  return [...rows, ...prev.filter(x => x.caseId !== caseId)]
+}
+
+const sortLogs = (logs: ActivityLog[]) =>
+  [...logs].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+
 /** Drops undefined fields so a partial update only touches the columns it changes. */
 const defined = (o: Row) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined))
 
@@ -340,81 +425,77 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [submissionLetterTemplates, setSubmissionLetterTemplates] = useState<SubmissionLetterTemplate[]>([])
   const [emailTemplates, setEmailTemplates] = useState<EmailTemplate[]>([])
   const [caseEmails, setCaseEmails] = useState<CaseEmailLog[]>([])
-  const [telegramUploads, setTelegramUploads] = useState<TelegramUpload[]>([])
+  const [intakeItems, setIntakeItems] = useState<IntakeItem[]>([])
+  const [policies, setPolicies] = useState<Policy[]>([])
   const [settingsState, setSettingsState] = useState<SettingsData>(emptySettings)
   const [loading, setLoading] = useState(true)
 
-  // ─── Load all data from Supabase on mount ──────────────────────────────────
+  // ─── Loading ───────────────────────────────────────────────────────────────
+  // On startup we load what the lists, dashboard and reports need: every
+  // customer, contact, case and follow-up, the settings, and a slim version
+  // of the case files and Inbox (name, tag and status only — no file link,
+  // no AI-extracted data). Things only shown inside one case — its notes,
+  // emails, full history and full file rows — are loaded by loadCase() when
+  // that case is opened, and the Inbox's file links by loadInbox().
 
-  useEffect(() => {
-    loadAll()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
+  // `loading` starts true and is cleared once this finishes
   async function loadAll() {
     const sb = createClient()
-    setLoading(true)
-
-    // Connection test — visible in browser DevTools console
-    const { error: pingError } = await sb.from('customers').select('id').limit(1)
-    if (pingError) {
-      console.error('[Supabase] Connection failed:', pingError.message, pingError.code)
-    } else {
-      console.log('[Supabase] Connected successfully')
-    }
 
     const [
       { data: cust, error: custErr },
       { data: cont },
       { data: caseRows },
-      { data: noteRows },
       { data: fuRows },
       { data: fileRows },
-      { data: logRows },
+      { data: recentLogRows },
+      { data: stepLogRows },
       { data: templates },
       { data: steps },
       { data: docs },
       { data: templateRows },
-      { data: caseEmailRows },
-      { data: telegramUploadRows },
+      { data: intakeRows },
       { data: settingsRows },
       { data: productRows },
       { data: packageRows },
       { data: letterRows },
       { data: picRows },
       { data: userRows },
+      { data: policyRows },
     ] = await Promise.all([
       sb.from('customers').select('*').order('created_at', { ascending: false }),
       sb.from('contacts').select('*'),
       sb.from('cases').select('*').order('created_at', { ascending: false }),
-      sb.from('case_notes').select('*').order('created_at', { ascending: false }),
       sb.from('follow_ups').select('*').order('created_at', { ascending: false }),
-      sb.from('case_files').select('*').order('uploaded_at', { ascending: false }),
-      sb.from('activity_logs').select('*').order('timestamp', { ascending: false }),
+      sb.from('case_files').select(CASE_FILE_LIST_COLUMNS).order('uploaded_at', { ascending: false }),
+      // Dashboard: "Recent activity" ...
+      sb.from('activity_logs').select('*').order('timestamp', { ascending: false }).limit(RECENT_ACTIVITY_LIMIT),
+      // ... and when each case entered its current step (SLA warnings)
+      sb.from('activity_logs').select(STEP_LOG_COLUMNS).eq('action_type', 'WORKFLOW_STEP_CHANGED'),
       sb.from('workflow_templates').select('*'),
       sb.from('workflow_steps').select('*').order('order'),
       sb.from('required_documents').select('*'),
       sb.from('email_templates').select('*').order('created_at'),
-      sb.from('case_emails').select('*').order('sent_at', { ascending: false }),
-      sb.from('telegram_uploads').select('*').order('uploaded_at', { ascending: false }),
+      sb.from('intake_items').select(INBOX_LIST_COLUMNS).in('status', OPEN_INTAKE_STATUSES).order('received_at', { ascending: false }),
       sb.from('settings_items').select('*').order('sort_order').order('created_at'),
       sb.from('products').select('*').order('sort_order').order('created_at'),
       sb.from('product_packages').select('*').order('sort_order').order('created_at'),
       sb.from('submission_letter_templates').select('*').order('created_at'),
       sb.from('pics').select('*').order('created_at'),
       sb.from('user_roles').select('*').order('created_at'),
+      sb.from('policies').select('*').order('expiry_date', { ascending: true, nullsFirst: false }),
     ])
 
     if (custErr) console.error('[Supabase] customers load error:', custErr.message)
     if (cust) setCustomers(cust.map(fromCustomer))
     if (cont) setContacts(cont.map(fromContact))
     if (caseRows) setCases(caseRows.map(fromCase))
-    if (noteRows) setCaseNotes(noteRows.map(fromCaseNote))
     if (fuRows) setFollowUps(fuRows.map(fromFollowUp))
     if (fileRows) setCaseFiles(fileRows.map(fromCaseFile))
-    if (logRows) setActivityLogs(logRows.map(fromActivityLog))
-    if (caseEmailRows) setCaseEmails(caseEmailRows.map(fromCaseEmailLog))
-    if (telegramUploadRows) setTelegramUploads(telegramUploadRows.map(fromTelegramUpload))
+    // Full recent rows listed last so they win over the slim step-change rows
+    setActivityLogs(sortLogs(mergeById<ActivityLog>([], [...(stepLogRows ?? []), ...(recentLogRows ?? [])].map(fromActivityLog))))
+    if (intakeRows) setIntakeItems(intakeRows.map(fromIntakeItem))
+    if (policyRows) setPolicies(policyRows.map(fromPolicy))
     if (settingsRows) {
       const grouped = emptySettings()
       for (const r of settingsRows) grouped[r.category as SettingsCategory]?.push(fromSettingsItem(r))
@@ -448,6 +529,40 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
     setLoading(false)
   }
+
+  // Everything about one case that the startup load leaves out. Also picks up
+  // changes made elsewhere since (e.g. an AI scan result from n8n).
+  // Stable across renders so pages can call it from useEffect without looping.
+  // (React Compiler is not enabled, so its memoization lint does not apply.)
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
+  const loadCase = useCallback(async (caseId: string) => {
+    const sb = createClient()
+    const [
+      { data: fileRows, error: fileErr },
+      { data: noteRows },
+      { data: logRows },
+      { data: emailRows },
+    ] = await Promise.all([
+      sb.from('case_files').select('*').eq('case_id', caseId).order('uploaded_at', { ascending: false }),
+      sb.from('case_notes').select('*').eq('case_id', caseId).order('created_at', { ascending: false }),
+      sb.from('activity_logs').select('*').eq('case_id', caseId).order('timestamp', { ascending: false }),
+      sb.from('case_emails').select('*').eq('case_id', caseId).order('sent_at', { ascending: false }),
+    ])
+    if (fileErr) console.error('[Supabase] loadCase failed:', fileErr.message)
+    if (fileRows) setCaseFiles(prev => replaceForCase(prev, caseId, fileRows.map(fromCaseFile)))
+    if (noteRows) setCaseNotes(prev => replaceForCase(prev, caseId, noteRows.map(fromCaseNote)))
+    if (logRows) setActivityLogs(prev => sortLogs(replaceForCase(prev, caseId, logRows.map(fromActivityLog))))
+    if (emailRows) setCaseEmails(prev => replaceForCase(prev, caseId, emailRows.map(fromCaseEmailLog)))
+  }, [])
+
+  // The Inbox page's file links (the startup load only has names and sizes).
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
+  const loadInbox = useCallback(async () => {
+    const { data, error } = await createClient()
+      .from('intake_items').select('*').in('status', OPEN_INTAKE_STATUSES).order('received_at', { ascending: false })
+    if (error) console.error('[Supabase] loadInbox failed:', error.message)
+    if (data) setIntakeItems(data.map(fromIntakeItem))
+  }, [])
 
   async function seedEmailTemplates(sb: ReturnType<typeof createClient>) {
     const row: EmailTemplate = {
@@ -488,6 +603,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
     setWorkflowTemplates(mockWorkflowTemplates)
   }
+
+  // Fetch on mount; loadAll only sets state after its queries come back
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadAll()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // ─── Customers ────────────────────────────────────────────────────────────
 
@@ -544,9 +666,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const template = getWorkflowTemplate(c.caseType, workflowTemplates, customer?.businessType)
     const row: Case = { ...c, id: generateId(), createdAt: nowIso(), updatedAt: nowIso(), workflowTemplateId: template?.id }
     setCases(prev => [row, ...prev])
-    createClient().from('cases').insert(toCase(row)).then(({ error }) => {
+    // The database gives the case its number (2026-005) — read it back
+    createClient().from('cases').insert(toCase(row)).select('case_number').single().then(({ data, error }) => {
       if (error) console.error('[Supabase] addCase failed:', error.message, '| hint:', error.hint, '| details:', error.details)
-      else console.log('[Supabase] addCase saved:', row.caseTitle)
+      else if (data?.case_number) setCases(prev => prev.map(x => x.id === row.id ? { ...x, caseNumber: data.case_number } : x))
     })
     return row.id
   }
@@ -652,25 +775,65 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (status === 'failed') throw new Error(errorMessage)
   }
 
-  // ─── Telegram Inbox ─────────────────────────────────────────────────────────
+  // ─── Unassigned Inbox (intake_items) ──────────────────────────────────────
+  // Items stay in the table after a decision, as a record; the Inbox (and
+  // this state) only holds the open ones.
 
-  const deleteTelegramUpload = (id: string) => {
-    setTelegramUploads(prev => prev.filter(x => x.id !== id))
-    createClient().from('telegram_uploads').delete().eq('id', id).then()
+  const fileIntakeItem = (id: string, target: FileIntakeTarget): string | null => {
+    const item = intakeItems.find(x => x.id === id)
+    if (!item?.fileRef) return null
+    const caseFileId = addCaseFile({
+      caseId: target.caseId,
+      fileName: item.fileName,
+      fileSize: item.fileSize,
+      fileType: item.fileType,
+      documentType: target.documentType,
+      requiredDocumentId: target.requiredDocumentId,
+      uploadedBy: item.sender,
+      fileDataUrl: item.fileRef,
+      fileHash: item.fileHash,
+      aiScanned: false,
+      aiStatus: 'Pending',
+      aiExtractedData: null,
+    })
+    setIntakeItems(prev => prev.filter(x => x.id !== id))
+    createClient().from('intake_items').update({
+      status: 'approved', case_id: target.caseId, case_file_id: caseFileId,
+      decided_by: target.decidedBy, decided_at: nowIso(),
+    }).eq('id', id).then(({ error }) => {
+      if (error) console.error('[Supabase] fileIntakeItem failed:', error.message)
+    })
+    return caseFileId
+  }
+
+  const discardIntakeItem = (id: string, decidedBy: string) => {
+    const item = intakeItems.find(x => x.id === id)
+    setIntakeItems(prev => prev.filter(x => x.id !== id))
+    const sb = createClient()
+    // Keep the row as a record; the file itself is deleted
+    sb.from('intake_items').update({
+      status: 'discarded', file_ref: null, decided_by: decidedBy, decided_at: nowIso(),
+    }).eq('id', id).then()
+    const path = storagePath(item?.fileRef)
+    if (path) sb.storage.from(STORAGE_BUCKET).remove([path]).then()
   }
 
   const sendCaseFileToInbox = (file: CaseFile) => {
-    const row: TelegramUpload = {
-      id: generateId(), fileName: file.fileName, fileSize: file.fileSize, fileType: file.fileType,
-      fileDataUrl: file.fileDataUrl, uploadedBy: file.uploadedBy, uploadedAt: nowIso(),
+    const row: IntakeItem = {
+      id: generateId(), source: 'telegram', sender: file.uploadedBy, receivedAt: nowIso(),
+      fileName: file.fileName, fileSize: file.fileSize, fileType: file.fileType,
+      fileRef: file.fileDataUrl, fileHash: file.fileHash, status: 'received',
+      sourceMeta: { returnedFromCaseId: file.caseId },
     }
-    setTelegramUploads(prev => [row, ...prev])
+    setIntakeItems(prev => [row, ...prev])
     setCaseFiles(prev => prev.filter(x => x.id !== file.id))
     const sb = createClient()
-    sb.from('telegram_uploads').insert(toTelegramUpload(row)).then(({ error }) => {
+    sb.from('intake_items').insert(toIntakeItem(row)).then(({ error }) => {
       if (error) console.error('[Supabase] sendCaseFileToInbox insert failed:', error.message)
     })
     sb.from('case_files').delete().eq('id', file.id).then()
+    // No longer filed, so no longer in the case's SharePoint folder
+    if (file.sharepointItemId) syncToSharePoint({ action: 'delete', itemId: file.sharepointItemId })
   }
 
   const deleteCase = (id: string) => {
@@ -678,6 +841,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setCases(prev => prev.filter(x => x.id !== id))
     setCaseNotes(prev => prev.filter(x => x.caseId !== id))
     setFollowUps(prev => prev.filter(x => x.caseId !== id))
+    setPolicies(prev => prev.filter(x => x.caseId !== id))   // the database deletes them with the case
     setActivityLogs(prev => prev.filter(x => x.caseId !== id))
     setCaseFiles(prev => prev.filter(x => x.caseId !== id))
 
@@ -792,7 +956,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const addCaseFile = (f: Omit<CaseFile, 'id' | 'uploadedAt'>): string => {
     const row: CaseFile = { ...f, id: generateId(), uploadedAt: nowIso() }
     setCaseFiles(prev => [...prev, row])
-    createClient().from('case_files').upsert(toCaseFile(row)).then()
+    createClient().from('case_files').upsert(toCaseFile(row)).then(({ error }) => {
+      if (!error) syncToSharePoint({ caseFileId: row.id })
+    })
     notifyDocFlow(row)
     return row.id
   }
@@ -801,9 +967,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setCaseFiles(prev => prev.filter(x => x.id !== id))
     const sb = createClient()
     sb.from('case_files').delete().eq('id', id).then()
-    // Also remove the actual file from Supabase Storage
+    // Also remove the actual file from Supabase Storage, and its SharePoint copy
     const path = storagePath(file?.fileDataUrl)
     if (path) sb.storage.from(STORAGE_BUCKET).remove([path]).then()
+    if (file?.sharepointItemId) syncToSharePoint({ action: 'delete', itemId: file.sharepointItemId })
   }
   const updateCaseFile = (id: string, f: Partial<CaseFile>) => {
     setCaseFiles(prev => prev.map(x => x.id === id ? { ...x, ...f } : x))
@@ -814,7 +981,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (f.documentType !== undefined) updateData.document_type = f.documentType
     if (f.requiredDocumentId !== undefined) updateData.required_document_id = f.requiredDocumentId
     if (Object.keys(updateData).length > 0)
-      createClient().from('case_files').update(updateData).eq('id', id).then()
+      createClient().from('case_files').update(updateData).eq('id', id).then(({ error }) => {
+        // A new document type can mean a different SharePoint folder and name
+        if (!error && f.documentType !== undefined) syncToSharePoint({ caseFileId: id })
+      })
   }
 
   // Scanning itself happens in n8n, not here — this just fires the trigger
@@ -865,6 +1035,38 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         updateCaseFile(id, { aiStatus: 'Failed' })
         alert(`AI Scan failed: ${msg}`)
       })
+  }
+
+  // ─── Policies ─────────────────────────────────────────────────────────────
+
+  const addPolicy = (p: Omit<Policy, 'id' | 'createdAt'>): string => {
+    const row: Policy = { ...p, id: generateId(), createdAt: nowIso() }
+    setPolicies(prev => [...prev, row])
+    createClient().from('policies').insert(defined(toPolicy(row))).then(({ error }) => {
+      if (error) console.error('[Supabase] addPolicy failed:', error.message)
+    })
+    return row.id
+  }
+  const updatePolicy = (id: string, p: Partial<Policy>) => {
+    const updatedAt = nowIso()
+    setPolicies(prev => prev.map(x => x.id === id ? { ...x, ...p, updatedAt } : x))
+    createClient().from('policies').update(defined(toPolicy({ ...p, updatedAt }))).eq('id', id).then(({ error }) => {
+      if (error) console.error('[Supabase] updatePolicy failed:', error.message)
+    })
+  }
+  const deletePolicy = (id: string) => {
+    setPolicies(prev => prev.filter(x => x.id !== id))
+    createClient().from('policies').delete().eq('id', id).then()
+  }
+  const renewPolicy = (id: string, next: Partial<Omit<Policy, 'id' | 'caseId'>>): string => {
+    const old = policies.find(x => x.id === id)
+    if (!old) return ''
+    updatePolicy(id, { status: 'Renewed' })
+    return addPolicy({
+      caseId: old.caseId, policyType: old.policyType, policyNumber: '', insurer: old.insurer,
+      sumInsured: old.sumInsured, premium: old.premium, notes: '', status: 'Active',
+      ...next, renewedFrom: id,
+    })
   }
 
   // ─── Activity Logs ────────────────────────────────────────────────────────
@@ -1052,7 +1254,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     <StoreContext.Provider value={{
       customers, contacts, cases, caseNotes, followUps, pics,
       users, caseFiles, activityLogs, settingsData: settingsState, workflowTemplates,
-      products, productPackages, emailTemplates, caseEmails, telegramUploads, loading,
+      products, productPackages, emailTemplates, caseEmails, intakeItems, loading,
+      loadCase, loadInbox,
       addCustomer, updateCustomer, deleteCustomer,
       addContact, updateContact, deleteContact, setPrimaryContact,
       addCase, updateCase, deleteCase, archiveCase, restoreCase,
@@ -1071,7 +1274,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       submissionLetterTemplates,
       addSubmissionLetterTemplate, updateSubmissionLetterTemplate, deleteSubmissionLetterTemplate,
       addEmailTemplate, updateEmailTemplate, deleteEmailTemplate, sendCaseEmail, notifyOpsTeam,
-      deleteTelegramUpload, sendCaseFileToInbox,
+      fileIntakeItem, discardIntakeItem, sendCaseFileToInbox,
+      policies, addPolicy, updatePolicy, deletePolicy, renewPolicy,
     }}>
       {children}
     </StoreContext.Provider>

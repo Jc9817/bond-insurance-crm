@@ -1,9 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { SUPPORTED_MIME_TYPES } from '@/lib/ai-scan'
+import { INBOX_FOLDER, SUPPORTED_MIME_TYPES } from '@/lib/storage'
 import { generateId } from '@/lib/utils'
 import { notifyDocFlowWebhook } from '@/lib/n8n'
+import { removeFile, saveFile, signFileUrlForServer } from '@/lib/storage-server'
+import { createIntakeItem, findDuplicate, sha256, type DuplicateMatch } from '@/lib/intake'
+import { sharePointStorageEnabled, syncCaseFile } from '@/lib/sharepoint-files'
 
+// OPTIONAL intake channel (fix list 5.5). The main ways documents come in are
+// email to operation@ (4.1), the SharePoint _Inbox folder (4.2) and bulk upload
+// on the Inbox page (4.3). This bot stays for quick phone photos; with
+// TELEGRAM_BOT_TOKEN / TELEGRAM_WEBHOOK_SECRET unset it does nothing (every
+// call is refused). Removing it: delete app/api/telegram and the
+// telegram_uploads / telegram_pending_uploads tables.
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN!
 const ALLOWED_CHAT_ID = Number(process.env.TELEGRAM_ALLOWED_CHAT_ID!)
 const WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET!
@@ -72,9 +81,18 @@ type PendingFile = {
   fileName: string
   fileSize: number
   mimeType: string
-  fileDataUrl: string
+  fileDataUrl: string        // storage reference ("storage:inbox/..."), saved when the file arrived
+  fileHash: string           // SHA-256, for duplicate detection (fix list 3.2)
   telegramFileId: string
   uploadedBy: string
+}
+
+// Tells the sender the file was already received and where it is.
+async function replyDuplicate(chatId: number, msgId: number, fileName: string, match: DuplicateMatch) {
+  const where = match.kind === 'case_file'
+    ? `It is already filed in a case:\n${APP_URL}/cases/${match.caseId}`
+    : `It is already waiting in the Unassigned Inbox:\n${APP_URL}/inbox`
+  await send(chatId, `ℹ️ <b>${esc(fileName)}</b> was received before, so it was not added again.\n\n${where}`, msgId)
 }
 
 // ── Branch: "New Case — Letter of Award" ────────────────────────────────────
@@ -89,7 +107,7 @@ async function createCaseFromUpload(pending: PendingFile) {
   const description = pending.fileName.replace(/\.[^.]+$/, '')
   const caseTitle = `${yearMonth} - ${description}`
 
-  const { error: caseError } = await supabase.from('cases').insert({
+  const { data: newCase, error: caseError } = await supabase.from('cases').insert({
     id: caseId,
     case_title: caseTitle,
     // null, not '' — cases.customer_id has a foreign key to customers(id),
@@ -108,7 +126,7 @@ async function createCaseFromUpload(pending: PendingFile) {
     closing_remarks: '',
     created_at: uploadedAt,
     updated_at: uploadedAt,
-  })
+  }).select('case_number').single()   // the database numbers the case (2026-005)
 
   if (caseError) {
     console.error('[Telegram] case creation failed:', caseError.message)
@@ -116,8 +134,9 @@ async function createCaseFromUpload(pending: PendingFile) {
     return
   }
 
+  const caseFileId = generateId()
   const { error: fileError } = await supabase.from('case_files').insert({
-    id: generateId(),
+    id: caseFileId,
     case_id: caseId,
     file_name: pending.fileName,
     file_size: pending.fileSize,
@@ -126,6 +145,7 @@ async function createCaseFromUpload(pending: PendingFile) {
     uploaded_by: pending.uploadedBy,
     uploaded_at: uploadedAt,
     file_data_url: pending.fileDataUrl,
+    file_hash: pending.fileHash || null,
     ai_scanned: false,
     ai_status: 'Pending',
   })
@@ -136,6 +156,12 @@ async function createCaseFromUpload(pending: PendingFile) {
     return
   }
 
+  // Copy it into the case's SharePoint folder (fix list 4.4); the daily job retries on failure
+  if (sharePointStorageEnabled()) {
+    await syncCaseFile(supabase, caseFileId)
+      .catch(err => console.error('[Telegram] SharePoint copy failed:', err instanceof Error ? err.message : err))
+  }
+
   await notifyDocFlowWebhook({
     event: 'case_created_from_telegram',
     caseId,
@@ -144,7 +170,7 @@ async function createCaseFromUpload(pending: PendingFile) {
     fileSize: pending.fileSize,
     uploadedBy: pending.uploadedBy,
     uploadedAt,
-    fileUrl: pending.fileDataUrl,
+    fileUrl: await signFileUrlForServer(pending.fileDataUrl),
     telegramChatId: pending.chatId,
     telegramMessageId: pending.msgId,
     status: 'pending',
@@ -152,7 +178,7 @@ async function createCaseFromUpload(pending: PendingFile) {
 
   await send(pending.chatId,
     `📄 <b>${esc(pending.fileName)}</b> received!\n` +
-    `✅ New case created: <code>${esc(caseId)}</code>\n\n` +
+    `✅ New case created: <b>${esc(newCase?.case_number ?? caseId)}</b>\n\n` +
     `Tagged as Letter of Award. View it here:\n${APP_URL}/cases/${caseId}`,
     pending.msgId
   )
@@ -162,24 +188,31 @@ async function createCaseFromUpload(pending: PendingFile) {
 // Lands in the Unassigned Inbox — staff pick which case it belongs to
 // from the CRM (/inbox).
 async function sendToInbox(pending: PendingFile) {
-  const uploadId = generateId()
   const uploadedAt = new Date().toISOString()
 
-  const { error } = await supabase.from('telegram_uploads').insert({
-    id: uploadId,
-    file_name: pending.fileName,
-    file_size: pending.fileSize,
-    file_type: pending.mimeType,
-    file_data_url: pending.fileDataUrl,
-    uploaded_by: pending.uploadedBy,
-    uploaded_at: uploadedAt,
-    telegram_chat_id: pending.chatId,
-    telegram_message_id: pending.msgId,
-    telegram_file_id: pending.telegramFileId,
-  })
-
-  if (error) {
-    console.error('[Telegram] telegram_uploads insert failed:', error.message)
+  let uploadId: string
+  try {
+    const result = await createIntakeItem(supabase, {
+      source: 'telegram',
+      sender: pending.uploadedBy,
+      fileName: pending.fileName,
+      fileSize: pending.fileSize,
+      fileType: pending.mimeType,
+      fileRef: pending.fileDataUrl,
+      fileHash: pending.fileHash,
+      sourceMeta: {
+        telegramChatId: pending.chatId,
+        telegramMessageId: pending.msgId,
+        telegramFileId: pending.telegramFileId,
+      },
+    })
+    if (result.duplicate) {
+      await replyDuplicate(pending.chatId, pending.msgId, pending.fileName, result.duplicate)
+      return
+    }
+    uploadId = result.id
+  } catch (err) {
+    console.error('[Telegram] intake insert failed:', err instanceof Error ? err.message : err)
     await send(pending.chatId, `❌ Upload failed. Please try again.`, pending.msgId)
     return
   }
@@ -192,7 +225,7 @@ async function sendToInbox(pending: PendingFile) {
     fileSize: pending.fileSize,
     uploadedBy: pending.uploadedBy,
     uploadedAt,
-    fileUrl: pending.fileDataUrl,
+    fileUrl: await signFileUrlForServer(pending.fileDataUrl),
     telegramChatId: pending.chatId,
     telegramMessageId: pending.msgId,
     status: 'pending',
@@ -241,6 +274,10 @@ export async function POST(req: NextRequest) {
     const isFresh = !!row && (Date.now() - new Date(row.created_at).getTime()) < PENDING_TTL_MS
 
     if (!isFresh) {
+      if (row) {
+        await removeFile(row.file_data_url)
+        await supabase.from('telegram_pending_uploads').delete().eq('user_id', userId)
+      }
       await answerCallback(callback.id, 'This request has expired — please resend the document.')
       return NextResponse.json({ ok: true })
     }
@@ -256,6 +293,7 @@ export async function POST(req: NextRequest) {
       fileSize: row.file_size,
       mimeType: row.file_type,
       fileDataUrl: row.file_data_url,
+      fileHash: row.file_hash ?? '',
       telegramFileId: row.telegram_file_id,
       uploadedBy: row.uploaded_by,
     }
@@ -368,21 +406,50 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true })
     }
 
-    const buffer = await fileRes.arrayBuffer()
-    const base64 = Buffer.from(buffer).toString('base64')
-    const fileDataUrl = `data:${mimeType};base64,${base64}`
+    const bytes = await fileRes.arrayBuffer()
+    const fileHash = sha256(bytes)
     const uploadedBy = `Telegram: ${senderName}`
 
+    // Same file sent before? Record it as a duplicate and say where it is,
+    // instead of asking about it and filing it twice.
+    const earlier = await findDuplicate(supabase, fileHash)
+    if (earlier) {
+      await createIntakeItem(supabase, {
+        source: 'telegram', sender: uploadedBy, fileName, fileSize, fileType: mimeType,
+        fileRef: null, fileHash,
+        sourceMeta: { telegramChatId: chatId, telegramMessageId: msgId, telegramFileId: fileId },
+      }).catch(err => console.error('[Telegram] duplicate record failed:', err instanceof Error ? err.message : err))
+      await replyDuplicate(chatId, msgId, fileName, earlier)
+      return NextResponse.json({ ok: true })
+    }
+
+    // Saved to storage straight away; the pending row and, after the user
+    // answers, the case file or Inbox row only keep the reference.
+    let fileDataUrl: string
+    try {
+      fileDataUrl = await saveFile(INBOX_FOLDER, fileName, bytes, mimeType)
+    } catch (err) {
+      console.error('[Telegram] storage save failed:', err instanceof Error ? err.message : err)
+      await send(chatId, `❌ Something went wrong saving the file. Please try again later.`, msgId)
+      return NextResponse.json({ ok: true })
+    }
+    const userId: number = msg.from?.id ?? chatId
+
     // One pending decision per user — a new upload before they've answered
-    // replaces whatever was waiting.
+    // replaces whatever was waiting, so drop the file that was waiting too.
+    const { data: previous } = await supabase
+      .from('telegram_pending_uploads').select('file_data_url').eq('user_id', userId).maybeSingle()
+    if (previous) await removeFile(previous.file_data_url)
+
     const { error: pendingError } = await supabase.from('telegram_pending_uploads').upsert({
-      user_id: msg.from?.id ?? chatId,
+      user_id: userId,
       chat_id: chatId,
       message_id: msgId,
       file_name: fileName,
       file_size: fileSize,
       file_type: mimeType,
       file_data_url: fileDataUrl,
+      file_hash: fileHash,
       telegram_file_id: fileId,
       uploaded_by: uploadedBy,
       created_at: new Date().toISOString(),
@@ -390,6 +457,7 @@ export async function POST(req: NextRequest) {
 
     if (pendingError) {
       console.error('[Telegram] pending upload save failed:', pendingError.message)
+      await removeFile(fileDataUrl)
       await send(chatId, `❌ Something went wrong. Please try again later.`, msgId)
       return NextResponse.json({ ok: true })
     }

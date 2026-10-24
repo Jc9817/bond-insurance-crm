@@ -35,6 +35,15 @@ const nav = [
     ),
   },
   {
+    href: '/policies',
+    label: 'Policies',
+    icon: (
+      <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+      </svg>
+    ),
+  },
+  {
     href: '/inbox',
     label: 'Inbox',
     icon: (
@@ -91,7 +100,7 @@ function GlobalSearch() {
   const q = query.trim().toLowerCase()
   const results = q.length < 2 ? [] : [
     ...customers.filter(c => c.customerName.toLowerCase().includes(q) || c.companyRegistrationNo.toLowerCase().includes(q)).slice(0, 3).map(c => ({ type: 'Customer' as const, label: c.customerName, sub: c.businessType, href: `/customers/${c.id}` })),
-    ...cases.filter(c => c.caseTitle.toLowerCase().includes(q) || c.customerName.toLowerCase().includes(q) || (c.bondPrincipal ?? '').toLowerCase().includes(q) || c.caseType.toLowerCase().includes(q)).slice(0, 4).map(c => ({ type: 'Case' as const, label: c.caseTitle, sub: c.bondPrincipal && c.bondPrincipal !== c.customerName ? `${c.customerName} → ${c.bondPrincipal}` : c.customerName, href: `/cases/${c.id}` })),
+    ...cases.filter(c => (c.caseNumber ?? '').toLowerCase().includes(q) || c.caseTitle.toLowerCase().includes(q) || c.customerName.toLowerCase().includes(q) || (c.bondPrincipal ?? '').toLowerCase().includes(q) || c.caseType.toLowerCase().includes(q)).slice(0, 4).map(c => ({ type: 'Case' as const, label: c.caseTitle, sub: c.bondPrincipal && c.bondPrincipal !== c.customerName ? `${c.customerName} → ${c.bondPrincipal}` : c.customerName, href: `/cases/${c.id}` })),
   ]
 
   const typeColor: Record<string, string> = { Customer: 'bg-blue-100 text-blue-700', Case: 'bg-violet-100 text-violet-700' }
@@ -146,7 +155,7 @@ export default function Sidebar() {
   const pathname = usePathname()
   const router = useRouter()
   const { currentUser, logout } = useAuth()
-  const { telegramUploads } = useStore()
+  const { intakeItems } = useStore()
 
   const isActive = (href: string) =>
     pathname === href || (href !== '/dashboard' && pathname.startsWith(href))
@@ -191,9 +200,9 @@ export default function Sidebar() {
               {item.icon}
             </span>
             <span className="flex-1">{item.label}</span>
-            {item.href === '/inbox' && telegramUploads.length > 0 && (
+            {item.href === '/inbox' && intakeItems.length > 0 && (
               <span className="text-[10px] font-bold bg-amber-100 text-amber-700 rounded-full px-1.5 py-0.5 leading-none">
-                {telegramUploads.length}
+                {intakeItems.length}
               </span>
             )}
           </Link>

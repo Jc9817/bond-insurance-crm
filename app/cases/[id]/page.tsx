@@ -21,6 +21,7 @@ import QuotationEmailPanel from '@/components/ui/QuotationEmailPanel'
 import CustomerEmailPanel from '@/components/ui/CustomerEmailPanel'
 import OpsNotifyPanel from '@/components/ui/OpsNotifyPanel'
 import QuotationDocumentPanel from '@/components/ui/QuotationDocumentPanel'
+import PoliciesPanel from '@/components/ui/PoliciesPanel'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 import CustomerForm, { emptyCustomerForm } from '@/components/ui/CustomerForm'
 
@@ -43,13 +44,26 @@ export default function CaseDetailPage() {
     cases, customers, contacts, caseNotes, followUps, pics, workflowTemplates,
     activityLogs, updateCase, addCase, addCaseNote, addFollowUp, toggleFollowUp, deleteFollowUp,
     addActivityLog, caseFiles, settingsData, products, productPackages, addCustomer,
+    loadCase, loading, policies,
   } = useStore()
   const { currentUser } = useAuth()
 
   const caseItem = cases.find(c => c.id === id)
 
+  // This case's files, notes, emails and history are loaded when it opens.
+  useEffect(() => { loadCase(id) }, [id, loadCase])
+
+  // While an AI scan is running, check every few seconds so the result shows
+  // up without reloading the page.
+  const scanRunning = caseFiles.some(f => f.caseId === id && f.aiStatus === 'Processing')
+  useEffect(() => {
+    if (!scanRunning) return
+    const timer = setInterval(() => loadCase(id), 5000)
+    return () => clearInterval(timer)
+  }, [scanRunning, id, loadCase])
+
   // ── state ──────────────────────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState<'files' | 'ai' | 'emails' | 'info' | 'notes' | 'milestones' | 'activity'>('files')
+  const [activeTab, setActiveTab] = useState<'files' | 'ai' | 'policies' | 'emails' | 'info' | 'notes' | 'milestones' | 'activity'>('files')
   const [noteText, setNoteText] = useState('')
   const [notePic, setNotePic] = useState(pics[0]?.name ?? '')
   const [followUpModal, setFollowUpModal] = useState(false)
@@ -70,7 +84,7 @@ export default function CaseDetailPage() {
   if (!caseItem) {
     return (
       <div className="p-8">
-        <p className="text-gray-500 text-lg">Case not found.</p>
+        <p className="text-gray-500 text-lg">{loading ? 'Loading…' : 'Case not found.'}</p>
         <Link href="/cases" className="text-blue-600 hover:underline text-sm mt-3 inline-block">← Back to Cases</Link>
       </div>
     )
@@ -199,9 +213,11 @@ export default function CaseDetailPage() {
   const aiExtractedCount = caseDocs.filter(f => f.aiStatus === 'Extracted').length
   const datedStepCount = steps.filter(s => stepTimestamps[s.name]).length
 
+  const casePolicyCount = policies.filter(p => p.caseId === id && p.status !== 'Renewed').length
   const TABS = [
     { key: 'files' as const, label: `Files${caseDocs.length > 0 ? ` (${caseDocs.length})` : ''}` },
     { key: 'ai' as const, label: `AI Data${aiExtractedCount > 0 ? ` (${aiExtractedCount})` : ''}` },
+    { key: 'policies' as const, label: `Policies${casePolicyCount > 0 ? ` (${casePolicyCount})` : ''}` },
     { key: 'emails' as const, label: 'Emails' },
     { key: 'info' as const, label: 'Case Info' },
     { key: 'notes' as const, label: `Notes${notes.length + openFollowUps.length > 0 ? ` (${notes.length + openFollowUps.length})` : ''}` },
@@ -219,7 +235,10 @@ export default function CaseDetailPage() {
         </div>
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div className="min-w-0">
-            <h1 className="text-xl font-bold text-gray-900 tracking-tight leading-tight">{caseItem.caseTitle}</h1>
+            <h1 className="text-xl font-bold text-gray-900 tracking-tight leading-tight">
+              {caseItem.caseNumber && <span className="text-gray-400 font-semibold mr-2">{caseItem.caseNumber}</span>}
+              {caseItem.caseTitle}
+            </h1>
             <div className="flex items-center gap-3 mt-1.5 flex-wrap text-sm text-gray-500">
               <select
                 value={caseItem.currentStatus}
@@ -528,6 +547,8 @@ export default function CaseDetailPage() {
         )}
 
         {/* ── Emails tab ──────────────────────────────────────────────────────── */}
+        {activeTab === 'policies' && <PoliciesPanel caseItem={caseItem} />}
+
         {activeTab === 'emails' && (
           <div className="space-y-5">
             <OpsNotifyPanel caseItem={caseItem} />

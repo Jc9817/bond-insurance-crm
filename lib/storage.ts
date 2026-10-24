@@ -17,6 +17,69 @@ export function toStorageRef(path: string): string {
   return `${REF_PREFIX}${path}`
 }
 
+// File types DocFlow accepts from intake channels (Telegram) — the types the
+// n8n AI scan can read.
+export const SUPPORTED_MIME_TYPES = [
+  'application/pdf',
+  'image/jpeg',
+  'image/jpg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+] as const
+
+// File types the Inbox accepts from bulk upload and zips (fix list 4.3),
+// by extension. Anything else is skipped and reported back.
+export const INBOX_UPLOAD_TYPES: Record<string, string> = {
+  pdf: 'application/pdf',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+  gif: 'image/gif',
+  doc: 'application/msword',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xls: 'application/vnd.ms-excel',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+}
+
+export const fileExtension = (fileName: string) =>
+  fileName.includes('.') ? fileName.split('.').pop()!.toLowerCase() : ''
+
+export const isZipFile = (fileName: string) => fileExtension(fileName) === 'zip'
+
+// Every file lives under one of these folders: a case's own folder, or the
+// Unassigned Inbox (Telegram uploads not yet attached to a case).
+export const INBOX_FOLDER = 'inbox'
+export const caseFolder = (caseId: string) => `cases/${caseId}`
+
+/** True for a folder uploads may be written to (see INBOX_FOLDER / caseFolder). */
+export function isUploadFolder(folder: string): boolean {
+  return folder === INBOX_FOLDER || /^cases\/[A-Za-z0-9_-]+$/.test(folder)
+}
+
+/**
+ * Object path for a new file: "<folder>/<timestamp>_<random>_<safe name>".
+ * The prefix keeps names unique (even for same-named files in one zip);
+ * originalFileName() strips it again.
+ */
+export function newStoragePath(folder: string, fileName: string): string {
+  const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_')
+  const random = Math.random().toString(36).slice(2, 8).padEnd(6, '0')
+  return `${folder}/${Date.now()}_${random}_${safeName}`
+}
+
+/** The file name a stored file was uploaded with (prefix from newStoragePath removed). */
+export function originalFileName(value: string): string {
+  const base = decodeURIComponent((storagePath(value) ?? value).split('/').pop()?.split('?')[0] ?? '')
+  return base.replace(/^\d+_([a-z0-9]{6}_)?/, '') || 'document'
+}
+
+/** True for a file still held inline in the database as a base64 data: URL (pre-2.3). */
+export function isInlineFile(value?: string | null): boolean {
+  return !!value?.startsWith('data:')
+}
+
 /** True for a file kept in Storage (new ref or legacy public URL), false for base64 data URLs. */
 export function isStorageFile(value?: string | null): boolean {
   return storagePath(value) !== null

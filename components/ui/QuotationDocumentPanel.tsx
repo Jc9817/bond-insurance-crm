@@ -1,101 +1,21 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useStore } from '@/lib/store'
 import { useAuth } from '@/lib/auth'
 import type { CaseFile } from '@/lib/types'
 import { formatFileSize, timeAgo } from '@/lib/utils'
+import { caseFolder } from '@/lib/storage'
+import { fileSha256, uploadFile } from '@/lib/upload'
+import FileViewerModal, { downloadFile as downloadViewable } from './FileViewerModal'
+
+const viewable = (file: CaseFile) => ({
+  fileName: file.fileName, fileSize: file.fileSize, fileType: file.fileType, fileRef: file.fileDataUrl,
+})
+const downloadFile = (file: CaseFile) => downloadViewable(viewable(file))
 
 const QUOTATION_AI_PROMPT =
   'Extract from this insurance quotation document: project name or site name, bond type, sum insured or bond amount, bond period or duration, premium rate (%), premium amount, insurer name, effective date, expiry date, and any key terms or conditions.'
-
-function downloadFile(file: CaseFile) {
-  if (!file.fileDataUrl) return
-  const a = document.createElement('a')
-  a.href = file.fileDataUrl
-  a.download = file.fileName
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-}
-
-function FileViewerModal({ file, onClose }: { file: CaseFile; onClose: () => void }) {
-  const mime = file.fileDataUrl?.split(';')[0].split(':')[1] ?? ''
-  const isImage = mime.startsWith('image/')
-  const isPdf = mime === 'application/pdf'
-
-  // Browsers block data: URIs in iframes — convert to a blob URL instead
-  const [blobUrl, setBlobUrl] = useState<string | null>(null)
-  useEffect(() => {
-    if (!isPdf || !file.fileDataUrl) return
-    const [header, b64] = file.fileDataUrl.split(',')
-    const mimeType = header.match(/:(.*?);/)?.[1] ?? 'application/pdf'
-    const bytes = atob(b64)
-    const arr = new Uint8Array(bytes.length)
-    for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i)
-    const blob = new Blob([arr], { type: mimeType })
-    const url = URL.createObjectURL(blob)
-    setBlobUrl(url)
-    return () => URL.revokeObjectURL(url)
-  }, [isPdf, file.fileDataUrl])
-
-  return (
-    <div className="fixed inset-0 z-50 bg-black/75 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-100 shrink-0">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="text-xs font-semibold bg-gray-100 text-gray-600 rounded px-1.5 py-0.5 shrink-0">{file.fileType}</span>
-            <p className="text-sm font-semibold text-gray-800 truncate">{file.fileName}</p>
-          </div>
-          <div className="flex items-center gap-2 shrink-0 ml-4">
-            <button onClick={() => downloadFile(file)} className="flex items-center gap-1.5 text-xs font-medium bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg transition-colors">
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-              </svg>
-              Download
-            </button>
-            <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors">✕</button>
-          </div>
-        </div>
-        <div className="flex-1 overflow-auto min-h-0">
-          {!file.fileDataUrl ? (
-            <div className="flex items-center justify-center h-48 text-gray-400 text-sm">File data not available</div>
-          ) : isImage ? (
-            <div className="flex items-center justify-center p-6 bg-gray-50 min-h-[300px]">
-              <img src={file.fileDataUrl} alt={file.fileName} className="max-w-full max-h-[75vh] object-contain rounded-lg shadow-sm" />
-            </div>
-          ) : isPdf ? (
-            blobUrl ? (
-              <iframe src={blobUrl} className="w-full h-[75vh] border-0" title={file.fileName} />
-            ) : (
-              <div className="flex items-center justify-center h-48 gap-2 text-gray-400">
-                <span className="w-5 h-5 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" />
-                <span className="text-sm">Loading PDF…</span>
-              </div>
-            )
-          ) : (
-            <div className="flex flex-col items-center justify-center py-16 gap-4">
-              <div className="w-14 h-14 bg-gray-100 rounded-2xl flex items-center justify-center">
-                <svg className="w-7 h-7 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-                </svg>
-              </div>
-              <div className="text-center">
-                <p className="text-sm font-medium text-gray-700 mb-1">Preview not available for {file.fileType} files</p>
-                <button onClick={() => downloadFile(file)} className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-xl transition-colors">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                  </svg>
-                  Download {file.fileName}
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
 
 function ExtractedField({ label, value }: { label: string; value: string }) {
   return (
@@ -124,8 +44,14 @@ export default function QuotationDocumentPanel({ caseId, caseTitle, caseFiles }:
     if (!file) return
     e.target.value = ''
     setUploading(true)
-    const reader = new FileReader()
-    reader.onload = () => {
+    try {
+      const fileHash = await fileSha256(file)
+      const same = caseFiles.find(f => f.fileHash === fileHash)
+      if (same && !confirm(`This exact file is already here as "${same.fileName}". Upload it again anyway?`)) {
+        setUploading(false)
+        return
+      }
+      const fileDataUrl = await uploadFile(file, caseFolder(caseId))
       addCaseFile({
         caseId,
         fileName: file.name,
@@ -136,7 +62,8 @@ export default function QuotationDocumentPanel({ caseId, caseTitle, caseFiles }:
         aiScanned: false,
         aiStatus: 'Pending',
         aiExtractedData: null,
-        fileDataUrl: reader.result as string,
+        fileDataUrl,
+        fileHash,
         aiPrompt: QUOTATION_AI_PROMPT,
       })
       addActivityLog({
@@ -146,9 +73,11 @@ export default function QuotationDocumentPanel({ caseId, caseTitle, caseFiles }:
         description: `${file.name} uploaded`,
         changedBy: currentUser?.fullName ?? 'Unknown',
       })
-      setUploading(false)
+    } catch (err) {
+      console.error('[Storage] Upload failed:', err)
+      alert(`File upload failed: ${err instanceof Error ? err.message : 'please try again.'}`)
     }
-    reader.readAsDataURL(file)
+    setUploading(false)
   }
 
   const handleScan = (file: CaseFile) => {
@@ -340,7 +269,7 @@ export default function QuotationDocumentPanel({ caseId, caseTitle, caseFiles }:
         })}
       </div>
 
-      {viewingFile && <FileViewerModal file={viewingFile} onClose={() => setViewingFile(null)} />}
+      {viewingFile && <FileViewerModal file={viewable(viewingFile)} onClose={() => setViewingFile(null)} />}
     </div>
   )
 }

@@ -7,10 +7,11 @@ import { USER_ROLES, USER_STATUSES, BUSINESS_TYPES, PRODUCT_CATEGORIES } from '@
 import type { SettingsCategory, User, UserRole, UserStatus, WorkflowTemplate, WorkflowStep, RequiredDocument, Product, ProductPackage, ProductCategory, SubmissionLetterTemplate, SubmissionLetterDocItem, EmailTemplate } from '@/lib/types'
 import PageHeader from '@/components/ui/PageHeader'
 import Modal from '@/components/ui/Modal'
+import RetentionPanel from '@/components/ui/RetentionPanel'
 
 // ─── Tab type ─────────────────────────────────────────────────────────────────
 
-type Tab = 'users' | 'caseTypes' | 'industries' | 'contactTypes' | 'followUpCategories' | 'pic' | 'workflowTemplates' | 'insurers' | 'productMaster' | 'productPackages' | 'submissionLetters' | 'emailTemplates'
+type Tab = 'users' | 'caseTypes' | 'industries' | 'contactTypes' | 'followUpCategories' | 'pic' | 'workflowTemplates' | 'insurers' | 'productMaster' | 'productPackages' | 'submissionLetters' | 'emailTemplates' | 'retention'
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'users', label: 'Users' },
@@ -25,6 +26,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'contactTypes', label: 'Contact Types' },
   { key: 'followUpCategories', label: 'Follow-Up Categories' },
   { key: 'pic', label: 'Person in Charge' },
+  { key: 'retention', label: 'Data Retention' },   // Admins only (shown below)
 ]
 
 // ─── User form modal ──────────────────────────────────────────────────────────
@@ -1678,6 +1680,9 @@ export default function SettingsPage() {
       {/* ── Person in Charge tab ───────────────────────────────────────────── */}
       {tab === 'submissionLetters' && <SubmissionLettersTab />}
       {tab === 'emailTemplates' && <EmailTemplatesTab />}
+      {tab === 'retention' && (isAdmin
+        ? <RetentionPanel />
+        : <div className="card-section"><p className="text-sm text-gray-500">Only Admins can manage data retention.</p></div>)}
 
       {tab === 'pic' && (
         <div className="card-section">

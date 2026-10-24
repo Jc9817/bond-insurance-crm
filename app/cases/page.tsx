@@ -297,7 +297,7 @@ export default function CasesPage() {
     if (showArchived ? !c.archivedAt : c.archivedAt) return false
     const matchStatus = statusFilter === 'All' || c.currentStatus === statusFilter
     const matchPrincipal = principalFilter === 'All' || c.bondPrincipal === principalFilter
-    const matchSearch = search === '' || [c.caseTitle, c.customerName, c.bondPrincipal, c.caseType, c.personInCharge].some(f =>
+    const matchSearch = search === '' || [c.caseNumber, c.caseTitle, c.customerName, c.bondPrincipal, c.caseType, c.personInCharge].some(f =>
       f?.toLowerCase().includes(search.toLowerCase())
     )
     return matchStatus && matchPrincipal && matchSearch
@@ -394,6 +394,7 @@ export default function CasesPage() {
                       <Link href={`/cases/${c.id}`} className="font-semibold text-gray-900 hover:text-blue-600 line-clamp-1 max-w-[220px] block">
                         {c.caseTitle}
                       </Link>
+                      {c.caseNumber && <span className="text-xs text-gray-400">{c.caseNumber}</span>}
                     </td>
                     <td className="table-td">
                       <span className="text-gray-500 whitespace-nowrap">{c.customerName}</span>

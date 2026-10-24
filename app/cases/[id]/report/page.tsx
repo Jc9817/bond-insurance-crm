@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useStore } from '@/lib/store'
 import { formatDate, formatCurrency } from '@/lib/utils'
@@ -289,7 +290,10 @@ function ExtractedDocSection({ file }: { file: CaseFile }) {
 export default function CaseReportPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
-  const { cases, customers, caseFiles, pics } = useStore()
+  const { cases, customers, caseFiles, pics, loadCase } = useStore()
+
+  // The AI-extracted data shown here is loaded per case, not at startup
+  useEffect(() => { loadCase(id) }, [id, loadCase])
 
   const caseItem = cases.find(c => c.id === id)
   const customer = customers.find(c => c.id === caseItem?.customerId)

@@ -136,9 +136,23 @@ export default function FollowUpsPage() {
         recipientEmail: picEmailMap[f.personInCharge],
         recipientName: f.personInCharge,
       }))
-    if (items.length === 0) { setSendingReminders(false); return }
-    await fetch('/api/notify-overdue', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items }) })
-    setReminderSent(true)
+    if (items.length === 0) {
+      setSendingReminders(false)
+      alert('None of the people in charge of these follow-ups has an email address. Add one under Settings → Person in Charge.')
+      return
+    }
+    try {
+      const res = await fetch('/api/notify-overdue', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items }) })
+      const data = await res.json().catch(() => ({}))
+      const failed: { email: string }[] = (data.results ?? []).filter((r: { sent: boolean }) => !r.sent)
+      if (!res.ok && !data.results) throw new Error(data.error ?? `Request failed (${res.status})`)
+      if (failed.length > 0) {
+        alert(`Could not send reminders to: ${failed.map(f => f.email).join(', ')}`)
+      }
+      if (failed.length < (data.results?.length ?? 0)) setReminderSent(true)
+    } catch (err) {
+      alert(`Reminders were not sent: ${err instanceof Error ? err.message : 'please try again.'}`)
+    }
     setSendingReminders(false)
   }
   const todayCnt = followUps.filter(f => f.status === 'Open' && f.dueDate === today).length
