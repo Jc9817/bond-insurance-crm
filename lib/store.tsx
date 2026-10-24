@@ -6,7 +6,7 @@ import type {
   Customer, Contact, Case, CaseNote, FollowUp, PicUser,
   User, CaseFile, ActivityLog, SettingsItem, SettingsCategory,
   WorkflowTemplate, RequiredDocument, WorkflowStep,
-  Product, ProductPackage, SubmissionLetterTemplate, EmailTemplate, CaseEmailLog, IntakeItem,
+  Product, ProductPackage, SubmissionLetterTemplate, EmailTemplate, CaseEmailLog, IntakeItem, Policy,
 } from './types'
 import { OPEN_INTAKE_STATUSES } from './types'
 import { mockWorkflowTemplates } from './mock-data'
@@ -41,6 +41,7 @@ type StoreCtx = {
   emailTemplates: EmailTemplate[]
   caseEmails: CaseEmailLog[]
   intakeItems: IntakeItem[]   // open Unassigned Inbox items
+  policies: Policy[]
   loading: boolean
 
   // Load what the startup load leaves out (see loadAll): call when a case or
@@ -124,6 +125,12 @@ type StoreCtx = {
   fileIntakeItem: (id: string, target: FileIntakeTarget) => string | null
   discardIntakeItem: (id: string, decidedBy: string) => void
   sendCaseFileToInbox: (file: CaseFile) => void
+
+  addPolicy: (p: Omit<Policy, 'id' | 'createdAt'>) => string
+  updatePolicy: (id: string, p: Partial<Policy>) => void
+  deletePolicy: (id: string) => void
+  // New policy row continuing `id` (with the new dates/number); `id` becomes Renewed
+  renewPolicy: (id: string, next: Partial<Omit<Policy, 'id' | 'caseId'>>) => string
 }
 
 // ─── DB row → TypeScript mappers ──────────────────────────────────────────────
@@ -272,6 +279,23 @@ const toCaseFile = (f: CaseFile) => ({
   file_hash: f.fileHash ?? null,
 })
 
+const fromPolicy = (r: Row): Policy => ({
+  id: r.id, caseId: r.case_id, policyType: r.policy_type ?? '', policyNumber: r.policy_number ?? '',
+  insurer: r.insurer ?? '', sumInsured: r.sum_insured ?? undefined, premium: r.premium ?? undefined,
+  startDate: r.start_date ?? undefined, expiryDate: r.expiry_date ?? undefined, status: r.status ?? 'Active',
+  caseFileId: r.case_file_id ?? undefined, renewedFrom: r.renewed_from ?? undefined, notes: r.notes ?? '',
+  createdAt: r.created_at, updatedAt: r.updated_at ?? undefined,
+})
+const toPolicy = (p: Partial<Policy>) => ({
+  id: p.id, case_id: p.caseId, policy_type: p.policyType, policy_number: p.policyNumber, insurer: p.insurer,
+  sum_insured: p.sumInsured === undefined ? undefined : p.sumInsured ?? null,
+  premium: p.premium === undefined ? undefined : p.premium ?? null,
+  start_date: p.startDate === undefined ? undefined : p.startDate || null,
+  expiry_date: p.expiryDate === undefined ? undefined : p.expiryDate || null,
+  status: p.status, case_file_id: p.caseFileId === undefined ? undefined : p.caseFileId || null,
+  renewed_from: p.renewedFrom, notes: p.notes, created_at: p.createdAt, updated_at: p.updatedAt,
+})
+
 const fromActivityLog = (r: Row): ActivityLog => ({
   id: r.id, caseId: r.case_id ?? undefined, caseTitle: r.case_title ?? undefined,
   actionType: r.action_type ?? '', title: r.title ?? '', description: r.description ?? '',
@@ -394,6 +418,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [emailTemplates, setEmailTemplates] = useState<EmailTemplate[]>([])
   const [caseEmails, setCaseEmails] = useState<CaseEmailLog[]>([])
   const [intakeItems, setIntakeItems] = useState<IntakeItem[]>([])
+  const [policies, setPolicies] = useState<Policy[]>([])
   const [settingsState, setSettingsState] = useState<SettingsData>(emptySettings)
   const [loading, setLoading] = useState(true)
 
@@ -428,6 +453,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       { data: letterRows },
       { data: picRows },
       { data: userRows },
+      { data: policyRows },
     ] = await Promise.all([
       sb.from('customers').select('*').order('created_at', { ascending: false }),
       sb.from('contacts').select('*'),
@@ -449,6 +475,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       sb.from('submission_letter_templates').select('*').order('created_at'),
       sb.from('pics').select('*').order('created_at'),
       sb.from('user_roles').select('*').order('created_at'),
+      sb.from('policies').select('*').order('expiry_date', { ascending: true, nullsFirst: false }),
     ])
 
     if (custErr) console.error('[Supabase] customers load error:', custErr.message)
@@ -460,6 +487,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // Full recent rows listed last so they win over the slim step-change rows
     setActivityLogs(sortLogs(mergeById<ActivityLog>([], [...(stepLogRows ?? []), ...(recentLogRows ?? [])].map(fromActivityLog))))
     if (intakeRows) setIntakeItems(intakeRows.map(fromIntakeItem))
+    if (policyRows) setPolicies(policyRows.map(fromPolicy))
     if (settingsRows) {
       const grouped = emptySettings()
       for (const r of settingsRows) grouped[r.category as SettingsCategory]?.push(fromSettingsItem(r))
@@ -802,6 +830,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setCases(prev => prev.filter(x => x.id !== id))
     setCaseNotes(prev => prev.filter(x => x.caseId !== id))
     setFollowUps(prev => prev.filter(x => x.caseId !== id))
+    setPolicies(prev => prev.filter(x => x.caseId !== id))   // the database deletes them with the case
     setActivityLogs(prev => prev.filter(x => x.caseId !== id))
     setCaseFiles(prev => prev.filter(x => x.caseId !== id))
 
@@ -989,6 +1018,38 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         updateCaseFile(id, { aiStatus: 'Failed' })
         alert(`AI Scan failed: ${msg}`)
       })
+  }
+
+  // ─── Policies ─────────────────────────────────────────────────────────────
+
+  const addPolicy = (p: Omit<Policy, 'id' | 'createdAt'>): string => {
+    const row: Policy = { ...p, id: generateId(), createdAt: nowIso() }
+    setPolicies(prev => [...prev, row])
+    createClient().from('policies').insert(defined(toPolicy(row))).then(({ error }) => {
+      if (error) console.error('[Supabase] addPolicy failed:', error.message)
+    })
+    return row.id
+  }
+  const updatePolicy = (id: string, p: Partial<Policy>) => {
+    const updatedAt = nowIso()
+    setPolicies(prev => prev.map(x => x.id === id ? { ...x, ...p, updatedAt } : x))
+    createClient().from('policies').update(defined(toPolicy({ ...p, updatedAt }))).eq('id', id).then(({ error }) => {
+      if (error) console.error('[Supabase] updatePolicy failed:', error.message)
+    })
+  }
+  const deletePolicy = (id: string) => {
+    setPolicies(prev => prev.filter(x => x.id !== id))
+    createClient().from('policies').delete().eq('id', id).then()
+  }
+  const renewPolicy = (id: string, next: Partial<Omit<Policy, 'id' | 'caseId'>>): string => {
+    const old = policies.find(x => x.id === id)
+    if (!old) return ''
+    updatePolicy(id, { status: 'Renewed' })
+    return addPolicy({
+      caseId: old.caseId, policyType: old.policyType, policyNumber: '', insurer: old.insurer,
+      sumInsured: old.sumInsured, premium: old.premium, notes: '', status: 'Active',
+      ...next, renewedFrom: id,
+    })
   }
 
   // ─── Activity Logs ────────────────────────────────────────────────────────
@@ -1197,6 +1258,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       addSubmissionLetterTemplate, updateSubmissionLetterTemplate, deleteSubmissionLetterTemplate,
       addEmailTemplate, updateEmailTemplate, deleteEmailTemplate, sendCaseEmail, notifyOpsTeam,
       fileIntakeItem, discardIntakeItem, sendCaseFileToInbox,
+      policies, addPolicy, updatePolicy, deletePolicy, renewPolicy,
     }}>
       {children}
     </StoreContext.Provider>

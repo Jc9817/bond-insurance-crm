@@ -21,6 +21,7 @@ import QuotationEmailPanel from '@/components/ui/QuotationEmailPanel'
 import CustomerEmailPanel from '@/components/ui/CustomerEmailPanel'
 import OpsNotifyPanel from '@/components/ui/OpsNotifyPanel'
 import QuotationDocumentPanel from '@/components/ui/QuotationDocumentPanel'
+import PoliciesPanel from '@/components/ui/PoliciesPanel'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 import CustomerForm, { emptyCustomerForm } from '@/components/ui/CustomerForm'
 
@@ -43,7 +44,7 @@ export default function CaseDetailPage() {
     cases, customers, contacts, caseNotes, followUps, pics, workflowTemplates,
     activityLogs, updateCase, addCase, addCaseNote, addFollowUp, toggleFollowUp, deleteFollowUp,
     addActivityLog, caseFiles, settingsData, products, productPackages, addCustomer,
-    loadCase, loading,
+    loadCase, loading, policies,
   } = useStore()
   const { currentUser } = useAuth()
 
@@ -62,7 +63,7 @@ export default function CaseDetailPage() {
   }, [scanRunning, id, loadCase])
 
   // ── state ──────────────────────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState<'files' | 'ai' | 'emails' | 'info' | 'notes' | 'milestones' | 'activity'>('files')
+  const [activeTab, setActiveTab] = useState<'files' | 'ai' | 'policies' | 'emails' | 'info' | 'notes' | 'milestones' | 'activity'>('files')
   const [noteText, setNoteText] = useState('')
   const [notePic, setNotePic] = useState(pics[0]?.name ?? '')
   const [followUpModal, setFollowUpModal] = useState(false)
@@ -212,9 +213,11 @@ export default function CaseDetailPage() {
   const aiExtractedCount = caseDocs.filter(f => f.aiStatus === 'Extracted').length
   const datedStepCount = steps.filter(s => stepTimestamps[s.name]).length
 
+  const casePolicyCount = policies.filter(p => p.caseId === id && p.status !== 'Renewed').length
   const TABS = [
     { key: 'files' as const, label: `Files${caseDocs.length > 0 ? ` (${caseDocs.length})` : ''}` },
     { key: 'ai' as const, label: `AI Data${aiExtractedCount > 0 ? ` (${aiExtractedCount})` : ''}` },
+    { key: 'policies' as const, label: `Policies${casePolicyCount > 0 ? ` (${casePolicyCount})` : ''}` },
     { key: 'emails' as const, label: 'Emails' },
     { key: 'info' as const, label: 'Case Info' },
     { key: 'notes' as const, label: `Notes${notes.length + openFollowUps.length > 0 ? ` (${notes.length + openFollowUps.length})` : ''}` },
@@ -541,6 +544,8 @@ export default function CaseDetailPage() {
         )}
 
         {/* ── Emails tab ──────────────────────────────────────────────────────── */}
+        {activeTab === 'policies' && <PoliciesPanel caseItem={caseItem} />}
+
         {activeTab === 'emails' && (
           <div className="space-y-5">
             <OpsNotifyPanel caseItem={caseItem} />

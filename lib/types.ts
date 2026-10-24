@@ -146,6 +146,32 @@ export type Case = {
   loaAiStatus?: LoaAiStatus     // defaults to 'Pending' when unset
 }
 
+// ─── Policies (fix list 5.1) ─────────────────────────────────────────────────
+// One row per policy or bond; a case (one contract) can have several. A
+// yearly renewal is a new row whose renewedFrom points at the old one, which
+// becomes 'Renewed'.
+
+export const POLICY_STATUSES = ['Pending', 'Active', 'Renewed', 'Expired', 'Cancelled'] as const
+export type PolicyStatus = (typeof POLICY_STATUSES)[number]
+
+export type Policy = {
+  id: string
+  caseId: string
+  policyType: string          // e.g. Performance Bond, CAR, TPL
+  policyNumber: string
+  insurer: string
+  sumInsured?: number
+  premium?: number
+  startDate?: string          // YYYY-MM-DD
+  expiryDate?: string         // YYYY-MM-DD
+  status: PolicyStatus
+  caseFileId?: string         // the policy / bond document on the case
+  renewedFrom?: string
+  notes: string
+  createdAt: string
+  updatedAt?: string
+}
+
 export type CaseNote = {
   id: string
   caseId: string

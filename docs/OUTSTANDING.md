@@ -9,8 +9,8 @@ _Last updated: 24 Oct 2026_
 
 ## [ ] Putting the finished work live (do these in this order)
 
-Every finished item since Stage 1 (2.3–2.6, 3.1–3.5, 4.3, 5.3) is on the
-branch **`stage3-ai-suggestions`**. Each item was built on top of the one before,
+Every finished item since Stage 1 (2.3–2.6, 3.1–3.5, 4.3, 5.1, 5.3) is on the
+branch **`stage5-policies`**. Each item was built on top of the one before,
 so this one branch contains all of them.
 
 1. **Database first.** In Supabase → SQL Editor, paste and run these files,
@@ -20,11 +20,13 @@ so this one branch contains all of them.
    - `supabase/migrations/20261024110000_customer_ssm_key.sql` (one customer
      per SSM number). If it lists customers sharing a number, merge or
      correct them, then run it again until the list is empty.
+   - `supabase/migrations/20261024120000_policies.sql` (policies — cases that
+     have a bond expiry date get a first policy row automatically)
 2. **Push and merge.** In the VS Code terminal:
    ```
-   git push -u origin stage3-ai-suggestions
+   git push -u origin stage5-policies
    ```
-   Then on GitHub open a pull request from `stage3-ai-suggestions` into `master` and
+   Then on GitHub open a pull request from `stage5-policies` into `master` and
    merge it. Wait for Vercel to show **Ready**.
 3. **Move old files out of the database.** In the VS Code terminal, first a
    dry run (only counts, changes nothing):
@@ -241,6 +243,18 @@ Checks afterwards:
 - [ ] Upload 10 documents at once, "Select all", "Approve selected": all filed
 - [ ] "Change…" lets you pick a different case and document type
 - [ ] Each filing shows in the case's Activity tab with your name
+
+---
+
+## [ ] 5.1 Policies — checks
+
+- [ ] Sidebar → Policies lists the policies copied from existing bond expiry
+      dates (marked "check the type, number and insurer"). Fill those in.
+- [ ] On a case's Policies tab, add a Performance Bond, a CAR and a TPL:
+      they show as three separate rows
+- [ ] "Renew" a policy: a new row starts the day after the old expiry and
+      runs a year; the old one moves under "earlier (renewed) policies"
+- [ ] Policies page filters "Expiring ≤ 30 days" etc. show the right ones
 
 ---
 
