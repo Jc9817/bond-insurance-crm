@@ -1,5 +1,5 @@
-import { createClient } from '@supabase/supabase-js'
 import { STORAGE_BUCKET, isStorageFile, isUploadFolder, newStoragePath, resolveFileUrl, storagePath, toStorageRef } from './storage'
+import { serviceClient } from './supabase-service'
 
 // Server-only. The one place DocFlow writes files: every upload — from the
 // browser, the Telegram bot, or later e-mail / SharePoint intake — goes through
@@ -8,14 +8,6 @@ import { STORAGE_BUCKET, isStorageFile, isUploadFolder, newStoragePath, resolveF
 // for SharePoint behind these same functions.
 //
 // Uses the service-role key, so callers must check who is asking first.
-
-function serviceClient() {
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (!key) throw new Error('SUPABASE_SERVICE_ROLE_KEY is not set')
-  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, key, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  })
-}
 
 function checkFolder(folder: string) {
   if (!isUploadFolder(folder)) throw new Error(`Invalid upload folder: ${folder}`)
@@ -48,6 +40,15 @@ export async function createUploadTarget(folder: string, fileName: string): Prom
   const { data, error } = await serviceClient().storage.from(STORAGE_BUCKET).createSignedUploadUrl(path)
   if (error || !data) throw error ?? new Error('Could not create upload URL')
   return { path, token: data.token, ref: toStorageRef(path) }
+}
+
+/** Reads a stored file's bytes (e.g. to unpack an uploaded zip). */
+export async function readFile(value: string): Promise<Buffer> {
+  const path = storagePath(value)
+  if (!path) throw new Error('Not a stored file')
+  const { data, error } = await serviceClient().storage.from(STORAGE_BUCKET).download(path)
+  if (error || !data) throw error ?? new Error('Could not read file')
+  return Buffer.from(await data.arrayBuffer())
 }
 
 /** Deletes a stored file. Ignores values that aren't stored files. */

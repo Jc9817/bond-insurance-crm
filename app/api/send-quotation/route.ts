@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { signFileUrlForServer } from '@/lib/storage-server'
+import { originalFileName } from '@/lib/storage'
 import { graphConfigured, sendGraphEmail, type GraphAttachment } from '@/lib/msGraph'
 
 // Sends a quotation email (with the case's document attached) through
@@ -67,8 +68,7 @@ ${senderName ?? ''}`
         const docRes = await fetch(await signFileUrlForServer(documentUrl, 60))
         if (docRes.ok) {
           const content = Buffer.from(await docRes.arrayBuffer())
-          const rawName = decodeURIComponent(documentUrl.split('/').pop()?.split('?')[0] ?? 'document.pdf')
-          const name = rawName.replace(/^\d+_/, '')
+          const name = originalFileName(documentUrl)
           const contentType = docRes.headers.get('content-type') ?? 'application/octet-stream'
           attachments.push({ name, contentType, content })
         } else {

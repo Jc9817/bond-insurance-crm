@@ -9,18 +9,19 @@ _Last updated: 24 Oct 2026_
 
 ## [ ] Putting the finished work live (do these in this order)
 
-Items 2.3–3.2 are finished on a chain of branches, each built on the one
+Items 2.3–3.2 and 4.3 are finished on a chain of branches, each built on the one
 before: `stage2-files` → `stage2-load-per-page` → `stage2-email-graph` →
-`stage2-one-ai-path` → `stage3-intake`. Merging the last one brings in all of them.
+`stage2-one-ai-path` → `stage3-intake` → `stage4-bulk-upload`. Merging the last
+one brings in all of them.
 
 1. **Database first.** In Supabase → SQL Editor, paste and run
    `supabase/migrations/20261024100000_intake_items.sql` (the new Inbox table).
    The new code needs it — without it, Telegram uploads would fail.
 2. **Push and merge.** In the VS Code terminal:
    ```
-   git push -u origin stage3-intake
+   git push -u origin stage4-bulk-upload
    ```
-   Then on GitHub open a pull request from `stage3-intake` into `master` and
+   Then on GitHub open a pull request from `stage4-bulk-upload` into `master` and
    merge it. Wait for Vercel to show **Ready**.
 3. **Move old files out of the database.** In the VS Code terminal, first a
    dry run (only counts, changes nothing):
@@ -185,6 +186,14 @@ Keep `ANTHROPIC_API_KEY`: it's for the email drafter planned in 5.3.
 - [ ] Assign it to a case: it leaves the Inbox, appears on the case, and the
       case's Activity tab shows "Filed from Inbox" with your name
 - [ ] Upload the same file twice on a case: DocFlow asks before adding it again
+
+---
+
+## [ ] 4.3 Bulk upload and zips — checks
+
+- [ ] Inbox page: drag in several files at once — each appears as its own item
+- [ ] Drag in one zip holding 15 documents — 15 items appear, the zip itself does not
+- [ ] Drag in the same files again — they are reported as "already received" and not added twice
 
 ---
 

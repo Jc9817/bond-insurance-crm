@@ -32,7 +32,8 @@ const sb = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_
 
 // Same path rule as newStoragePath() in lib/storage.ts
 const newPath = (folder, fileName) =>
-  `${folder}/${Date.now()}_${String(fileName || 'file').replace(/[^a-zA-Z0-9._-]/g, '_')}`
+  `${folder}/${Date.now()}_${Math.random().toString(36).slice(2, 8).padEnd(6, '0')}_` +
+  String(fileName || 'file').replace(/[^a-zA-Z0-9._-]/g, '_')
 
 const TABLES = [
   { table: 'case_files', key: 'id', col: 'file_data_url', extra: 'case_id', folder: r => `cases/${r.case_id}` },

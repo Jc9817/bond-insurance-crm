@@ -28,6 +28,26 @@ export const SUPPORTED_MIME_TYPES = [
   'image/gif',
 ] as const
 
+// File types the Inbox accepts from bulk upload and zips (fix list 4.3),
+// by extension. Anything else is skipped and reported back.
+export const INBOX_UPLOAD_TYPES: Record<string, string> = {
+  pdf: 'application/pdf',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+  gif: 'image/gif',
+  doc: 'application/msword',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xls: 'application/vnd.ms-excel',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+}
+
+export const fileExtension = (fileName: string) =>
+  fileName.includes('.') ? fileName.split('.').pop()!.toLowerCase() : ''
+
+export const isZipFile = (fileName: string) => fileExtension(fileName) === 'zip'
+
 // Every file lives under one of these folders: a case's own folder, or the
 // Unassigned Inbox (Telegram uploads not yet attached to a case).
 export const INBOX_FOLDER = 'inbox'
@@ -39,13 +59,20 @@ export function isUploadFolder(folder: string): boolean {
 }
 
 /**
- * Object path for a new file: "<folder>/<timestamp>_<safe name>". The
- * timestamp prefix keeps names unique; send-quotation strips it again to get
- * the attachment's file name.
+ * Object path for a new file: "<folder>/<timestamp>_<random>_<safe name>".
+ * The prefix keeps names unique (even for same-named files in one zip);
+ * originalFileName() strips it again.
  */
 export function newStoragePath(folder: string, fileName: string): string {
   const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_')
-  return `${folder}/${Date.now()}_${safeName}`
+  const random = Math.random().toString(36).slice(2, 8).padEnd(6, '0')
+  return `${folder}/${Date.now()}_${random}_${safeName}`
+}
+
+/** The file name a stored file was uploaded with (prefix from newStoragePath removed). */
+export function originalFileName(value: string): string {
+  const base = decodeURIComponent((storagePath(value) ?? value).split('/').pop()?.split('?')[0] ?? '')
+  return base.replace(/^\d+_([a-z0-9]{6}_)?/, '') || 'document'
 }
 
 /** True for a file still held inline in the database as a base64 data: URL (pre-2.3). */
