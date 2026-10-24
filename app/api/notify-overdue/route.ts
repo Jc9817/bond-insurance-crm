@@ -1,4 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { graphConfigured, sendGraphEmail } from '@/lib/msGraph'
+
+// "Send Reminders" on the Follow-ups page: one email per person in charge
+// listing their overdue follow-ups, sent through Microsoft Graph from operation@.
 
 type OverdueItem = {
   title: string
@@ -16,9 +20,9 @@ export async function POST(req: NextRequest) {
   if (!items?.length) {
     return NextResponse.json({ error: 'No items provided' }, { status: 400 })
   }
-
-  const from = process.env.EMAIL_FROM ?? 'Bond Insurance <noreply@bondinsurance.com>'
-  const provider = process.env.EMAIL_PROVIDER
+  if (!graphConfigured()) {
+    return NextResponse.json({ error: 'Email not configured — set the MS_GRAPH_* environment variables' }, { status: 500 })
+  }
 
   // Group by recipient
   const byRecipient = items.reduce<Record<string, OverdueItem[]>>((acc, item) => {
@@ -27,7 +31,7 @@ export async function POST(req: NextRequest) {
     return acc
   }, {})
 
-  const results: { email: string; sent: boolean }[] = []
+  const results: { email: string; sent: boolean; error?: string }[] = []
 
   for (const [email, overdueItems] of Object.entries(byRecipient)) {
     const name = overdueItems[0].recipientName
@@ -35,33 +39,21 @@ export async function POST(req: NextRequest) {
       `• ${i.title}\n  Case: ${i.caseTitle} | Customer: ${i.customerName} | Due: ${i.dueDate}`
     ).join('\n\n')
 
-    const subject = `[Bond Insurance] ${overdueItems.length} overdue follow-up${overdueItems.length > 1 ? 's' : ''} require your attention`
-    const body = `Hi ${name},\n\nYou have ${overdueItems.length} overdue follow-up${overdueItems.length > 1 ? 's' : ''} that need your attention:\n\n${lines}\n\nPlease log in to the CRM to action these.\n\n— Bond Insurance CRM`
+    const subject = `[DocFlow] ${overdueItems.length} overdue follow-up${overdueItems.length > 1 ? 's' : ''} require your attention`
+    const body = `Hi ${name},\n\nYou have ${overdueItems.length} overdue follow-up${overdueItems.length > 1 ? 's' : ''} that need your attention:\n\n${lines}\n\nPlease log in to DocFlow to action these.\n\n— DocFlow`
 
-    if (!provider) {
-      console.log(`[notify-overdue] Would send to ${email}:\n  Subject: ${subject}\n  Items: ${overdueItems.length}`)
+    try {
+      await sendGraphEmail({ to: email, subject, body })
       results.push({ email, sent: true })
-      continue
-    }
-
-    if (provider === 'resend') {
-      const res = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.RESEND_API_KEY}` },
-        body: JSON.stringify({ from, to: [email], subject, text: body }),
-      })
-      results.push({ email, sent: res.ok })
-    } else if (provider === 'sendgrid') {
-      const res = await fetch('https://api.sendgrid.com/v3/mail/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.SENDGRID_API_KEY}` },
-        body: JSON.stringify({ personalizations: [{ to: [{ email }] }], from: { email: from }, subject, content: [{ type: 'text/plain', value: body }] }),
-      })
-      results.push({ email, sent: res.ok })
-    } else {
-      results.push({ email, sent: false })
+    } catch (err) {
+      console.error('[notify-overdue] send failed:', email, (err as Error).message)
+      results.push({ email, sent: false, error: (err as Error).message })
     }
   }
 
-  return NextResponse.json({ success: true, results })
+  const failed = results.filter(r => !r.sent)
+  return NextResponse.json(
+    { success: failed.length === 0, results },
+    { status: failed.length === results.length ? 502 : 200 },
+  )
 }

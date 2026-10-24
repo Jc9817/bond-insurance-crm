@@ -124,6 +124,28 @@ both in). After it is live:
 
 ---
 
+## [ ] 2.5 All email from operation@ — checks and tidy-up
+
+Branch `stage2-email-graph` (builds on the 2.3 and 2.4 branches).
+
+After it is live:
+- [ ] Send a quotation email from a case (with a document attached) to your
+      own address: it arrives from `operation@tridentmanagement.com.my`, the
+      attachment opens, and the email is in operation@'s **Sent Items**
+- [ ] Follow-ups page → "Send Reminders": the person in charge gets the email
+      (they need an email address under Settings → Person in Charge)
+
+Tidy-up once the checks pass — these settings are no longer used. Delete them
+in Vercel (Settings → Environment Variables) and in `.env.local`:
+`RESEND_API_KEY`, `EMAIL_PROVIDER`, `EMAIL_FROM`, `SENDGRID_API_KEY`,
+`EMAIL_SMTP_HOST`, `EMAIL_SMTP_PORT`, `EMAIL_SMTP_USER`, `EMAIL_SMTP_PASS`.
+You can also close the Resend account.
+
+Note: with every email now going through the Microsoft 365 app, item 1.3
+(limiting it to operation@ only) matters more.
+
+---
+
 ## [ ] Old `users` table in the database
 
 The live database has a `public.users` table (`id, full_name, email, password,

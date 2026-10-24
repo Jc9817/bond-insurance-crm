@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { signFileUrlForServer } from '@/lib/storage-server'
+import { graphConfigured, sendGraphEmail, type GraphAttachment } from '@/lib/msGraph'
+
+// Sends a quotation email (with the case's document attached) through
+// Microsoft Graph from operation@, so it comes from the company's own domain
+// and is kept in that mailbox's Sent Items.
 
 export async function POST(req: NextRequest) {
   try {
@@ -24,15 +29,13 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const apiKey = process.env.RESEND_API_KEY
-    if (!apiKey) {
+    if (!graphConfigured()) {
       return NextResponse.json(
-        { error: 'Email not configured — set RESEND_API_KEY in environment variables' },
+        { error: 'Email not configured — set the MS_GRAPH_* environment variables' },
         { status: 500 }
       )
     }
 
-    const from = process.env.EMAIL_FROM ?? 'Bond Insurance <onboarding@resend.dev>'
     const coverNotesStr = Array.isArray(coverNotes)
       ? coverNotes.filter(Boolean).join(', ')
       : (coverNotes ?? '')
@@ -55,8 +58,7 @@ ${senderName ?? ''}`
     const ccList: string[] = Array.isArray(ccEmails) ? ccEmails.filter(Boolean) : []
 
     // Fetch document attachment if provided
-    type Attachment = { filename: string; content: string }
-    const attachments: Attachment[] = []
+    const attachments: GraphAttachment[] = []
     let attachmentWarning: string | null = null
 
     if (documentUrl) {
@@ -64,10 +66,11 @@ ${senderName ?? ''}`
         // Private bucket: fetch through a short-lived signed URL
         const docRes = await fetch(await signFileUrlForServer(documentUrl, 60))
         if (docRes.ok) {
-          const buffer = Buffer.from(await docRes.arrayBuffer())
+          const content = Buffer.from(await docRes.arrayBuffer())
           const rawName = decodeURIComponent(documentUrl.split('/').pop()?.split('?')[0] ?? 'document.pdf')
-          const filename = rawName.replace(/^\d+_/, '')
-          attachments.push({ filename, content: buffer.toString('base64') })
+          const name = rawName.replace(/^\d+_/, '')
+          const contentType = docRes.headers.get('content-type') ?? 'application/octet-stream'
+          attachments.push({ name, contentType, content })
         } else {
           attachmentWarning = `Document unavailable (HTTP ${docRes.status}) — email sent without attachment`
         }
@@ -76,23 +79,11 @@ ${senderName ?? ''}`
       }
     }
 
-    const res = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        from,
-        to: [recipientEmail],
-        ...(ccList.length > 0 ? { cc: ccList } : {}),
-        subject,
-        text: bodyText,
-        ...(attachments.length > 0 ? { attachments } : {}),
-      }),
-    })
-
-    if (!res.ok) {
-      const err = await res.text()
-      console.error('[send-quotation] Resend error:', res.status, err)
-      return NextResponse.json({ error: `Email delivery failed: ${err}` }, { status: 502 })
+    try {
+      await sendGraphEmail({ to: recipientEmail, cc: ccList, subject, body: bodyText, attachments })
+    } catch (err) {
+      console.error('[send-quotation] Graph error:', (err as Error).message)
+      return NextResponse.json({ error: `Email delivery failed: ${(err as Error).message}` }, { status: 502 })
     }
 
     // Log to Supabase (non-fatal)
