@@ -254,6 +254,7 @@ export default function CustomersPage() {
         {selected && (
           <CustomerForm
             initial={{ customerName: selected.customerName, companyRegistrationNo: selected.companyRegistrationNo, businessType: selected.businessType ?? '', industry: selected.industry, mainPhone: selected.mainPhone, mainEmail: selected.mainEmail, notes: selected.notes }}
+            editingId={selected.id}
             onSave={d => { updateCustomer(selected.id, d); closeModal() }}
             onCancel={closeModal}
           />

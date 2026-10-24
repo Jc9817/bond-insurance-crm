@@ -9,19 +9,23 @@ _Last updated: 24 Oct 2026_
 
 ## [ ] Putting the finished work live (do these in this order)
 
-Items 2.3–3.2, 4.3 and 5.3 are finished on a chain of branches, each built on the one
+Items 2.3–3.2, 3.4, 4.3 and 5.3 are finished on a chain of branches, each built on the one
 before: `stage2-files` → `stage2-load-per-page` → `stage2-email-graph` →
-`stage2-one-ai-path` → `stage3-intake` → `stage4-bulk-upload` → `stage5-email-log`. Merging the last
+`stage2-one-ai-path` → `stage3-intake` → `stage4-bulk-upload` → `stage5-email-log` → `stage3-ssm-key`. Merging the last
 one brings in all of them.
 
-1. **Database first.** In Supabase → SQL Editor, paste and run
-   `supabase/migrations/20261024100000_intake_items.sql` (the new Inbox table).
-   The new code needs it — without it, Telegram uploads would fail.
+1. **Database first.** In Supabase → SQL Editor, paste and run these files,
+   one at a time, in this order:
+   - `supabase/migrations/20261024100000_intake_items.sql` (the new Inbox
+     table — the new code needs it, or Telegram uploads would fail)
+   - `supabase/migrations/20261024110000_customer_ssm_key.sql` (one customer
+     per SSM number). If it lists customers sharing a number, merge or
+     correct them, then run it again until the list is empty.
 2. **Push and merge.** In the VS Code terminal:
    ```
-   git push -u origin stage5-email-log
+   git push -u origin stage3-ssm-key
    ```
-   Then on GitHub open a pull request from `stage5-email-log` into `master` and
+   Then on GitHub open a pull request from `stage3-ssm-key` into `master` and
    merge it. Wait for Vercel to show **Ready**.
 3. **Move old files out of the database.** In the VS Code terminal, first a
    dry run (only counts, changes nothing):
@@ -204,6 +208,16 @@ notices and reminders all need someone to click Send.
 
 - [ ] Send a quotation from a case: it shows in that case's email history
       (Emails tab), including when sending fails
+
+---
+
+## [ ] 3.4 One customer per SSM number — checks
+
+- [ ] Add a customer with an SSM number that another customer already has
+      (even written differently, e.g. with dashes): DocFlow refuses and names
+      the existing customer
+- [ ] Add a customer whose name matches an existing one (e.g. "ABC Sdn Bhd"
+      vs "ABC SDN. BHD."): DocFlow asks before saving
 
 ---
 

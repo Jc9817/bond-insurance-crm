@@ -3,6 +3,8 @@
 import { useState } from 'react'
 import type { Customer } from '@/lib/types'
 import { INDUSTRIES, BUSINESS_TYPES } from '@/lib/types'
+import { useStore } from '@/lib/store'
+import { findCustomerBySsm, nameKey } from '@/lib/ssm'
 
 export type CustomerFormData = Omit<Customer, 'id' | 'createdAt'>
 
@@ -11,9 +13,11 @@ export const emptyCustomerForm: CustomerFormData = {
   mainPhone: '', mainEmail: '', notes: '',
 }
 
-export default function CustomerForm({ initial, onSave, onCancel }: {
-  initial: CustomerFormData; onSave: (d: CustomerFormData) => void; onCancel: () => void
+// editingId: the customer being edited, so it isn't flagged as its own duplicate.
+export default function CustomerForm({ initial, editingId, onSave, onCancel }: {
+  initial: CustomerFormData; editingId?: string; onSave: (d: CustomerFormData) => void; onCancel: () => void
 }) {
+  const { customers } = useStore()
   const [form, setForm] = useState<CustomerFormData>(initial)
   const [error, setError] = useState('')
 
@@ -24,6 +28,19 @@ export default function CustomerForm({ initial, onSave, onCancel }: {
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!form.customerName.trim()) { setError('Customer name is required.'); return }
+
+    // One customer per SSM number (fix list 3.4)
+    const sameSsm = findCustomerBySsm(customers, form.companyRegistrationNo, editingId)
+    if (sameSsm) {
+      setError(`"${sameSsm.customerName}" already has this registration number. Use that customer instead of creating a second one.`)
+      return
+    }
+    // Same name but no shared SSM number — likely the same company; ask
+    const key = nameKey(form.customerName)
+    const sameName = key ? customers.find(c => c.id !== editingId && nameKey(c.customerName) === key) : undefined
+    if (sameName && !confirm(`A customer named "${sameName.customerName}" already exists. Save this as a separate customer anyway?`)) {
+      return
+    }
     onSave(form)
   }
 
