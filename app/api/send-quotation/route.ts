@@ -1,16 +1,38 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { signFileUrlForServer } from '@/lib/storage-server'
 import { originalFileName } from '@/lib/storage'
 import { graphConfigured, sendGraphEmail, type GraphAttachment } from '@/lib/msGraph'
+import { serviceClient } from '@/lib/supabase-service'
+import { generateId } from '@/lib/utils'
 
 // Sends a quotation email (with the case's document attached) through
 // Microsoft Graph from operation@, so it comes from the company's own domain
-// and is kept in that mailbox's Sent Items.
+// and is kept in that mailbox's Sent Items. Every attempt, sent or failed, is
+// recorded in the case's email history (case_emails, fix list 5.3).
+
+async function logCaseEmail(row: {
+  caseId?: string; toEmail: string; subject: string; body: string
+  status: 'sent' | 'failed'; errorMessage?: string
+}) {
+  if (!row.caseId) return
+  const { error } = await serviceClient().from('case_emails').insert({
+    id: generateId(),
+    case_id: row.caseId,
+    template_name: 'Quotation',
+    to_email: row.toEmail,
+    subject: row.subject,
+    body: row.body,
+    status: row.status,
+    error_message: row.errorMessage ?? null,
+    sent_at: new Date().toISOString(),
+  })
+  if (error) console.warn('[send-quotation] case_emails insert failed:', error.message)
+}
 
 export async function POST(req: NextRequest) {
   try {
     const {
+      caseId,
       recipientEmail,
       ccEmails,
       recipientTitle,
@@ -79,19 +101,19 @@ ${senderName ?? ''}`
       }
     }
 
+    const toEmail = [recipientEmail, ...ccList.map(c => `cc: ${c}`)].join(', ')
     try {
       await sendGraphEmail({ to: recipientEmail, cc: ccList, subject, body: bodyText, attachments })
     } catch (err) {
       console.error('[send-quotation] Graph error:', (err as Error).message)
+      await logCaseEmail({ caseId, toEmail, subject, body: bodyText, status: 'failed', errorMessage: (err as Error).message })
       return NextResponse.json({ error: `Email delivery failed: ${(err as Error).message}` }, { status: 502 })
     }
+    await logCaseEmail({ caseId, toEmail, subject, body: bodyText, status: 'sent' })
 
     // Log to Supabase (non-fatal)
     try {
-      const sb = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-      )
+      const sb = serviceClient()
       await sb.from('email_logs').insert({
         recipient: recipientEmail,
         subject,

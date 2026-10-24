@@ -9,9 +9,9 @@ _Last updated: 24 Oct 2026_
 
 ## [ ] Putting the finished work live (do these in this order)
 
-Items 2.3–3.2 and 4.3 are finished on a chain of branches, each built on the one
+Items 2.3–3.2, 4.3 and 5.3 are finished on a chain of branches, each built on the one
 before: `stage2-files` → `stage2-load-per-page` → `stage2-email-graph` →
-`stage2-one-ai-path` → `stage3-intake` → `stage4-bulk-upload`. Merging the last
+`stage2-one-ai-path` → `stage3-intake` → `stage4-bulk-upload` → `stage5-email-log`. Merging the last
 one brings in all of them.
 
 1. **Database first.** In Supabase → SQL Editor, paste and run
@@ -19,9 +19,9 @@ one brings in all of them.
    The new code needs it — without it, Telegram uploads would fail.
 2. **Push and merge.** In the VS Code terminal:
    ```
-   git push -u origin stage4-bulk-upload
+   git push -u origin stage5-email-log
    ```
-   Then on GitHub open a pull request from `stage4-bulk-upload` into `master` and
+   Then on GitHub open a pull request from `stage5-email-log` into `master` and
    merge it. Wait for Vercel to show **Ready**.
 3. **Move old files out of the database.** In the VS Code terminal, first a
    dry run (only counts, changes nothing):
@@ -194,6 +194,16 @@ Keep `ANTHROPIC_API_KEY`: it's for the email drafter planned in 5.3.
 - [ ] Inbox page: drag in several files at once — each appears as its own item
 - [ ] Drag in one zip holding 15 documents — 15 items appear, the zip itself does not
 - [ ] Drag in the same files again — they are reported as "already received" and not added twice
+
+---
+
+## [ ] 5.3 Every email recorded — checks
+
+Nothing in DocFlow sends email on its own: quotations, customer emails, ops
+notices and reminders all need someone to click Send.
+
+- [ ] Send a quotation from a case: it shows in that case's email history
+      (Emails tab), including when sending fails
 
 ---
 

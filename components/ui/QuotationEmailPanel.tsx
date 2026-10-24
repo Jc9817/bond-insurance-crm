@@ -137,6 +137,7 @@ ${caseItem.personInCharge}`
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          caseId: caseItem.id,
           recipientEmail: entry.emailTo,
           ccEmails: entry.emailCc ? entry.emailCc.split(',').map(s => s.trim()).filter(Boolean) : [],
           recipientTitle: entry.recipientTitle || `${entry.insurerName} Team`,
