@@ -146,6 +146,19 @@ Note: with every email now going through the Microsoft 365 app, item 1.3
 
 ---
 
+## [ ] 2.6 One AI path — n8n settings
+
+DocFlow no longer reads documents itself; all document reading runs in n8n.
+In n8n, open the AI-scan workflow's Claude/Anthropic step and check which
+model it uses. Current models: `claude-haiku-4-5` (cheapest, fine for simple
+forms), `claude-sonnet-5` (better on messy scans), `claude-opus-5` (best, priced highest).
+There is no "Haiku 5.5" yet, despite the example in the fix list.
+
+Tidy-up: the `AI_MOCK` setting is no longer used (delete from `.env.local`).
+Keep `ANTHROPIC_API_KEY`: it's for the email drafter planned in 5.3.
+
+---
+
 ## [ ] Old `users` table in the database
 
 The live database has a `public.users` table (`id, full_name, email, password,

@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { SUPPORTED_MIME_TYPES } from '@/lib/ai-scan'
+import { INBOX_FOLDER, SUPPORTED_MIME_TYPES } from '@/lib/storage'
 import { generateId } from '@/lib/utils'
 import { notifyDocFlowWebhook } from '@/lib/n8n'
-import { INBOX_FOLDER } from '@/lib/storage'
 import { removeFile, saveFile, signFileUrlForServer } from '@/lib/storage-server'
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN!
