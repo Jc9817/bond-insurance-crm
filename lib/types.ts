@@ -222,17 +222,19 @@ export const INDUSTRIES = [
 
 // ─── Users & Auth ─────────────────────────────────────────────────────────────
 
-export const USER_ROLES = ['Admin', 'Manager', 'Staff', 'Viewer'] as const
+// Must match the check constraint on user_roles.role
+export const USER_ROLES = ['Admin', 'Staff'] as const
 export type UserRole = (typeof USER_ROLES)[number]
 
 export const USER_STATUSES = ['Active', 'Inactive'] as const
 export type UserStatus = (typeof USER_STATUSES)[number]
 
+// A row of user_roles; id is the Supabase Auth user id. Passwords live only
+// in Supabase Auth and are set through /api/admin/users.
 export type User = {
   id: string
   fullName: string
   email: string
-  password: string
   role: UserRole
   status: UserStatus
   createdAt: string

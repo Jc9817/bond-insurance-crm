@@ -1,0 +1,3 @@
+-- Superseded: these were run by hand in the Supabase SQL Editor before the
+-- schema moved to supabase/migrations/. They are already part of the live
+-- database and so of the baseline migration. Do not run them again.

@@ -1,7 +1,7 @@
--- Run this in Supabase SQL Editor
+-- Stage 1.1 / 1.2 (applied with `npx supabase db push`, see supabase/README.md)
 -- Turns Row Level Security ON for every table and locks out the anon key.
 --
--- Before this, RLS was disabled (schema.sql, disable-rls.sql) and tables were
+-- Before this, RLS was disabled (legacy/schema.sql, legacy/disable-rls.sql) and tables were
 -- granted to anon. The anon key ships to the browser, so anyone could read and
 -- change every table without logging in.
 --
@@ -29,7 +29,7 @@ begin
   for t in
     select tablename from pg_tables
     where schemaname = 'public'
-      and tablename <> 'user_roles'   -- has its own read-only policy (migrate-add-user-roles.sql)
+      and tablename <> 'user_roles'   -- has its own read-only policy (20261023100100_user_roles.sql)
   loop
     execute format('alter table public.%I enable row level security', t);
     execute format('drop policy if exists "Logged-in users full access" on public.%I', t);
@@ -51,7 +51,9 @@ alter default privileges in schema public revoke all on sequences from anon;
 
 
 -- ─── Case files bucket: private, logged-in users only ────────────────────────
-update storage.buckets set public = false where id = 'case-files';
+-- Insert so a fresh database (supabase db reset) gets the bucket too
+insert into storage.buckets (id, name, public) values ('case-files', 'case-files', false)
+on conflict (id) do update set public = false;
 
 drop policy if exists "Logged-in users read case files"   on storage.objects;
 drop policy if exists "Logged-in users upload case files" on storage.objects;

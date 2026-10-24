@@ -1,10 +1,7 @@
 ﻿import type {
-  Customer, Contact, Case, CaseNote, FollowUp, PicUser, User,
-  CaseFile, ActivityLog, SettingsItem, WorkflowTemplate,
-  Product, ProductPackage, SubmissionLetterTemplate,
+  Customer, Contact, Case, CaseNote, FollowUp,
+  CaseFile, ActivityLog, WorkflowTemplate,
 } from './types'
-
-export const mockPics: PicUser[] = []
 
 export const mockCustomers: Customer[] = [
   {
@@ -356,30 +353,6 @@ export const mockFollowUps: FollowUp[] = [
   },
 ]
 
-// ─── Users ────────────────────────────────────────────────────────────────────
-
-export const mockUsers: User[] = [
-  {
-    id: 'usr1',
-    fullName: 'Admin',
-    email: 'admin@trident.com',
-    password: 'Trident123',
-    role: 'Admin',
-    status: 'Active',
-    createdAt: '2024-01-01T08:00:00Z',
-  },
-  {
-    id: 'usr2',
-    fullName: 'Staff',
-    email: 'staff@trident.com',
-    password: 'Trident123',
-    role: 'Staff',
-    status: 'Active',
-    createdAt: '2024-01-15T08:00:00Z',
-  },
-]
-
-// ─── Case Files ───────────────────────────────────────────────────────────────
 
 export const mockCaseFiles: CaseFile[] = [
   {
@@ -690,133 +663,6 @@ export const mockActivityLogs: ActivityLog[] = [
     description: 'Client has not submitted audited accounts yet. Need to follow up.',
     changedBy: 'Ahmad Farid',
     timestamp: '2026-05-03T09:00:00Z',
-  },
-]
-
-// ─── Editable Settings ────────────────────────────────────────────────────────
-
-export const mockSettingsCaseTypes: SettingsItem[] = [
-  { id: 'sct1', name: 'Bond Workflow', isActive: true },
-  { id: 'sct2', name: 'Simple Policy Workflow', isActive: true },
-  { id: 'sct3', name: 'Project Insurance Workflow', isActive: true },
-  { id: 'sct4', name: 'Claim Workflow', isActive: true },
-  { id: 'sct5', name: 'Renewal Workflow', isActive: true },
-  { id: 'sct6', name: 'Endorsement Workflow', isActive: true },
-  { id: 'sct7', name: 'Servicing Workflow', isActive: true },
-]
-
-export const mockSettingsIndustries: SettingsItem[] = [
-  { id: 'si1', name: 'Construction', isActive: true },
-  { id: 'si2', name: 'Manufacturing', isActive: true },
-  { id: 'si3', name: 'Trading', isActive: true },
-  { id: 'si4', name: 'Retail', isActive: true },
-  { id: 'si5', name: 'Services', isActive: true },
-  { id: 'si6', name: 'Technology', isActive: true },
-  { id: 'si7', name: 'Healthcare', isActive: true },
-  { id: 'si8', name: 'Education', isActive: true },
-  { id: 'si9', name: 'Transportation', isActive: true },
-  { id: 'si10', name: 'Other', isActive: true },
-]
-
-export const mockSettingsContactTypes: SettingsItem[] = [
-  { id: 'sco1', name: 'Owner', isActive: true },
-  { id: 'sco2', name: 'Director', isActive: true },
-  { id: 'sco3', name: 'Manager', isActive: true },
-  { id: 'sco4', name: 'Finance', isActive: true },
-  { id: 'sco5', name: 'Operations', isActive: true },
-  { id: 'sco6', name: 'Worker', isActive: true },
-  { id: 'sco7', name: 'Referral', isActive: true },
-  { id: 'sco8', name: 'Introducer', isActive: true },
-  { id: 'sco9', name: 'Other', isActive: true },
-]
-
-export const mockSettingsFollowUpCategories: SettingsItem[] = [
-  { id: 'sfu1', name: 'Client Follow-Up', isActive: true },
-  { id: 'sfu2', name: 'Insurer Follow-Up', isActive: true },
-  { id: 'sfu3', name: 'Renewal Reminder', isActive: true },
-  { id: 'sfu4', name: 'Documentation', isActive: true },
-  { id: 'sfu5', name: 'Internal', isActive: true },
-  { id: 'sfu6', name: 'Payment', isActive: true },
-  { id: 'sfu7', name: 'Other', isActive: true },
-]
-
-export const mockSettingsInsurers: SettingsItem[] = [
-  { id: 'sins1', name: 'Allianz Malaysia', isActive: true },
-  { id: 'sins2', name: 'Etiqa Takaful', isActive: true },
-  { id: 'sins3', name: 'RHB Insurance', isActive: true },
-  { id: 'sins4', name: 'Zurich Insurance', isActive: true },
-  { id: 'sins5', name: 'AIA Malaysia', isActive: true },
-  { id: 'sins6', name: 'Tokio Marine', isActive: true },
-  { id: 'sins7', name: 'Berjaya Sompo', isActive: true },
-  { id: 'sins8', name: 'MSIG Insurance', isActive: true },
-]
-
-// ─── Product Master ───────────────────────────────────────────────────────────
-
-export const mockProducts: Product[] = [
-  // ── Bonds ──
-  { id: 'prod1', name: 'Performance Bond', category: 'Bond', description: 'Guarantees contractor performance per contract terms', isActive: true },
-  { id: 'prod2', name: 'Tender Bond / Bid Bond', category: 'Bond', description: 'Required during tender process; forfeited if contractor withdraws after award', isActive: true },
-  { id: 'prod3', name: 'Advance Payment Bond', category: 'Bond', description: 'Guarantees repayment of advance payment if not utilised by contractor', isActive: true },
-  { id: 'prod4', name: 'Retention Bond', category: 'Bond', description: 'Replaces cash retention withheld by employer; released upon DLP end', isActive: true },
-  { id: 'prod5', name: 'Customs Bond', category: 'Bond', description: 'Required by Royal Malaysian Customs for duty-deferred imports', isActive: true },
-  { id: 'prod6', name: 'Immigration Bond', category: 'Bond', description: 'Required for foreign worker visa and permit applications (PLKS/PATI)', isActive: true },
-  { id: 'prod7', name: 'Fidelity Guarantee', category: 'Bond', description: 'Covers employer against employee dishonesty, fraud, or defalcation', isActive: true },
-  // ── Insurance ──
-  { id: 'prod8', name: 'Workmen Compensation (WC)', category: 'Insurance', description: 'Covers work-related injury, illness, disability, and death for workers', isActive: true },
-  { id: 'prod9', name: 'Third Party Liability (TPL)', category: 'Insurance', description: 'Covers legal liability to third parties for bodily injury or property damage', isActive: true },
-  { id: 'prod10', name: 'Contractor All Risk (CAR)', category: 'Insurance', description: 'All-risk cover for contract works in progress and third party liability during construction', isActive: true },
-  { id: 'prod11', name: 'Contractor Plant & Machinery (CPM)', category: 'Insurance', description: 'Covers sudden accidental damage to contractor plant and equipment on-site', isActive: true },
-  { id: 'prod12', name: 'Fire Insurance', category: 'Insurance', description: 'Covers property against fire, lightning, and related perils', isActive: true },
-  { id: 'prod13', name: 'Marine Cargo Insurance', category: 'Insurance', description: 'Covers goods during transit by sea, air, or land', isActive: true },
-]
-
-export const mockProductPackages: ProductPackage[] = [
-  { id: 'pkg1', name: 'Performance Bond Only', description: 'Standalone performance bond for government or private contracts', productIds: ['prod1'], isActive: true },
-  { id: 'pkg2', name: 'Tender Bond Only', description: 'Standalone tender / bid bond for submission stage', productIds: ['prod2'], isActive: true },
-  { id: 'pkg3', name: 'Advance Payment Bond Only', description: 'Standalone advance payment bond', productIds: ['prod3'], isActive: true },
-  { id: 'pkg4', name: 'WC Only', description: 'Workmen compensation insurance only', productIds: ['prod8'], isActive: true },
-  { id: 'pkg5', name: 'TPL Only', description: 'Third party liability insurance only', productIds: ['prod9'], isActive: true },
-  { id: 'pkg6', name: 'WC + TPL', description: 'Workers compensation and third party liability package', productIds: ['prod8', 'prod9'], isActive: true },
-  { id: 'pkg7', name: 'Performance Bond + WC + TPL', description: 'Full government construction package — bond plus insurance cover', productIds: ['prod1', 'prod8', 'prod9'], isActive: true },
-  { id: 'pkg8', name: 'CAR Package', description: 'Contractor All Risk with Third Party Liability', productIds: ['prod10', 'prod9'], isActive: true },
-  { id: 'pkg9', name: 'Custom', description: 'Select products manually — for non-standard combinations', productIds: [], isActive: true },
-]
-
-// ─── Submission Letter Templates ─────────────────────────────────────────────
-
-export const mockSubmissionLetterTemplates: SubmissionLetterTemplate[] = [
-  {
-    id: 'slt1',
-    name: 'Performance Bond — Standard',
-    isActive: true,
-    subjectLine: 'REQUISITION OF PERFORMANCE BOND (INSURANCE GUARANTEE) OF {{bondAmount}}',
-    letterBody: `Dear Sir / Mdm
-
-The above Performance Bond (Insurance Guarantee) refers.
-
-We submit herewith the following documents for your processing.
-
-{{docList}}
-
-Kindly acknowledge the above documents by signing & returning the duplicate of this letter.
-
-Thank you.
-
-Yours faithfully`,
-    docItems: [
-      { id: 'di1', labelInForm: 'Proposal Form', textTemplate: 'Duly completed & Executed Contract Guarantee proposal form', defaultChecked: true },
-      { id: 'di2', labelInForm: 'Quotation for Performance Bond', textTemplate: 'Quotation for Performance Bond', defaultChecked: true },
-      { id: 'di3', labelInForm: 'Letter of Indemnity (Green)', textTemplate: 'Letter of Indemnity (Green) – {{contractor}}', defaultChecked: true },
-      { id: 'di4', labelInForm: 'Letter of Indemnity (White) – Director', textTemplate: 'Letter of Indemnity (White), Financial Statement & Copy of NRIC – {{directorName}}', defaultChecked: true, subFieldType: 'director' },
-      { id: 'di5', labelInForm: '3rd Party Guarantor LOI (White)', textTemplate: '3RD Party Guarantor - Letter of Indemnity (White), Financial Statement & Copy of NRIC – {{guarantorName}}', defaultChecked: true, subFieldType: 'guarantor' },
-      { id: 'di6', labelInForm: 'SSM Complete Set', textTemplate: 'SSM Complete set – {{contractor}}', defaultChecked: true },
-      { id: 'di7', labelInForm: 'Bank Statement', textTemplate: '{{contractor}} – {{bankName}} Statement – {{statementPeriod}}', defaultChecked: true, subFieldType: 'bank' },
-      { id: 'di8', labelInForm: 'CIDB Certificates', textTemplate: '{{contractor}} – CIDB Perakuan Pendaftaran, Sijil Perolehan Kerja Kerajaan, Bahagian Pembangunan Kontraktor Dan Usahawan, Sijil Akuan Pendaftaran Syarikat Bumiputra & Sijil Akuan Pendaftaran Syarikat', defaultChecked: true },
-      { id: 'di9', labelInForm: 'Company Profile', textTemplate: '{{contractor}} – Company Profile', defaultChecked: true },
-      { id: 'di10', labelInForm: 'Letter of Award', textTemplate: 'Letter of Award – {{principal}} to {{contractor}}', defaultChecked: true },
-      { id: 'di11', labelInForm: 'Payment of Premium', textTemplate: 'Payment of Premium {{premiumAmount}}', defaultChecked: true, subFieldType: 'premium' },
-    ],
   },
 ]
 

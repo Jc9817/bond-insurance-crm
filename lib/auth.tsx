@@ -19,7 +19,7 @@ type AuthCtx = {
 const AuthContext = createContext<AuthCtx | null>(null)
 
 // Role and display name come from the user_roles table (see
-// supabase/migrate-add-user-roles.sql). A user with no row is treated as Staff.
+// supabase/migrations/20261023100100_user_roles.sql). A user with no row is treated as Staff.
 async function mapUser(supabaseUser: { id: string; email?: string } | null): Promise<AppUser | null> {
   if (!supabaseUser?.email) return null
   const email = supabaseUser.email.toLowerCase()

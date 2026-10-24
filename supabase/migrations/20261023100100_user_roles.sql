@@ -1,4 +1,4 @@
--- Run this in Supabase SQL Editor (after migrate-enable-rls.sql)
+-- Stage 1.4 (applied with `npx supabase db push`, see supabase/README.md)
 -- Stores each user's role, replacing the old rule in lib/auth.tsx that made
 -- anyone whose email starts with "admin" an Admin.
 --
