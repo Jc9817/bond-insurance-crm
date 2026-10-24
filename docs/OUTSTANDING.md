@@ -9,8 +9,8 @@ _Last updated: 24 Oct 2026_
 
 ## [ ] Putting the finished work live (do these in this order)
 
-Every finished item since Stage 1 (2.3–2.6, 3.1–3.5, 4.3, 5.1–5.3) is on the
-branch **`stage5-reminders`**. Each item was built on top of the one before,
+Every finished item since Stage 1 (2.3–2.6, 3.1–3.5, 4.1–4.3, 4.5, 5.1–5.3) is on the
+branch **`stage4-microsoft`**. Each item was built on top of the one before,
 so this one branch contains all of them.
 
 1. **Database first.** In Supabase → SQL Editor, paste and run these files,
@@ -22,11 +22,13 @@ so this one branch contains all of them.
      correct them, then run it again until the list is empty.
    - `supabase/migrations/20261024120000_policies.sql` (policies — cases that
      have a bond expiry date get a first policy row automatically)
+   - `supabase/migrations/20261025100000_graph_subscriptions.sql` (email and
+     SharePoint intake bookkeeping)
 2. **Push and merge.** In the VS Code terminal:
    ```
-   git push -u origin stage5-reminders
+   git push -u origin stage4-microsoft
    ```
-   Then on GitHub open a pull request from `stage5-reminders` into `master` and
+   Then on GitHub open a pull request from `stage4-microsoft` into `master` and
    merge it. Wait for Vercel to show **Ready**.
 3. **Move old files out of the database.** In the VS Code terminal, first a
    dry run (only counts, changes nothing):
@@ -271,9 +273,9 @@ Set up (Vercel → Settings → Environment Variables), then redeploy:
 - `OPS_NOTIFY_EMAIL`: who receives the summary (already used for ops notices)
 
 Checks:
-- [ ] Vercel → Settings → Cron Jobs shows `/api/cron/policy-reminders` daily
+- [ ] Vercel → Settings → Cron Jobs shows `/api/cron/daily` once a day
 - [ ] Give a test policy an expiry date 30 days from today. Next morning (or
-      use "Run" on the Cron Jobs page): the summary email arrives, the
+      use "Run" on the Cron Jobs page for `/api/cron/daily`): the summary email arrives, the
       policy has a "Renew …" follow-up, and running it again sends nothing new
 
 ---
@@ -301,6 +303,15 @@ A draft note is in [docs/PDPA-note.md](PDPA-note.md). Fill in the
 **TO DECIDE** periods (closed cases, lost cases, old user accounts) and the
 two questions marked in italics. Once decided, the automatic archive and
 delete rule can be built.
+
+---
+
+## [ ] 4.1 / 4.2 / 4.5 Email intake, SharePoint _Inbox, Sign in with Microsoft
+
+Finished in DocFlow; they switch on once your Microsoft 365 administrator
+follows [docs/microsoft-365-setup.md](microsoft-365-setup.md) (Azure
+permissions, the SharePoint `_Inbox` folder, a few Vercel settings). The
+checks are listed at the end of each part of that guide.
 
 ---
 

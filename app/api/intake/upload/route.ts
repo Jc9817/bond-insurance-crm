@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import JSZip from 'jszip'
 import { createClient } from '@/utils/supabase/server'
 import { serviceClient } from '@/lib/supabase-service'
 import { INBOX_FOLDER, INBOX_UPLOAD_TYPES, fileExtension, isZipFile, storagePath } from '@/lib/storage'
-import { readFile, removeFile, saveFile } from '@/lib/storage-server'
+import { readFile, removeFile } from '@/lib/storage-server'
 import { createIntakeItem, sha256 } from '@/lib/intake'
+import { addReceivedFile, emptyOutcome } from '@/lib/intake-files'
 
 // Bulk upload on the Inbox page (fix list 4.3). The browser has already put
 // each chosen file in the Inbox folder of storage (lib/upload.ts); this turns
@@ -13,13 +13,7 @@ import { createIntakeItem, sha256 } from '@/lib/intake'
 
 export const maxDuration = 60
 
-// Guards against oversized or malicious zips
-const MAX_ZIP_ENTRIES = 300
-const MAX_UNZIPPED_BYTES = 300 * 1024 * 1024
-
 type UploadedFile = { ref: string; fileName: string; fileSize: number; fileHash?: string }
-
-type Outcome = { added: string[]; duplicates: string[]; skipped: string[] }
 
 export async function POST(req: NextRequest) {
   const authSb = await createClient()
@@ -34,7 +28,7 @@ export async function POST(req: NextRequest) {
   }
 
   const sb = serviceClient()
-  const outcome: Outcome = { added: [], duplicates: [], skipped: [] }
+  const outcome = emptyOutcome()
 
   for (const f of files) {
     // Only files the browser just put in the Inbox folder
@@ -44,22 +38,22 @@ export async function POST(req: NextRequest) {
     }
     try {
       if (isZipFile(f.fileName)) {
-        await addZip(sb, f, sender, outcome)
+        await addReceivedFile(sb, { source: 'upload', sender, fileName: f.fileName, content: await readFile(f.ref) }, outcome)
         await removeFile(f.ref)
-      } else {
-        const type = INBOX_UPLOAD_TYPES[fileExtension(f.fileName)]
-        if (!type) {
-          outcome.skipped.push(f.fileName)
-          await removeFile(f.ref)
-          continue
-        }
-        const fileHash = f.fileHash || sha256(await readFile(f.ref))
-        const { duplicate } = await createIntakeItem(sb, {
-          source: 'upload', sender, fileName: f.fileName, fileSize: f.fileSize, fileType: type,
-          fileRef: f.ref, fileHash,
-        })
-        ;(duplicate ? outcome.duplicates : outcome.added).push(f.fileName)
+        continue
       }
+      const type = INBOX_UPLOAD_TYPES[fileExtension(f.fileName)]
+      if (!type) {
+        outcome.skipped.push(f.fileName)
+        await removeFile(f.ref)
+        continue
+      }
+      // Already stored by the browser — just add it to the Inbox
+      const { duplicate } = await createIntakeItem(sb, {
+        source: 'upload', sender, fileName: f.fileName, fileSize: f.fileSize, fileType: type,
+        fileRef: f.ref, fileHash: f.fileHash || sha256(await readFile(f.ref)),
+      })
+      ;(duplicate ? outcome.duplicates : outcome.added).push(f.fileName)
     } catch (err) {
       console.error('[intake/upload] failed:', f.fileName, err instanceof Error ? err.message : err)
       outcome.skipped.push(f.fileName)
@@ -67,35 +61,4 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json(outcome)
-}
-
-async function addZip(sb: ReturnType<typeof serviceClient>, f: UploadedFile, sender: string, outcome: Outcome) {
-  const zip = await JSZip.loadAsync(await readFile(f.ref))
-  const entries = Object.values(zip.files).filter(e => {
-    const base = e.name.split('/').pop() ?? ''
-    // Skip folders and Mac/Windows clutter (__MACOSX/, .DS_Store, Thumbs.db)
-    return !e.dir && !e.name.startsWith('__MACOSX/') && !base.startsWith('.') && base !== 'Thumbs.db'
-  })
-  if (entries.length > MAX_ZIP_ENTRIES) throw new Error(`zip has more than ${MAX_ZIP_ENTRIES} files`)
-
-  let unzippedBytes = 0
-  for (const entry of entries) {
-    const fileName = entry.name.split('/').pop()!
-    const type = INBOX_UPLOAD_TYPES[fileExtension(fileName)]
-    if (!type) {
-      outcome.skipped.push(`${f.fileName} › ${fileName}`)
-      continue
-    }
-    const content = await entry.async('nodebuffer')
-    unzippedBytes += content.length
-    if (unzippedBytes > MAX_UNZIPPED_BYTES) throw new Error('zip contents are too large')
-
-    const fileRef = await saveFile(INBOX_FOLDER, fileName, content, type)
-    const { duplicate } = await createIntakeItem(sb, {
-      source: 'upload', sender, fileName, fileSize: content.length, fileType: type,
-      fileRef, fileHash: sha256(content),
-      sourceMeta: { fromZip: f.fileName, pathInZip: entry.name },
-    })
-    ;(duplicate ? outcome.duplicates : outcome.added).push(fileName)
-  }
 }

@@ -1,16 +1,46 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { Suspense, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/lib/auth'
+import { createClient } from '@/utils/supabase/client'
+
+// "Sign in with Microsoft" (fix list 4.5) shows once NEXT_PUBLIC_MICROSOFT_LOGIN
+// is "true" — i.e. after the Azure provider is set up in Supabase.
+const MICROSOFT_LOGIN = process.env.NEXT_PUBLIC_MICROSOFT_LOGIN === 'true'
 
 export default function LoginPage() {
+  // useSearchParams needs a Suspense boundary on a prerendered page
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
+  )
+}
+
+function LoginForm() {
   const { login } = useAuth()
   const router = useRouter()
+  // Set by /auth/callback when Microsoft sign-in was refused
+  const callbackError = useSearchParams().get('error')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+
+  const signInWithMicrosoft = async () => {
+    setError('')
+    setLoading(true)
+    const { error } = await createClient().auth.signInWithOAuth({
+      provider: 'azure',
+      options: { scopes: 'email', redirectTo: `${window.location.origin}/auth/callback` },
+    })
+    // On success the browser is already on its way to Microsoft
+    if (error) {
+      setError(error.message)
+      setLoading(false)
+    }
+  }
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -42,9 +72,9 @@ export default function LoginPage() {
         {/* Card */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-7">
           <form onSubmit={submit} className="space-y-4">
-            {error && (
+            {(error || callbackError) && (
               <div className="bg-red-50 border border-red-200 rounded-xl p-3">
-                <p className="text-sm text-red-700">{error}</p>
+                <p className="text-sm text-red-700">{error || `Microsoft sign-in failed: ${callbackError}. Ask an Admin to check you have a DocFlow account.`}</p>
               </div>
             )}
             <div>
@@ -78,6 +108,30 @@ export default function LoginPage() {
               {loading ? 'Signing in…' : 'Sign In'}
             </button>
           </form>
+
+          {MICROSOFT_LOGIN && (
+            <>
+              <div className="flex items-center gap-3 my-5">
+                <div className="h-px bg-gray-200 flex-1" />
+                <span className="text-xs text-gray-400">or</span>
+                <div className="h-px bg-gray-200 flex-1" />
+              </div>
+              <button
+                type="button"
+                onClick={signInWithMicrosoft}
+                disabled={loading}
+                className="w-full flex items-center justify-center gap-2 border border-gray-300 rounded-xl py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+              >
+                <svg className="w-4 h-4" viewBox="0 0 21 21" aria-hidden="true">
+                  <rect x="1" y="1" width="9" height="9" fill="#f25022" />
+                  <rect x="11" y="1" width="9" height="9" fill="#7fba00" />
+                  <rect x="1" y="11" width="9" height="9" fill="#00a4ef" />
+                  <rect x="11" y="11" width="9" height="9" fill="#ffb900" />
+                </svg>
+                Sign in with Microsoft
+              </button>
+            </>
+          )}
         </div>
 
         <p className="text-center text-xs text-gray-400 mt-5">

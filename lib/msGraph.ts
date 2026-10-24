@@ -38,6 +38,51 @@ export function graphConfigured(): boolean {
   )
 }
 
+// ─── General Graph requests (email / SharePoint intake, fix list 4.1 / 4.2) ───
+
+const GRAPH = 'https://graph.microsoft.com/v1.0'
+
+/**
+ * Calls Microsoft Graph and returns the parsed JSON (null for empty
+ * responses). `path` is relative to /v1.0 ("/users/x/messages") or a full
+ * URL (Graph's nextLink / deltaLink). Throws on any non-2xx response.
+ */
+export async function graphRequest<T = Record<string, unknown>>(
+  method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
+  path: string,
+  body?: unknown,
+): Promise<T> {
+  const token = await getGraphToken()
+  const res = await fetch(path.startsWith('https://') ? path : `${GRAPH}${path}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const err = await res.text()
+    throw new GraphError(res.status, `Graph ${method} ${path.split('?')[0]} failed (HTTP ${res.status})${err ? `: ${err}` : ''}`)
+  }
+  const text = await res.text()
+  return (text ? JSON.parse(text) : null) as T
+}
+
+/** Downloads binary content from Graph (e.g. a SharePoint file's /content). */
+export async function graphDownload(path: string): Promise<Buffer> {
+  const token = await getGraphToken()
+  const res = await fetch(`${GRAPH}${path}`, { headers: { Authorization: `Bearer ${token}` } })
+  if (!res.ok) throw new GraphError(res.status, `Graph download ${path} failed (HTTP ${res.status})`)
+  return Buffer.from(await res.arrayBuffer())
+}
+
+export class GraphError extends Error {
+  constructor(public status: number, message: string) {
+    super(message)
+  }
+}
+
 // ─── Sending ──────────────────────────────────────────────────────────────────
 // All DocFlow email goes out through here, from MS_GRAPH_SENDER_EMAIL
 // (operation@tridentmanagement.com.my), and lands in that mailbox's Sent Items.

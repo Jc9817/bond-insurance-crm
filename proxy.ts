@@ -49,7 +49,9 @@ export async function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     // Exclude static files, images, and routes called by outside services without a login
-    // (Telegram bot, n8n AI-scan and Inbox callbacks, Vercel Cron) — they have their own auth via a shared secret
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$|api/telegram|api/ai-scan/callback|api/intake/callback|api/cron/).*)',
+    // (Telegram bot, n8n AI-scan and Inbox callbacks, Microsoft Graph notifications, Vercel Cron)
+    // — they have their own auth via a shared secret — and the Microsoft sign-in
+    // return page (auth/callback), which runs before the user is logged in
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$|api/telegram|api/ai-scan/callback|api/intake/callback|api/intake/email/notify|api/intake/sharepoint/notify|api/cron/|auth/callback).*)',
   ],
 }
