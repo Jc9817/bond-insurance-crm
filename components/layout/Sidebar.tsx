@@ -100,7 +100,7 @@ function GlobalSearch() {
   const q = query.trim().toLowerCase()
   const results = q.length < 2 ? [] : [
     ...customers.filter(c => c.customerName.toLowerCase().includes(q) || c.companyRegistrationNo.toLowerCase().includes(q)).slice(0, 3).map(c => ({ type: 'Customer' as const, label: c.customerName, sub: c.businessType, href: `/customers/${c.id}` })),
-    ...cases.filter(c => c.caseTitle.toLowerCase().includes(q) || c.customerName.toLowerCase().includes(q) || (c.bondPrincipal ?? '').toLowerCase().includes(q) || c.caseType.toLowerCase().includes(q)).slice(0, 4).map(c => ({ type: 'Case' as const, label: c.caseTitle, sub: c.bondPrincipal && c.bondPrincipal !== c.customerName ? `${c.customerName} → ${c.bondPrincipal}` : c.customerName, href: `/cases/${c.id}` })),
+    ...cases.filter(c => (c.caseNumber ?? '').toLowerCase().includes(q) || c.caseTitle.toLowerCase().includes(q) || c.customerName.toLowerCase().includes(q) || (c.bondPrincipal ?? '').toLowerCase().includes(q) || c.caseType.toLowerCase().includes(q)).slice(0, 4).map(c => ({ type: 'Case' as const, label: c.caseTitle, sub: c.bondPrincipal && c.bondPrincipal !== c.customerName ? `${c.customerName} → ${c.bondPrincipal}` : c.customerName, href: `/cases/${c.id}` })),
   ]
 
   const typeColor: Record<string, string> = { Customer: 'bg-blue-100 text-blue-700', Case: 'bg-violet-100 text-violet-700' }

@@ -77,6 +77,27 @@ renewed by itself.
 - [ ] Drag 20 files into SharePoint `Customers/_Inbox` in File Explorer: 20
       items appear in the Inbox, and the files move to `_Inbox/Processed`
 
+### Filed documents in SharePoint (fix list 4.4)
+
+With `SHAREPOINT_DRIVE_ID` set, DocFlow also keeps a copy of every case file
+in the Customers library:
+
+```
+<Customer>/<2026-005 Case title>/<topic folder>/<2026-005 Document type - original name>
+```
+
+Topic folders: `01 LOA & Contract`, `02 Company Docs`, `03 Financials`,
+`04 Quotations`, `05 Policies & Bonds`, `06 Correspondence`. Files are
+copied as they are added. A changed document type moves the file to the right
+folder, and deleting a file in DocFlow moves its copy to the SharePoint
+recycle bin. The daily job copies 15 older files a day until all are there.
+
+**Checks**
+- [ ] Approve a document from the DocFlow Inbox: within a minute it appears in
+      `Customers/<Customer>/<2026-005 Case>/<topic folder>` with the agreed name
+- [ ] On the case's Files tab, the file shows a **SharePoint** link that opens it
+- [ ] Retag the file as another document type: it moves to the matching folder
+
 ## E. Sign in with Microsoft
 
 1. Azure Portal → **App registrations** → **New registration**:

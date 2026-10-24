@@ -5,6 +5,7 @@ import { generateId } from '@/lib/utils'
 import { notifyDocFlowWebhook } from '@/lib/n8n'
 import { removeFile, saveFile, signFileUrlForServer } from '@/lib/storage-server'
 import { createIntakeItem, findDuplicate, sha256, type DuplicateMatch } from '@/lib/intake'
+import { sharePointStorageEnabled, syncCaseFile } from '@/lib/sharepoint-files'
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN!
 const ALLOWED_CHAT_ID = Number(process.env.TELEGRAM_ALLOWED_CHAT_ID!)
@@ -100,7 +101,7 @@ async function createCaseFromUpload(pending: PendingFile) {
   const description = pending.fileName.replace(/\.[^.]+$/, '')
   const caseTitle = `${yearMonth} - ${description}`
 
-  const { error: caseError } = await supabase.from('cases').insert({
+  const { data: newCase, error: caseError } = await supabase.from('cases').insert({
     id: caseId,
     case_title: caseTitle,
     // null, not '' — cases.customer_id has a foreign key to customers(id),
@@ -119,7 +120,7 @@ async function createCaseFromUpload(pending: PendingFile) {
     closing_remarks: '',
     created_at: uploadedAt,
     updated_at: uploadedAt,
-  })
+  }).select('case_number').single()   // the database numbers the case (2026-005)
 
   if (caseError) {
     console.error('[Telegram] case creation failed:', caseError.message)
@@ -127,8 +128,9 @@ async function createCaseFromUpload(pending: PendingFile) {
     return
   }
 
+  const caseFileId = generateId()
   const { error: fileError } = await supabase.from('case_files').insert({
-    id: generateId(),
+    id: caseFileId,
     case_id: caseId,
     file_name: pending.fileName,
     file_size: pending.fileSize,
@@ -148,6 +150,12 @@ async function createCaseFromUpload(pending: PendingFile) {
     return
   }
 
+  // Copy it into the case's SharePoint folder (fix list 4.4); the daily job retries on failure
+  if (sharePointStorageEnabled()) {
+    await syncCaseFile(supabase, caseFileId)
+      .catch(err => console.error('[Telegram] SharePoint copy failed:', err instanceof Error ? err.message : err))
+  }
+
   await notifyDocFlowWebhook({
     event: 'case_created_from_telegram',
     caseId,
@@ -164,7 +172,7 @@ async function createCaseFromUpload(pending: PendingFile) {
 
   await send(pending.chatId,
     `📄 <b>${esc(pending.fileName)}</b> received!\n` +
-    `✅ New case created: <code>${esc(caseId)}</code>\n\n` +
+    `✅ New case created: <b>${esc(newCase?.case_number ?? caseId)}</b>\n\n` +
     `Tagged as Letter of Award. View it here:\n${APP_URL}/cases/${caseId}`,
     pending.msgId
   )

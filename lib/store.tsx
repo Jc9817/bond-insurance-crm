@@ -162,7 +162,7 @@ const toContact = (c: Contact) => ({
 })
 
 const fromCase = (r: Row): Case => ({
-  id: r.id, caseTitle: r.case_title, customerId: r.customer_id ?? '',
+  id: r.id, caseNumber: r.case_number ?? undefined, caseTitle: r.case_title, customerId: r.customer_id ?? '',
   customerName: r.customer_name ?? '', caseType: r.case_type ?? '',
   amount: r.amount ?? 0, personInCharge: r.person_in_charge ?? '',
   currentStatus: r.current_status ?? 'Created', currentWorkflowStepId: r.current_workflow_step_id ?? undefined,
@@ -268,6 +268,7 @@ const fromCaseFile = (r: Row): CaseFile => ({
   aiScanned: r.ai_scanned ?? false, aiStatus: r.ai_status ?? 'Pending',
   aiExtractedData: r.ai_extracted_data ?? null, aiPrompt: r.ai_prompt ?? undefined,
   fileHash: r.file_hash ?? undefined,
+  sharepointItemId: r.sharepoint_item_id ?? undefined, sharepointUrl: r.sharepoint_url ?? undefined,
 })
 const toCaseFile = (f: CaseFile) => ({
   id: f.id, case_id: f.caseId, file_name: f.fileName, file_size: f.fileSize,
@@ -361,6 +362,13 @@ const fromUser = (r: Row): User => ({
   role: r.role === 'Admin' ? 'Admin' : 'Staff', status: r.status === 'Inactive' ? 'Inactive' : 'Active',
   createdAt: r.created_at,
 })
+
+/** Asks the server to update a case file's SharePoint copy (fix list 4.4). Fire and forget. */
+const syncToSharePoint = (body: { caseFileId: string } | { action: 'delete'; itemId: string }) => {
+  fetch('/api/files/sharepoint', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  }).catch(err => console.error('[SharePoint] sync request failed:', err))
+}
 
 // ─── What the startup load fetches (see loadAll) ─────────────────────────────
 
@@ -658,9 +666,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const template = getWorkflowTemplate(c.caseType, workflowTemplates, customer?.businessType)
     const row: Case = { ...c, id: generateId(), createdAt: nowIso(), updatedAt: nowIso(), workflowTemplateId: template?.id }
     setCases(prev => [row, ...prev])
-    createClient().from('cases').insert(toCase(row)).then(({ error }) => {
+    // The database gives the case its number (2026-005) — read it back
+    createClient().from('cases').insert(toCase(row)).select('case_number').single().then(({ data, error }) => {
       if (error) console.error('[Supabase] addCase failed:', error.message, '| hint:', error.hint, '| details:', error.details)
-      else console.log('[Supabase] addCase saved:', row.caseTitle)
+      else if (data?.case_number) setCases(prev => prev.map(x => x.id === row.id ? { ...x, caseNumber: data.case_number } : x))
     })
     return row.id
   }
@@ -823,6 +832,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (error) console.error('[Supabase] sendCaseFileToInbox insert failed:', error.message)
     })
     sb.from('case_files').delete().eq('id', file.id).then()
+    // No longer filed, so no longer in the case's SharePoint folder
+    if (file.sharepointItemId) syncToSharePoint({ action: 'delete', itemId: file.sharepointItemId })
   }
 
   const deleteCase = (id: string) => {
@@ -945,7 +956,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const addCaseFile = (f: Omit<CaseFile, 'id' | 'uploadedAt'>): string => {
     const row: CaseFile = { ...f, id: generateId(), uploadedAt: nowIso() }
     setCaseFiles(prev => [...prev, row])
-    createClient().from('case_files').upsert(toCaseFile(row)).then()
+    createClient().from('case_files').upsert(toCaseFile(row)).then(({ error }) => {
+      if (!error) syncToSharePoint({ caseFileId: row.id })
+    })
     notifyDocFlow(row)
     return row.id
   }
@@ -954,9 +967,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setCaseFiles(prev => prev.filter(x => x.id !== id))
     const sb = createClient()
     sb.from('case_files').delete().eq('id', id).then()
-    // Also remove the actual file from Supabase Storage
+    // Also remove the actual file from Supabase Storage, and its SharePoint copy
     const path = storagePath(file?.fileDataUrl)
     if (path) sb.storage.from(STORAGE_BUCKET).remove([path]).then()
+    if (file?.sharepointItemId) syncToSharePoint({ action: 'delete', itemId: file.sharepointItemId })
   }
   const updateCaseFile = (id: string, f: Partial<CaseFile>) => {
     setCaseFiles(prev => prev.map(x => x.id === id ? { ...x, ...f } : x))
@@ -967,7 +981,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (f.documentType !== undefined) updateData.document_type = f.documentType
     if (f.requiredDocumentId !== undefined) updateData.required_document_id = f.requiredDocumentId
     if (Object.keys(updateData).length > 0)
-      createClient().from('case_files').update(updateData).eq('id', id).then()
+      createClient().from('case_files').update(updateData).eq('id', id).then(({ error }) => {
+        // A new document type can mean a different SharePoint folder and name
+        if (!error && f.documentType !== undefined) syncToSharePoint({ caseFileId: id })
+      })
   }
 
   // Scanning itself happens in n8n, not here — this just fires the trigger

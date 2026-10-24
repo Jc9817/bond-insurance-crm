@@ -220,6 +220,9 @@ function FileRow({
         </button>
         <p className="text-xs text-gray-400 truncate">
           {formatFileSize(file.fileSize)} · {timeAgo(file.uploadedAt)} · {file.uploadedBy}
+          {file.sharepointUrl && (
+            <> · <a href={file.sharepointUrl} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">SharePoint</a></>
+          )}
         </p>
       </div>
 

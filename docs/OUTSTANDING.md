@@ -9,8 +9,8 @@ _Last updated: 24 Oct 2026_
 
 ## [ ] Putting the finished work live (do these in this order)
 
-Every finished item since Stage 1 (2.3–2.6, 3.1–3.5, 4.1–4.3, 4.5, 5.1–5.3) is on the
-branch **`stage4-microsoft`**. Each item was built on top of the one before,
+Every finished item since Stage 1 (2.3–2.6, 3.1–3.5, 4.1–4.5, 5.1–5.3) is on the
+branch **`stage4-sharepoint-storage`**. Each item was built on top of the one before,
 so this one branch contains all of them.
 
 1. **Database first.** In Supabase → SQL Editor, paste and run these files,
@@ -24,11 +24,13 @@ so this one branch contains all of them.
      have a bond expiry date get a first policy row automatically)
    - `supabase/migrations/20261025100000_graph_subscriptions.sql` (email and
      SharePoint intake bookkeeping)
+   - `supabase/migrations/20261025110000_case_number_sharepoint.sql` (readable
+     case numbers like 2026-005; existing cases are numbered in date order)
 2. **Push and merge.** In the VS Code terminal:
    ```
-   git push -u origin stage4-microsoft
+   git push -u origin stage4-sharepoint-storage
    ```
-   Then on GitHub open a pull request from `stage4-microsoft` into `master` and
+   Then on GitHub open a pull request from `stage4-sharepoint-storage` into `master` and
    merge it. Wait for Vercel to show **Ready**.
 3. **Move old files out of the database.** In the VS Code terminal, first a
    dry run (only counts, changes nothing):
@@ -306,11 +308,12 @@ delete rule can be built.
 
 ---
 
-## [ ] 4.1 / 4.2 / 4.5 Email intake, SharePoint _Inbox, Sign in with Microsoft
+## [ ] 4.1 / 4.2 / 4.4 / 4.5 Email intake, SharePoint _Inbox and filing, Sign in with Microsoft
 
 Finished in DocFlow; they switch on once your Microsoft 365 administrator
 follows [docs/microsoft-365-setup.md](microsoft-365-setup.md) (Azure
-permissions, the SharePoint `_Inbox` folder, a few Vercel settings). The
+permissions, the SharePoint `_Inbox` folder, a few Vercel settings). Case
+numbers (2026-005) work as soon as the database file above is run. The
 checks are listed at the end of each part of that guide.
 
 ---

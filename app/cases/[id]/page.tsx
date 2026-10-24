@@ -235,7 +235,10 @@ export default function CaseDetailPage() {
         </div>
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div className="min-w-0">
-            <h1 className="text-xl font-bold text-gray-900 tracking-tight leading-tight">{caseItem.caseTitle}</h1>
+            <h1 className="text-xl font-bold text-gray-900 tracking-tight leading-tight">
+              {caseItem.caseNumber && <span className="text-gray-400 font-semibold mr-2">{caseItem.caseNumber}</span>}
+              {caseItem.caseTitle}
+            </h1>
             <div className="flex items-center gap-3 mt-1.5 flex-wrap text-sm text-gray-500">
               <select
                 value={caseItem.currentStatus}

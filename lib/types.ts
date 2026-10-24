@@ -118,6 +118,7 @@ export type LoaAiStatus = (typeof LOA_AI_STATUSES)[number]
 
 export type Case = {
   id: string
+  caseNumber?: string     // readable "2026-005", given by the database when the case is created
   caseTitle: string
   customerId: string
   customerName: string
@@ -314,6 +315,8 @@ export type CaseFile = {
   aiPrompt?: string            // extraction instructions copied from RequiredDocument at upload time
   supersededBy?: string        // id of the newer file that replaced this one
   fileHash?: string            // SHA-256 of the file — spots the same file arriving again
+  sharepointItemId?: string    // its copy in the SharePoint Customers library (fix list 4.4)
+  sharepointUrl?: string       // link to open that copy
 }
 
 
