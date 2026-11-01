@@ -59,6 +59,7 @@ type StoreCtx = {
   setPrimaryContact: (customerId: string, contactId: string) => void
 
   addCase: (c: Omit<Case, 'id' | 'createdAt'>) => string
+  addCaseAndWait: (c: Omit<Case, 'id' | 'createdAt'>) => Promise<string>   // resolves once saved (throws if not)
   updateCase: (id: string, c: Partial<Case>) => void
   deleteCase: (id: string) => void
   archiveCase: (id: string) => void
@@ -661,17 +662,35 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   // ─── Cases ────────────────────────────────────────────────────────────────
 
-  const addCase = (c: Omit<Case, 'id' | 'createdAt'>): string => {
+  // Adds the case; `saved` settles once the database has it.
+  const insertCase = (c: Omit<Case, 'id' | 'createdAt'>): { id: string; saved: Promise<void> } => {
     const customer = customers.find(x => x.id === c.customerId)
     const template = getWorkflowTemplate(c.caseType, workflowTemplates, customer?.businessType)
     const row: Case = { ...c, id: generateId(), createdAt: nowIso(), updatedAt: nowIso(), workflowTemplateId: template?.id }
     setCases(prev => [row, ...prev])
     // The database gives the case its number (2026-005) — read it back
-    createClient().from('cases').insert(toCase(row)).select('case_number').single().then(({ data, error }) => {
-      if (error) console.error('[Supabase] addCase failed:', error.message, '| hint:', error.hint, '| details:', error.details)
-      else if (data?.case_number) setCases(prev => prev.map(x => x.id === row.id ? { ...x, caseNumber: data.case_number } : x))
-    })
-    return row.id
+    const save = () => createClient().from('cases').insert(toCase(row)).select('case_number').single()
+    const saved = Promise.resolve(save())
+      // A customer added moments ago may still be saving: try once more
+      .then(async res => res.error?.code === '23503' ? (await new Promise(r => setTimeout(r, 1500)), save()) : res)
+      .then(({ data, error }) => {
+        if (error) {
+          console.error('[Supabase] addCase failed:', error.message, '| hint:', error.hint, '| details:', error.details)
+          throw new Error(error.message)
+        }
+        if (data?.case_number) setCases(prev => prev.map(x => x.id === row.id ? { ...x, caseNumber: data.case_number } : x))
+      })
+    return { id: row.id, saved }
+  }
+  const addCase = (c: Omit<Case, 'id' | 'createdAt'>): string => {
+    const { id, saved } = insertCase(c)
+    saved.catch(() => {})
+    return id
+  }
+  const addCaseAndWait = async (c: Omit<Case, 'id' | 'createdAt'>): Promise<string> => {
+    const { id, saved } = insertCase(c)
+    await saved
+    return id
   }
   const updateCase = (id: string, c: Partial<Case>) => {
     const updated = { ...c, updatedAt: nowIso() }
@@ -1258,7 +1277,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       loadCase, loadInbox,
       addCustomer, updateCustomer, deleteCustomer,
       addContact, updateContact, deleteContact, setPrimaryContact,
-      addCase, updateCase, deleteCase, archiveCase, restoreCase,
+      addCase, addCaseAndWait, updateCase, deleteCase, archiveCase, restoreCase,
       addCaseNote,
       addFollowUp, updateFollowUp, deleteFollowUp, toggleFollowUp,
       addPic, deletePic,

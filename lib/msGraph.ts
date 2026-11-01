@@ -51,6 +51,7 @@ export async function graphRequest<T = Record<string, unknown>>(
   method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
   path: string,
   body?: unknown,
+  headers: Record<string, string> = {},
 ): Promise<T> {
   const token = await getGraphToken()
   const res = await fetch(path.startsWith('https://') ? path : `${GRAPH}${path}`, {
@@ -58,6 +59,7 @@ export async function graphRequest<T = Record<string, unknown>>(
     headers: {
       Authorization: `Bearer ${token}`,
       ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+      ...headers,
     },
     body: body === undefined ? undefined : JSON.stringify(body),
   })

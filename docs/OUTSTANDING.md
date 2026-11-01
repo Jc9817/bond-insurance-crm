@@ -323,6 +323,47 @@ checks are listed at the end of each part of that guide.
 
 ---
 
+## [ ] Emails screen — run the database file, then check
+
+New (1 Nov 2026): an **Emails** page shows the shared mailbox (`operation@`,
+last 30 days). For each email the AI suggests **Create case**, **Add to
+existing case**, **Split across cases** or **Not a case**, and you decide.
+Attachments stay in the mailbox until you file them; they no longer go to
+the Inbox page one by one (the Inbox stays for Telegram, the SharePoint
+`_Inbox` folder and uploads).
+
+To switch it on:
+- [ ] Supabase → SQL Editor: paste and run
+      `supabase/migrations/20261101100000_mail_messages.sql`
+- [ ] Merge and deploy the `emails-screen` branch
+- [ ] It needs the Microsoft 365 setup (`Mail.Read` and `MAIL_INTAKE_MAILBOX`,
+      see [microsoft-365-setup.md](microsoft-365-setup.md) parts A and D).
+      New emails show up by themselves once `GRAPH_WEBHOOK_SECRET` is set
+      too; without it, press **Refresh**
+- [ ] `ANTHROPIC_API_KEY` is set in Vercel (it already is if the email
+      drafter works). The AI reading uses Claude Opus 5.5: roughly
+      RM 0.30–1 per email with PDFs. Emails from the last 7 days with
+      attachments are read automatically; older ones when you open them
+
+Checks:
+- [ ] Sidebar → **Emails** opens and lists recent `operation@` emails
+- [ ] Open an email with a PDF: the text shows, the PDF opens when clicked
+- [ ] An email about a new project suggests **Create case**; the form is
+      filled in (title, contractor, value); saving creates the case, files
+      the ticked attachments into it, and adds the ticked policies
+- [ ] A new contractor: the yellow note appears and **+ New Contractor** is
+      pre-filled with the name and SSM number
+- [ ] **Add to existing case**: the files appear on the case, in the right
+      checklist slot, and the email shows in the case's email history as
+      "Received"
+- [ ] **Split across cases**: each attachment lands on its own case; the list
+      tag shows "split · 2 cases"
+- [ ] **Not a case** moves it to Done; **Undo** brings it back
+- [ ] Filing the same PDF to the same case twice does not add it twice
+- [ ] Filed files get their SharePoint copy (if SharePoint is set up)
+
+---
+
 ## [ ] 5.5 Telegram: keep for phone photos, or remove
 
 Telegram is now marked as an optional extra in DocFlow. Once email intake

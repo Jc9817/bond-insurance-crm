@@ -5,7 +5,7 @@ finished; it needs the permissions and settings below before it works.
 
 | Part | What it does | Fix list |
 |---|---|---|
-| A–D | Emails to `operation@` and files dropped in SharePoint `_Inbox` appear in the DocFlow Inbox automatically | 4.1, 4.2 |
+| A–D | Emails to `operation@` appear on DocFlow's **Emails** screen (the AI suggests a case; attachments are filed from there), and files dropped in SharePoint `_Inbox` appear in the DocFlow Inbox | 4.1, 4.2 |
 | E | Staff sign in to DocFlow with their Microsoft account | 4.5 |
 
 Do **1.3** first (limit the app to `operation@`; see `docs/OUTSTANDING.md`).
@@ -71,9 +71,11 @@ Vercel → the DocFlow project → **Settings → Environment Variables**:
 renewed by itself.
 
 **Checks**
-- [ ] Email `operation@` with three PDFs attached: three items appear in the
-      DocFlow Inbox within a minute, marked "Email" with the sender's address
-- [ ] Email a zip of 5 documents: 5 items appear
+- [ ] DocFlow → **Emails**: the last 30 days of `operation@` emails are listed
+      (the screen checks the mailbox when it opens; **Refresh** checks again)
+- [ ] Email `operation@` with three PDFs attached: within a minute or two it
+      appears on the Emails screen with the AI's suggestion. Nothing is added
+      to the Inbox page
 - [ ] Drag 20 files into SharePoint `Customers/_Inbox` in File Explorer: 20
       items appear in the Inbox, and the files move to `_Inbox/Processed`
 

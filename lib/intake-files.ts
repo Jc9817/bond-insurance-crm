@@ -6,8 +6,8 @@ import { saveFile } from './storage-server'
 import { createIntakeItem, sha256 } from './intake'
 
 // Server-only. Turns a received file — or every document inside a received
-// zip — into Inbox items. Shared by bulk upload (4.3), email intake (4.1) and
-// the SharePoint _Inbox folder (4.2).
+// zip — into Inbox items. Shared by bulk upload (4.3) and the SharePoint
+// _Inbox folder (4.2). (Email attachments are filed from the Emails screen.)
 
 // Guards against oversized or malicious zips
 const MAX_ZIP_ENTRIES = 300
