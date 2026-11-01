@@ -45,7 +45,11 @@ so this one branch contains all of them.
 
 ---
 
-## [ ] 1.3 Limit the Microsoft 365 app to operation@ only
+## [x] 1.3 Limit the Microsoft 365 app to operation@ only (done 2 Nov 2026)
+
+Done with the group **DocFlow Mailbox** (`docflow-mailbox@tridentmanagement.com.my`,
+only member `operation@`). Test: operation@ Granted, jcfong@ Denied. The same
+restriction covers reading the mailbox for the Emails screen.
 
 **Why:** DocFlow sends email through an Azure app with the *application*
 `Mail.Send` permission. As it stands, that permission lets the app send as
@@ -341,8 +345,15 @@ To switch it on:
       The screen checks the mailbox each time it is opened (and on **Refresh**)
 - [x] Supabase table created (run in the SQL Editor, 1 Nov 2026)
 - [x] Restriction so the app can only use `operation@`: group **DocFlow
-      Mailbox** created and the Exchange access policy added (1 Nov 2026).
-      Still to do: the test (operation@ → Granted, jcfong@ → Denied)
+      Mailbox** created and the Exchange access policy added (1 Nov 2026);
+      tested 2 Nov: operation@ Granted, jcfong@ Denied
+- [x] Microsoft settings added in Vercel (2 Nov 2026): `MAIL_INTAKE_MAILBOX`
+      and the four `MS_GRAPH_*` (they were missing, so live email sending
+      was not working before either). Sender is `operation@`
+- [ ] Check: Emails → Refresh lists the emails (a 403 "AppOnly AccessPolicy"
+      right after the restriction is Microsoft still catching up — wait an hour)
+- [ ] Check: send a quotation email from a live case now that the Microsoft
+      settings are in Vercel
 - [ ] Parked (nice to have): **new emails appear by themselves**, already read
       by the AI before anyone opens the screen. Add in Vercel two settings,
       each any long random text (different from each other), then redeploy:
