@@ -3,11 +3,11 @@
 Items from earlier stages that are not finished yet. Tick them off here and
 delete the section once done.
 
-_Last updated: 24 Oct 2026_
+_Last updated: 1 Nov 2026_
 
 ---
 
-## [ ] Putting the finished work live (do these in this order)
+## [x] Putting the finished work live (done 1 Nov 2026)
 
 Every finished item since Stage 1 (2.3–2.6, 3.1–3.5, 4.1–4.6, 5.1–5.3, 5.6) is on the
 branch **`stage5-retention`**. Each item was built on top of the one before,
@@ -262,7 +262,7 @@ Checks afterwards:
 
 ---
 
-## [ ] 5.2 Daily renewal reminders — set up, then check
+## [ ] 5.2 Daily renewal reminders — set up, then check (parked: nice to have)
 
 Every morning at 8am (Malaysia time), DocFlow checks for policies expiring
 within 60 and 30 days, creates a renewal follow-up for each, and emails one
@@ -357,7 +357,7 @@ Merge them into one list with an optional email. Fits naturally with 2.5
 
 ---
 
-## [ ] Set yourself as Admin (if not done)
+## [x] Set yourself as Admin (done)
 
 ```sql
 update user_roles set role = 'Admin', full_name = 'JC Fong'
