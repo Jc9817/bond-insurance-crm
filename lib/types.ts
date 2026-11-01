@@ -193,7 +193,8 @@ export type EmailTemplate = {
   body: string
 }
 
-export const CASE_EMAIL_STATUSES = ['sent', 'failed'] as const
+// 'received': an email from the shared mailbox filed to this case (Emails screen)
+export const CASE_EMAIL_STATUSES = ['sent', 'failed', 'received'] as const
 export type CaseEmailStatus = (typeof CASE_EMAIL_STATUSES)[number]
 
 export type CaseEmailLog = {
@@ -369,6 +370,70 @@ export type IntakeItem = {
   decidedBy?: string
   decidedAt?: string
   sourceMeta: Record<string, unknown>
+}
+
+// ─── Emails screen (mail_messages) ───────────────────────────────────────────
+// One row per email in the shared mailbox. Attachments stay in the mailbox
+// until someone files them to a case.
+
+export const MAIL_STATUSES = ['new', 'analysing', 'ready', 'filed', 'not_case'] as const
+export type MailStatus = (typeof MAIL_STATUSES)[number]
+
+export type MailAttachment = {
+  id: string              // Microsoft's attachment id
+  name: string
+  size: number
+  contentType: string
+  filedTo?: { caseId: string; caseFileId: string; documentType: string }
+}
+
+export const MAIL_ACTIONS = ['create_case', 'existing_case', 'split', 'not_case'] as const
+export type MailAction = (typeof MAIL_ACTIONS)[number]
+
+export type MailPolicySuggestion = {
+  policyType: string
+  policyNumber: string
+  insurer: string
+  sumInsured?: number
+  startDate?: string      // YYYY-MM-DD
+  expiryDate?: string
+}
+
+/** What the AI suggests for one email. Nothing is created until a person decides. */
+export type MailSuggestion = {
+  action: MailAction
+  summary: string                        // one line, plain words
+  confidence: number                     // 0–1
+  customer?: { id?: string; name: string; ssm?: string; isNew: boolean }
+  caseId?: string                        // the existing case, for existing_case
+  caseTitle?: string                     // proposed title, for create_case
+  caseType?: string                      // workflow, from CASE_TYPES
+  requestType?: string                   // from REQUEST_TYPES
+  principal?: string                     // employer / project owner
+  amount?: number                        // contract value
+  coverTypes?: string                    // e.g. "CAR + WC"
+  references?: string                    // RFQ, PO, tender numbers
+  policies: MailPolicySuggestion[]
+  attachments: Record<string, { documentType: string; caseId?: string }>   // by attachment id
+}
+
+export type MailMessage = {
+  id: string
+  graphId: string
+  subject: string
+  fromName: string
+  fromAddress: string
+  toRecipients: string
+  ccRecipients: string
+  receivedAt: string
+  bodyText: string
+  attachments: MailAttachment[]
+  status: MailStatus
+  aiSuggestion?: MailSuggestion | null
+  aiError?: string
+  caseIds: string[]
+  decidedBy?: string
+  decidedAt?: string
 }
 
 // ─── Activity Log ─────────────────────────────────────────────────────────────

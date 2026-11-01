@@ -119,18 +119,19 @@ export default function CustomerEmailPanel({ caseItem, customerName, defaultToEm
 
       {history.length > 0 && (
         <div className="border-t border-gray-100 px-5 py-4">
-          <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2.5">Sent History</p>
+          <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2.5">Email History</p>
           <div className="space-y-2">
             {history.map(h => (
               <div key={h.id} className="flex items-center justify-between text-sm">
                 <div className="min-w-0">
                   <p className="text-gray-700 font-medium truncate">{h.subject}</p>
-                  <p className="text-xs text-gray-400">To {h.toEmail} · {new Date(h.sentAt).toLocaleString()}</p>
+                  <p className="text-xs text-gray-400">{h.status === 'received' ? 'From' : 'To'} {h.toEmail} · {new Date(h.sentAt).toLocaleString()}</p>
                 </div>
                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ml-2 ${
-                  h.status === 'sent' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600'
+                  h.status === 'sent' ? 'bg-emerald-100 text-emerald-700'
+                    : h.status === 'received' ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-600'
                 }`}>
-                  {h.status === 'sent' ? 'Sent' : 'Failed'}
+                  {h.status === 'sent' ? 'Sent' : h.status === 'received' ? 'Received' : 'Failed'}
                 </span>
               </div>
             ))}

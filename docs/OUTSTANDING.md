@@ -3,11 +3,11 @@
 Items from earlier stages that are not finished yet. Tick them off here and
 delete the section once done.
 
-_Last updated: 24 Oct 2026_
+_Last updated: 1 Nov 2026_
 
 ---
 
-## [ ] Putting the finished work live (do these in this order)
+## [x] Putting the finished work live (done 1 Nov 2026)
 
 Every finished item since Stage 1 (2.3–2.6, 3.1–3.5, 4.1–4.6, 5.1–5.3, 5.6) is on the
 branch **`stage5-retention`**. Each item was built on top of the one before,
@@ -262,7 +262,7 @@ Checks afterwards:
 
 ---
 
-## [ ] 5.2 Daily renewal reminders — set up, then check
+## [ ] 5.2 Daily renewal reminders — set up, then check (parked: nice to have)
 
 Every morning at 8am (Malaysia time), DocFlow checks for policies expiring
 within 60 and 30 days, creates a renewal follow-up for each, and emails one
@@ -271,7 +271,9 @@ at 60 days and once at 30 days. Active policies past their expiry date are
 marked Expired.
 
 Set up (Vercel → Settings → Environment Variables), then redeploy:
-- `CRON_SECRET`: any long random text (Vercel uses it to call the job safely)
+- `CRON_SECRET`: any long random text (Vercel uses it to call the job safely).
+  The same daily job also renews the "new email" arrangement with Microsoft
+  for the Emails screen (see the Emails screen section)
 - `OPS_NOTIFY_EMAIL`: who receives the summary (already used for ops notices)
 
 Checks:
@@ -323,6 +325,55 @@ checks are listed at the end of each part of that guide.
 
 ---
 
+## [ ] Emails screen — run the database file, then check
+
+New (1 Nov 2026): an **Emails** page shows the shared mailbox (`operation@`,
+last 30 days). For each email the AI suggests **Create case**, **Add to
+existing case**, **Split across cases** or **Not a case**, and you decide.
+Attachments stay in the mailbox until you file them; they no longer go to
+the Inbox page one by one (the Inbox stays for Telegram, the SharePoint
+`_Inbox` folder and uploads).
+
+To switch it on:
+- [ ] Merge and deploy the `emails-screen` branch
+- [ ] It needs the Microsoft 365 setup (`Mail.Read` and `MAIL_INTAKE_MAILBOX`,
+      see [microsoft-365-setup.md](microsoft-365-setup.md) parts A and D).
+      The screen checks the mailbox each time it is opened (and on **Refresh**)
+- [x] Supabase table created (run in the SQL Editor, 1 Nov 2026)
+- [x] Restriction so the app can only use `operation@`: group **DocFlow
+      Mailbox** created and the Exchange access policy added (1 Nov 2026).
+      Still to do: the test (operation@ → Granted, jcfong@ → Denied)
+- [ ] Parked (nice to have): **new emails appear by themselves**, already read
+      by the AI before anyone opens the screen. Add in Vercel two settings,
+      each any long random text (different from each other), then redeploy:
+      `GRAPH_WEBHOOK_SECRET` (Microsoft repeats it on every "new email" call
+      so DocFlow knows the call is genuine) and `CRON_SECRET` (the daily job,
+      which sets up and renews that arrangement with Microsoft — see 5.2;
+      it also switches on the policy reminders)
+- [ ] `ANTHROPIC_API_KEY` is set in Vercel (it already is if the email
+      drafter works). The AI reading uses Claude Opus 5.5: roughly
+      RM 0.30–1 per email with PDFs. Emails from the last 7 days with
+      attachments are read automatically; older ones when you open them
+
+Checks:
+- [ ] Sidebar → **Emails** opens and lists recent `operation@` emails
+- [ ] Open an email with a PDF: the text shows, the PDF opens when clicked
+- [ ] An email about a new project suggests **Create case**; the form is
+      filled in (title, contractor, value); saving creates the case, files
+      the ticked attachments into it, and adds the ticked policies
+- [ ] A new contractor: the yellow note appears and **+ New Contractor** is
+      pre-filled with the name and SSM number
+- [ ] **Add to existing case**: the files appear on the case, in the right
+      checklist slot, and the email shows in the case's email history as
+      "Received"
+- [ ] **Split across cases**: each attachment lands on its own case; the list
+      tag shows "split · 2 cases"
+- [ ] **Not a case** moves it to Done; **Undo** brings it back
+- [ ] Filing the same PDF to the same case twice does not add it twice
+- [ ] Filed files get their SharePoint copy (if SharePoint is set up)
+
+---
+
 ## [ ] 5.5 Telegram: keep for phone photos, or remove
 
 Telegram is now marked as an optional extra in DocFlow. Once email intake
@@ -357,7 +408,7 @@ Merge them into one list with an optional email. Fits naturally with 2.5
 
 ---
 
-## [ ] Set yourself as Admin (if not done)
+## [x] Set yourself as Admin (done)
 
 ```sql
 update user_roles set role = 'Admin', full_name = 'JC Fong'

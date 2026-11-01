@@ -2,13 +2,14 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { GraphError, graphConfigured, graphDownload, graphRequest } from './msGraph'
 import { addReceivedFile, emptyOutcome, type IntakeOutcome } from './intake-files'
 
-// Server-only. Documents arriving by email (fix list 4.1) and through the
-// SharePoint _Inbox folder (4.2) become Inbox items automatically.
+// Server-only. New emails (fix list 4.1) are added to the Emails screen
+// (lib/mail-inbox.ts); documents dropped in the SharePoint _Inbox folder (4.2)
+// become Inbox items automatically.
 //
 // How it works: DocFlow holds two Microsoft Graph "subscriptions" — standing
 // requests for Microsoft to call DocFlow when something changes:
 //   mail        a new message in MAIL_INTAKE_MAILBOX's Inbox
-//               -> /api/intake/email/notify -> processMailMessage()
+//               -> /api/intake/email/notify -> importMessage() + analyseMessage()
 //   sharepoint  a change in the SHAREPOINT_DRIVE_ID document library
 //               -> /api/intake/sharepoint/notify -> processSharePointChanges(),
 //               which takes in new files from the _Inbox folder and moves
@@ -104,46 +105,6 @@ export async function ensureSubscriptions(sb: SupabaseClient): Promise<string[]>
     report.push('sharepoint: not set up (SHAREPOINT_DRIVE_ID / GRAPH_WEBHOOK_SECRET)')
   }
   return report
-}
-
-// ─── Email (4.1) ────────────────────────────────────────────────────────────
-
-type MailMessage = {
-  id: string; subject?: string; internetMessageId?: string; hasAttachments?: boolean
-  from?: { emailAddress?: { name?: string; address?: string } }
-}
-type MailAttachment = {
-  '@odata.type': string; name?: string; isInline?: boolean; contentBytes?: string
-}
-
-/** Takes in one new email's attachments (each document becomes an Inbox item). */
-export async function processMailMessage(sb: SupabaseClient, messageId: string): Promise<IntakeOutcome> {
-  const outcome = emptyOutcome()
-  const { data: seen } = await sb.from('intake_items').select('id').eq('source_meta->>messageId', messageId).limit(1)
-  if (seen?.length) return outcome   // Microsoft can notify twice
-
-  const base = `/users/${encodeURIComponent(mailbox())}/messages/${encodeURIComponent(messageId)}`
-  const msg = await graphRequest<MailMessage>('GET', `${base}?$select=id,subject,from,internetMessageId,hasAttachments`)
-  if (!msg.hasAttachments) return outcome
-
-  const from = msg.from?.emailAddress
-  const sender = from?.name && from.address ? `${from.name} <${from.address}>` : from?.address ?? 'Email'
-  const { value: attachments } = await graphRequest<{ value: MailAttachment[] }>('GET', `${base}/attachments`)
-
-  for (const a of attachments) {
-    // Files only — not embedded emails, cloud links or inline signature images
-    if (a['@odata.type'] !== '#microsoft.graph.fileAttachment' || a.isInline || !a.contentBytes || !a.name) continue
-    try {
-      await addReceivedFile(sb, {
-        source: 'email', sender, fileName: a.name, content: Buffer.from(a.contentBytes, 'base64'),
-        sourceMeta: { messageId, internetMessageId: msg.internetMessageId, subject: msg.subject, from: from?.address },
-      }, outcome)
-    } catch (err) {
-      console.error('[mail intake]', a.name, err instanceof Error ? err.message : err)
-      outcome.skipped.push(a.name)
-    }
-  }
-  return outcome
 }
 
 // ─── SharePoint _Inbox folder (4.2) ─────────────────────────────────────────
