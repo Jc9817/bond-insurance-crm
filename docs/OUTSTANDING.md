@@ -271,7 +271,9 @@ at 60 days and once at 30 days. Active policies past their expiry date are
 marked Expired.
 
 Set up (Vercel → Settings → Environment Variables), then redeploy:
-- `CRON_SECRET`: any long random text (Vercel uses it to call the job safely)
+- `CRON_SECRET`: any long random text (Vercel uses it to call the job safely).
+  The same daily job also renews the "new email" arrangement with Microsoft
+  for the Emails screen (see the Emails screen section)
 - `OPS_NOTIFY_EMAIL`: who receives the summary (already used for ops notices)
 
 Checks:
@@ -333,13 +335,21 @@ the Inbox page one by one (the Inbox stays for Telegram, the SharePoint
 `_Inbox` folder and uploads).
 
 To switch it on:
-- [ ] Supabase → SQL Editor: paste and run
-      `supabase/migrations/20261101100000_mail_messages.sql`
 - [ ] Merge and deploy the `emails-screen` branch
 - [ ] It needs the Microsoft 365 setup (`Mail.Read` and `MAIL_INTAKE_MAILBOX`,
       see [microsoft-365-setup.md](microsoft-365-setup.md) parts A and D).
-      New emails show up by themselves once `GRAPH_WEBHOOK_SECRET` is set
-      too; without it, press **Refresh**
+      The screen checks the mailbox each time it is opened (and on **Refresh**)
+- [x] Supabase table created (run in the SQL Editor, 1 Nov 2026)
+- [x] Restriction so the app can only use `operation@`: group **DocFlow
+      Mailbox** created and the Exchange access policy added (1 Nov 2026).
+      Still to do: the test (operation@ → Granted, jcfong@ → Denied)
+- [ ] Parked (nice to have): **new emails appear by themselves**, already read
+      by the AI before anyone opens the screen. Add in Vercel two settings,
+      each any long random text (different from each other), then redeploy:
+      `GRAPH_WEBHOOK_SECRET` (Microsoft repeats it on every "new email" call
+      so DocFlow knows the call is genuine) and `CRON_SECRET` (the daily job,
+      which sets up and renews that arrangement with Microsoft — see 5.2;
+      it also switches on the policy reminders)
 - [ ] `ANTHROPIC_API_KEY` is set in Vercel (it already is if the email
       drafter works). The AI reading uses Claude Opus 5.5: roughly
       RM 0.30–1 per email with PDFs. Emails from the last 7 days with
