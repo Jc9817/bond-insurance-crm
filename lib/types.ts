@@ -385,7 +385,11 @@ export type MailAttachment = {
   size: number
   contentType: string
   filedTo?: { caseId: string; caseFileId: string; documentType: string }
+  alsoFiledTo?: { caseId: string; caseFileId: string; documentType: string }[]   // later filings to other cases
 }
+
+/** Every case an attachment has been filed to, first one first. */
+export const filedCases = (a: MailAttachment) => [...(a.filedTo ? [a.filedTo] : []), ...(a.alsoFiledTo ?? [])]
 
 export const MAIL_ACTIONS = ['create_case', 'existing_case', 'split', 'not_case'] as const
 export type MailAction = (typeof MAIL_ACTIONS)[number]

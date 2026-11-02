@@ -2,7 +2,7 @@ import { randomUUID } from 'crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { graphConfigured, graphDownload, graphRequest } from './msGraph'
 import type { Customer, MailAttachment, MailReference, MailSuggestion } from './types'
-import { CASE_TYPES, MAIL_ACTIONS, REFERENCE_KINDS, REQUEST_TYPES } from './types'
+import { CASE_TYPES, MAIL_ACTIONS, REFERENCE_KINDS, REQUEST_TYPES, filedCases } from './types'
 import {
   applyCaseMatch, cleanReferences, findCaseMatch, loadedStore, normalizeReference, recordFiling, splitReferences,
   type CaseLinkStore, type CaseMatch,
@@ -326,14 +326,24 @@ export async function fileMessage(
 
   for (const a of assignments) {
     const att = attachments.find(x => x.id === a.attachmentId)
-    if (!att || att.filedTo) continue
+    if (!att) continue
+    // Each attachment can go to several cases, once per case
+    if (filedCases(att).some(f => f.caseId === a.caseId)) {
+      outcome.duplicates.push(att.name)
+      continue
+    }
+    const record = (caseFileId: string) => {
+      const filing = { caseId: a.caseId, caseFileId, documentType: a.documentType }
+      if (att.filedTo) att.alsoFiledTo = [...(att.alsoFiledTo ?? []), filing]
+      else att.filedTo = filing
+    }
     try {
       const content = await downloadAttachment(row.graph_id, att.id)
       const fileHash = sha256(content)
       const { data: dup } = await sb.from('case_files').select('id')
         .eq('case_id', a.caseId).eq('file_hash', fileHash).limit(1)
       if (dup?.length) {
-        att.filedTo = { caseId: a.caseId, caseFileId: dup[0].id, documentType: a.documentType }
+        record(dup[0].id)
         outcome.duplicates.push(att.name)
         continue
       }
@@ -360,7 +370,7 @@ export async function fileMessage(
         description: `${att.name} from "${row.subject}" (${from}) filed as "${a.documentType}"`,
         changed_by: decidedBy, timestamp: new Date().toISOString(),
       })
-      att.filedTo = { caseId: a.caseId, caseFileId, documentType: a.documentType }
+      record(caseFileId)
       outcome.filed.push(att.name)
       outcome.caseFileIds.push(caseFileId)
     } catch (err) {

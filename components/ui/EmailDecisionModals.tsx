@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useStore } from '@/lib/store'
 import { useAuth } from '@/lib/auth'
-import type { Case, MailAttachment, MailMessage } from '@/lib/types'
+import { filedCases, type Case, type MailAttachment, type MailMessage } from '@/lib/types'
 import { getWorkflowTemplate } from '@/lib/workflow'
 import { formatDate, formatFileSize } from '@/lib/utils'
 import Modal from '@/components/ui/Modal'
@@ -59,12 +59,20 @@ function openCaseOptions(cases: Case[]) {
     .map(c => ({ value: c.id, label: `${c.caseNumber ? `${c.caseNumber} · ` : ''}${c.caseTitle} — ${c.customerName}` }))
 }
 
-/** Starting choices: every attachment not yet filed, with the AI's document type and case. */
+/**
+ * Starting choices for every attachment, with the AI's (or the earlier
+ * filing's) document type and case. Ticked unless already filed — an
+ * attachment can also go to more cases.
+ */
 function initialPicks(mail: MailMessage, defaultCaseId = ''): Picks {
   const s = mail.aiSuggestion
-  return Object.fromEntries(mail.attachments.filter(a => !a.filedTo).map(a => {
+  return Object.fromEntries(mail.attachments.map(a => {
     const ai = s?.attachments[a.id]
-    return [a.id, { include: true, documentType: ai?.documentType ?? 'Other', caseId: ai?.caseId ?? defaultCaseId }]
+    return [a.id, {
+      include: !a.filedTo,
+      documentType: a.filedTo?.documentType ?? ai?.documentType ?? 'Other',
+      caseId: a.filedTo ? defaultCaseId : ai?.caseId ?? defaultCaseId,
+    }]
   }))
 }
 
@@ -78,7 +86,11 @@ function AttachmentPicks({ attachments, picks, setPicks, withCase }: {
   const documentTypes = useDocumentTypes()
   const caseOptions = openCaseOptions(cases)
   const pending = attachments.filter(a => picks[a.id])
-  if (pending.length === 0) return <p className="text-sm text-gray-400">No attachments left to file.</p>
+  if (pending.length === 0) return <p className="text-sm text-gray-400">This email has no attachments.</p>
+  const caseNumber = (id: string) => {
+    const c = cases.find(x => x.id === id)
+    return c?.caseNumber ?? c?.caseTitle ?? 'a case'
+  }
 
   const set = (id: string, p: Partial<Pick>) => setPicks({ ...picks, [id]: { ...picks[id], ...p } })
   return (
@@ -94,6 +106,11 @@ function AttachmentPicks({ attachments, picks, setPicks, withCase }: {
               <span className="text-sm font-medium text-gray-800 truncate">{a.name}</span>
               <span className="text-xs text-gray-400 shrink-0">{formatFileSize(a.size)}</span>
             </label>
+            {a.filedTo && (
+              <p className="text-xs text-green-700 pl-5">
+                Already in {filedCases(a).map(f => caseNumber(f.caseId)).join(', ')} — tick to file it to this case too
+              </p>
+            )}
             {p.include && (
               <div className={`grid gap-2 ${withCase ? 'sm:grid-cols-2' : ''}`}>
                 {withCase && (

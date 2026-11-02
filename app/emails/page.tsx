@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { createClient } from '@/utils/supabase/client'
 import { useStore } from '@/lib/store'
 import { useAuth } from '@/lib/auth'
-import type { MailMessage, MailStatus, MailSuggestion } from '@/lib/types'
+import { filedCases, type MailMessage, type MailStatus, type MailSuggestion } from '@/lib/types'
 import { formatCurrency, formatDate, formatFileSize, timeAgo } from '@/lib/utils'
 import { groupThreads, type Thread } from '@/lib/mail-links'
 import { CreateCaseFromEmail, FileEmailModal } from '@/components/ui/EmailDecisionModals'
@@ -237,7 +237,7 @@ function MessageCard({ mail, title, body, selected, single, onSelect }: {
                 className="block border border-gray-200 bg-white rounded-lg px-3 py-2 hover:bg-gray-50 max-w-full">
                 <p className="text-sm font-medium text-gray-800 truncate">{a.name}</p>
                 <p className="text-xs text-blue-700">
-                  {a.filedTo ? `✓ ${a.filedTo.documentType} → ${caseNumber(a.filedTo.caseId)}`
+                  {a.filedTo ? `✓ ${a.filedTo.documentType} → ${filedCases(a).map(f => caseNumber(f.caseId)).join(', ')}`
                     : ai ? ai.documentType : formatFileSize(a.size)}
                 </p>
               </a>
