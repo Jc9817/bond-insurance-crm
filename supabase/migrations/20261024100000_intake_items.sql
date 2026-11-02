@@ -46,7 +46,8 @@ alter table case_files add column if not exists file_hash text;
 create index if not exists case_files_hash_idx on case_files (file_hash);
 
 -- The Telegram bot keeps the hash while it waits for "New case / Existing case"
-alter table telegram_pending_uploads add column if not exists file_hash text;
+-- (the bot and its tables were removed later: 20261102120000_remove_telegram.sql)
+alter table if exists telegram_pending_uploads add column if not exists file_hash text;
 
 -- Logged-in users only (same rule as 20261023100000_enable_rls.sql)
 alter table intake_items enable row level security;
@@ -56,16 +57,22 @@ create policy "Logged-in users full access" on intake_items
 revoke all on intake_items from anon;
 grant select, insert, update, delete on intake_items to authenticated, service_role;
 
--- Bring across what is waiting in the old Telegram Inbox
-insert into intake_items (id, source, sender, received_at, file_name, file_size, file_type, file_ref, status, source_meta)
-select id, 'telegram', coalesce(uploaded_by, ''), uploaded_at, coalesce(file_name, ''), coalesce(file_size, 0),
-       coalesce(file_type, ''), file_data_url, 'received',
-       jsonb_strip_nulls(jsonb_build_object(
-         'telegramChatId', telegram_chat_id,
-         'telegramMessageId', telegram_message_id,
-         'telegramFileId', telegram_file_id))
-from telegram_uploads
-on conflict (id) do nothing;
+-- Bring across what is waiting in the old Telegram Inbox (skipped once the
+-- table has been dropped)
+do $$
+begin
+  if to_regclass('public.telegram_uploads') is not null then
+    insert into intake_items (id, source, sender, received_at, file_name, file_size, file_type, file_ref, status, source_meta)
+    select id, 'telegram', coalesce(uploaded_by, ''), uploaded_at, coalesce(file_name, ''), coalesce(file_size, 0),
+           coalesce(file_type, ''), file_data_url, 'received',
+           jsonb_strip_nulls(jsonb_build_object(
+             'telegramChatId', telegram_chat_id,
+             'telegramMessageId', telegram_message_id,
+             'telegramFileId', telegram_file_id))
+    from telegram_uploads
+    on conflict (id) do nothing;
+  end if;
+end $$;
 
--- telegram_uploads is no longer written to; it is dropped when Telegram is
--- retired (fix list 5.5).
+-- telegram_uploads is no longer written to; dropped with the Telegram bot
+-- (fix list 5.5, 20261102120000_remove_telegram.sql).

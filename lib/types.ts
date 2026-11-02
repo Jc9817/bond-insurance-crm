@@ -324,6 +324,7 @@ export type CaseFile = {
 // ─── Unassigned Inbox (intake_items) ──────────────────────────────────────────
 // One row per document that arrived from any channel, waiting to be filed.
 
+// 'telegram': older items only — the Telegram bot was removed (Nov 2026)
 export const INTAKE_SOURCES = ['telegram', 'email', 'sharepoint', 'upload'] as const
 export type IntakeSource = (typeof INTAKE_SOURCES)[number]
 

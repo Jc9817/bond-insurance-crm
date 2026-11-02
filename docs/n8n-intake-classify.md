@@ -28,8 +28,8 @@ are filed by hand.
   "fileName": "LOA Jalan Kampung Baru.pdf",
   "fileType": "application/pdf",
   "fileUrl": "https://…supabase.co/storage/v1/object/sign/…",
-  "source": "telegram",
-  "sender": "Telegram: Ahmad",
+  "source": "upload",
+  "sender": "Ahmad",
   "documentTypes": ["Bank Statement", "Letter of Award (LOA)", "SSM Complete Set", "…"],
   "callbackUrl": "https://<docflow-domain>/api/intake/callback"
 }

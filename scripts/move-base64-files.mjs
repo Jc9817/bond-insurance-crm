@@ -37,8 +37,6 @@ const newPath = (folder, fileName) =>
 
 const TABLES = [
   { table: 'case_files', key: 'id', col: 'file_data_url', extra: 'case_id', folder: r => `cases/${r.case_id}` },
-  { table: 'telegram_uploads', key: 'id', col: 'file_data_url', extra: null, folder: () => 'inbox' },
-  { table: 'telegram_pending_uploads', key: 'user_id', col: 'file_data_url', extra: null, folder: () => 'inbox' },
   // Stage 3 Inbox — exists once 20261024100000_intake_items.sql has run
   { table: 'intake_items', key: 'id', col: 'file_ref', extra: null, folder: () => 'inbox', optional: true },
 ]

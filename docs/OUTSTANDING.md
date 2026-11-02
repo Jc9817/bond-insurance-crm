@@ -16,7 +16,7 @@ so this one branch contains all of them.
 1. **Database first.** In Supabase → SQL Editor, paste and run these files,
    one at a time, in this order:
    - `supabase/migrations/20261024100000_intake_items.sql` (the new Inbox
-     table — the new code needs it, or Telegram uploads would fail)
+     table — the new code needs it)
    - `supabase/migrations/20261024110000_customer_ssm_key.sql` (one customer
      per SSM number). If it lists customers sharing a number, merge or
      correct them, then run it again until the list is empty.
@@ -97,7 +97,7 @@ Deployed 24 Oct 2026 (PR #1). Check once:
 - [ ] Settings → Users: staff list shows; as Admin, "+ Add User" works
 - [ ] A case report link in a private window goes to the login page
 - [ ] An AI scan finishes and the extracted data appears on the case file (1.5)
-- [ ] Telegram upload still lands in the Inbox
+- [ ] An upload on the Inbox page still lands in the Inbox
 
 ---
 
@@ -107,10 +107,10 @@ Going live: see "Putting the finished work live" at the top.
 
 Checks afterwards:
 - [ ] Upload a quotation document, view it, download it
-- [ ] Send a file to the Telegram bot, open it in the Inbox, assign it to a case
+- [ ] Upload a file on the Inbox page, open it, assign it to a case
 - [ ] Discard an Inbox file: it disappears
 - [ ] AI scan on a quotation file works
-- [ ] Old quotation and Telegram files (from before) still open
+- [ ] Old quotation files and old Telegram Inbox files (from before) still open
 
 ---
 
@@ -168,10 +168,9 @@ Keep `ANTHROPIC_API_KEY`: it's for the email drafter planned in 5.3.
 ## [ ] 3.1 / 3.2 New Inbox and duplicate files — checks
 
 - [ ] Documents that were waiting in the Inbox before are still there
-- [ ] Send a file to the Telegram bot → "Add to Existing Case": it appears in
-      the Inbox with "Telegram" and the sender's name
-- [ ] Send the **same** file again: the bot replies that it was received
-      before, and the Inbox still shows it only once
+- [ ] Upload a file on the Inbox page: it appears with "Upload" and your name
+- [ ] Upload the **same** file again: DocFlow says it was received before,
+      and the Inbox still shows it only once
 - [ ] Assign it to a case: it leaves the Inbox, appears on the case, and the
       case's Activity tab shows "Filed from Inbox" with your name
 - [ ] Upload the same file twice on a case: DocFlow asks before adding it again
@@ -218,8 +217,8 @@ Inbox items wait as "New" and are filed by hand as before.
    (the workflow's Production webhook URL) and redeploy.
 
 Checks afterwards:
-- [ ] Send a Letter of Award for an existing customer to the Telegram bot →
-      "Add to Existing Case": in the Inbox it shows "AI reading…", then a
+- [ ] Upload a Letter of Award for an existing customer on the Inbox page:
+      it shows "AI reading…", then a
       suggested customer, case and document type
 - [ ] Approve it: it lands on that case, in the right checklist slot
 - [ ] A document for a company DocFlow doesn't know shows "Needs review",
@@ -313,8 +312,8 @@ New (1 Nov 2026): an **Emails** page shows the shared mailbox (`operation@`,
 last 30 days). For each email the AI suggests **Create case**, **Add to
 existing case**, **Split across cases** or **Not a case**, and you decide.
 Attachments stay in the mailbox until you file them; they no longer go to
-the Inbox page one by one (the Inbox stays for Telegram, the SharePoint
-`_Inbox` folder and uploads).
+the Inbox page one by one (the Inbox stays for the SharePoint `_Inbox`
+folder and uploads).
 
 To switch it on:
 - [ ] Merge and deploy the `emails-screen` branch
@@ -405,16 +404,21 @@ Checks (optional — works in the background, nice to have):
 
 ---
 
-## [ ] 5.5 Telegram: keep for phone photos, or remove
+## [ ] 5.5 Telegram bot — removed from DocFlow (2 Nov 2026), finish the tidy-up
 
-Telegram is now marked as an optional extra in DocFlow. Once email intake
-and the SharePoint `_Inbox` (4.1 / 4.2) have worked for a few weeks, decide:
+The bot's code is gone from DocFlow (and the "Back to Inbox" button on case
+files, which only appeared for Telegram files). Documents come in through
+the Emails screen, the SharePoint `_Inbox` folder and uploads. Telegram
+documents already in the Inbox stay there and can still be filed.
 
-- **Keep** it for quick phone photos: nothing to do.
-- **Remove** it: in Telegram, delete the bot via @BotFather. In Vercel, delete
-  `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_CHAT_ID` and
-  `TELEGRAM_WEBHOOK_SECRET`. Then ask for the code and the two Telegram
-  tables to be removed.
+- [x] Code removed and deployed
+- [ ] Supabase SQL Editor: run
+      [20261102120000_remove_telegram.sql](../supabase/migrations/20261102120000_remove_telegram.sql)
+      (drops the bot's two tables; the 8 old Telegram documents stay in the Inbox)
+- [ ] Vercel → Settings → Environment Variables: delete
+      `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_CHAT_ID` and `TELEGRAM_WEBHOOK_SECRET`
+- [ ] Telegram: message @BotFather → `/deletebot` → choose the DocFlow bot, so
+      it stops answering in the group (or just remove it from the group)
 
 ---
 

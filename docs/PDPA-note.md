@@ -16,7 +16,7 @@ how long it is kept, as required by Malaysia's Personal Data Protection Act
 | Case files | Documents customers send: IC copies, directors' and guarantors' financial statements, bank statements, SSM records, letters of award, signed indemnities | Insurers require them to issue bonds and policies |
 | Policies | Policy and bond numbers, sums insured, premiums, dates | To track cover and remind customers before it expires |
 | Emails, notes, follow-ups, history | Messages sent to customers and insurers; staff notes; who did what and when | Record of the work done on each case |
-| Inbox | Documents waiting to be filed; the name of who sent them (e.g. the Telegram sender) | To file documents to the right case |
+| Inbox | Documents waiting to be filed; the name of who sent them (e.g. the person who uploaded them) | To file documents to the right case |
 | Users | Staff names, work emails, roles | To control who can log in and what they can do |
 
 The most sensitive items are **IC copies, financial statements and bank
@@ -32,8 +32,6 @@ statements**.
 - **AI document reading:** documents are sent to n8n and Anthropic (Claude) to
   extract details. _Check that n8n and Anthropic data retention settings are
   acceptable._
-- **Telegram:** documents sent to the DocFlow bot also stay in that Telegram
-  group.
 
 ## Who can see it
 

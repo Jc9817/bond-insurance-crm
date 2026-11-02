@@ -5,7 +5,7 @@ import { resolveRequiredDocForCase } from '@/lib/intake-ai'
 // n8n calls this when it finishes (or fails) extracting a document that was
 // triggered via POST /api/notify-n8n { event: 'ai_scan_requested', ... }.
 // Secured with a shared secret — not a Supabase key — since n8n is an
-// external caller, same pattern as the Telegram webhook's secret token.
+// external caller.
 
 const CALLBACK_SECRET = process.env.N8N_CALLBACK_SECRET
 

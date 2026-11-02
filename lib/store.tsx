@@ -125,7 +125,6 @@ type StoreCtx = {
   // the item's file link hasn't loaded yet).
   fileIntakeItem: (id: string, target: FileIntakeTarget) => string | null
   discardIntakeItem: (id: string, decidedBy: string) => void
-  sendCaseFileToInbox: (file: CaseFile) => void
 
   addPolicy: (p: Omit<Policy, 'id' | 'createdAt'>) => string
   updatePolicy: (id: string, p: Partial<Policy>) => void
@@ -225,21 +224,13 @@ const toCaseEmailLog = (l: CaseEmailLog) => ({
 })
 
 const fromIntakeItem = (r: Row): IntakeItem => ({
-  id: r.id, source: r.source ?? 'telegram', sender: r.sender ?? '', receivedAt: r.received_at,
+  id: r.id, source: r.source ?? 'upload', sender: r.sender ?? '', receivedAt: r.received_at,
   fileName: r.file_name ?? '', fileSize: r.file_size ?? 0, fileType: r.file_type ?? '',
   fileRef: r.file_ref ?? undefined, fileHash: r.file_hash ?? undefined,
   status: r.status ?? 'received', aiSuggestion: r.ai_suggestion ?? null, confidence: r.confidence ?? null,
   duplicateOf: r.duplicate_of ?? undefined, caseId: r.case_id ?? undefined,
   caseFileId: r.case_file_id ?? undefined, decidedBy: r.decided_by ?? undefined,
   decidedAt: r.decided_at ?? undefined, sourceMeta: r.source_meta ?? {},
-})
-const toIntakeItem = (i: IntakeItem) => ({
-  id: i.id, source: i.source, sender: i.sender, received_at: i.receivedAt,
-  file_name: i.fileName, file_size: i.fileSize, file_type: i.fileType,
-  file_ref: i.fileRef ?? null, file_hash: i.fileHash ?? null, status: i.status,
-  ai_suggestion: i.aiSuggestion ?? null, confidence: i.confidence ?? null,
-  duplicate_of: i.duplicateOf ?? null, case_id: i.caseId ?? null, case_file_id: i.caseFileId ?? null,
-  decided_by: i.decidedBy ?? null, decided_at: i.decidedAt ?? null, source_meta: i.sourceMeta,
 })
 
 const fromCaseNote = (r: Row): CaseNote => ({
@@ -837,23 +828,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (path) sb.storage.from(STORAGE_BUCKET).remove([path]).then()
   }
 
-  const sendCaseFileToInbox = (file: CaseFile) => {
-    const row: IntakeItem = {
-      id: generateId(), source: 'telegram', sender: file.uploadedBy, receivedAt: nowIso(),
-      fileName: file.fileName, fileSize: file.fileSize, fileType: file.fileType,
-      fileRef: file.fileDataUrl, fileHash: file.fileHash, status: 'received',
-      sourceMeta: { returnedFromCaseId: file.caseId },
-    }
-    setIntakeItems(prev => [row, ...prev])
-    setCaseFiles(prev => prev.filter(x => x.id !== file.id))
-    const sb = createClient()
-    sb.from('intake_items').insert(toIntakeItem(row)).then(({ error }) => {
-      if (error) console.error('[Supabase] sendCaseFileToInbox insert failed:', error.message)
-    })
-    sb.from('case_files').delete().eq('id', file.id).then()
-    // No longer filed, so no longer in the case's SharePoint folder
-    if (file.sharepointItemId) syncToSharePoint({ action: 'delete', itemId: file.sharepointItemId })
-  }
 
   const deleteCase = (id: string) => {
     // Remove from memory immediately
@@ -1293,7 +1267,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       submissionLetterTemplates,
       addSubmissionLetterTemplate, updateSubmissionLetterTemplate, deleteSubmissionLetterTemplate,
       addEmailTemplate, updateEmailTemplate, deleteEmailTemplate, sendCaseEmail, notifyOpsTeam,
-      fileIntakeItem, discardIntakeItem, sendCaseFileToInbox,
+      fileIntakeItem, discardIntakeItem,
       policies, addPolicy, updatePolicy, deletePolicy, renewPolicy,
     }}>
       {children}

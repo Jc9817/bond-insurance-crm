@@ -23,12 +23,12 @@ import { fileSha256, uploadFile } from '@/lib/upload'
 
 type ActionMode = 'assign' | 'discard'
 
-// New cases created from the Inbox start on the same workflow as the
-// Telegram bot's "New case" (every intake case starts from a Letter of Award).
+// New cases created from the Inbox start on the bond workflow (every intake
+// case starts from a Letter of Award).
 const NEW_CASE_TYPE = 'Bond Workflow'
 
 const SOURCE_LABELS: Record<IntakeSource, string> = {
-  telegram: 'Telegram',
+  telegram: 'Telegram',   // older items, from before the bot was removed
   email: 'Email',
   sharepoint: 'SharePoint',
   upload: 'Upload',
@@ -489,7 +489,7 @@ export default function InboxPage() {
       {intakeItems.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-gray-200 py-16 text-center">
           <p className="text-sm text-gray-400">No unassigned uploads right now.</p>
-          <p className="text-xs text-gray-300 mt-1">Documents sent to the Telegram bot or uploaded above will appear here.</p>
+          <p className="text-xs text-gray-300 mt-1">Documents uploaded above or dropped in the SharePoint _Inbox folder will appear here.</p>
         </div>
       ) : (
         <div className="space-y-3">

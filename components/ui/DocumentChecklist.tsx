@@ -19,7 +19,7 @@ type Props = {
 }
 
 export default function DocumentChecklist({ caseId, caseTitle, template, caseFiles, onScanReady }: Props) {
-  const { addCaseFile, deleteCaseFile, updateCaseFile, startAiScan, addActivityLog, sendCaseFileToInbox } = useStore()
+  const { addCaseFile, deleteCaseFile, updateCaseFile, startAiScan, addActivityLog } = useStore()
   const { currentUser } = useAuth()
   const [uploading, setUploading] = useState(false)
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
@@ -162,7 +162,6 @@ export default function DocumentChecklist({ caseId, caseTitle, template, caseFil
               }}
               onReview={() => onScanReady(f)}
               onView={() => setViewingFile(f)}
-              onSendToInbox={() => sendCaseFileToInbox(f)}
             />
           ))}
         </div>
@@ -190,16 +189,12 @@ type FileRowProps = {
   onScan: () => void
   onReview: () => void
   onView: () => void
-  onSendToInbox: () => void
 }
 
 function FileRow({
   file, docs, deleteConfirmId, setDeleteConfirmId,
-  onRetag, onDelete, onScan, onReview, onView, onSendToInbox,
+  onRetag, onDelete, onScan, onReview, onView,
 }: FileRowProps) {
-  // Telegram-sourced files now default to a "Letter of Award" tag rather than
-  // a fixed placeholder, so origin has to be read off `uploadedBy` instead.
-  const fromTelegram = file.uploadedBy.startsWith('Telegram:')
   const isTagged = !!file.requiredDocumentId && docs.some(d => d.id === file.requiredDocumentId)
   // Letter of Award is the one document the whole case revolves around —
   // call it out from ordinary supporting documents at a glance.
@@ -264,15 +259,6 @@ function FileRow({
       </select>
 
       <div className="flex gap-1.5 shrink-0 items-center">
-        {fromTelegram && (
-          <button
-            onClick={onSendToInbox}
-            title="Move this file back to the Unassigned Inbox — use this if it was attached to the wrong case"
-            className="btn-xs bg-white border border-gray-200 hover:bg-amber-50 text-gray-600 hover:text-amber-700"
-          >
-            Back to Inbox
-          </button>
-        )}
         {deleteConfirmId === file.id ? (
           <>
             <button onClick={onDelete} className="btn-xs bg-red-600 text-white">Confirm</button>

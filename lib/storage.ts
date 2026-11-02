@@ -17,8 +17,8 @@ export function toStorageRef(path: string): string {
   return `${REF_PREFIX}${path}`
 }
 
-// File types DocFlow accepts from intake channels (Telegram) — the types the
-// n8n AI scan can read.
+// File types DocFlow accepts from intake channels — the types the n8n AI scan
+// can read.
 export const SUPPORTED_MIME_TYPES = [
   'application/pdf',
   'image/jpeg',
@@ -49,7 +49,7 @@ export const fileExtension = (fileName: string) =>
 export const isZipFile = (fileName: string) => fileExtension(fileName) === 'zip'
 
 // Every file lives under one of these folders: a case's own folder, or the
-// Unassigned Inbox (Telegram uploads not yet attached to a case).
+// Unassigned Inbox (documents not yet attached to a case).
 export const INBOX_FOLDER = 'inbox'
 export const caseFolder = (caseId: string) => `cases/${caseId}`
 

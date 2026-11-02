@@ -1,6 +1,6 @@
 // ─── n8n webhooks ───────────────────────────────────────────────────────────
-// Shared by /api/notify-n8n (client-triggered events) and the Telegram
-// webhook (server-to-server, called directly to skip an extra hop).
+// Shared by /api/notify-n8n (client-triggered events) and server routes that
+// call n8n directly (server-to-server, to skip an extra hop).
 // webhookUrl defaults to the DocFlow workflow; pass a different one (e.g.
 // N8N_AI_SCAN_WEBHOOK_URL) to target a separate n8n workflow/webhook node.
 

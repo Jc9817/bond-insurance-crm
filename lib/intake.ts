@@ -6,8 +6,7 @@ import { removeFile } from './storage-server'
 import { requestIntakeClassification } from './intake-ai'
 
 // Server-only. How a document enters the Unassigned Inbox (intake_items),
-// whatever channel it came from — Telegram today; email, the SharePoint
-// _Inbox folder and bulk upload in Stage 4. Callers pass a service-role client.
+// whatever channel it came from — the SharePoint _Inbox folder or bulk upload. Callers pass a service-role client.
 //
 // Duplicate rule (fix list 3.2): a file whose SHA-256 matches one already in
 // the Inbox (not discarded) or already filed to a case is recorded as a

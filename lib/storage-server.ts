@@ -2,7 +2,7 @@ import { STORAGE_BUCKET, isStorageFile, isUploadFolder, newStoragePath, resolveF
 import { serviceClient } from './supabase-service'
 
 // Server-only. The one place DocFlow writes files: every upload — from the
-// browser, the Telegram bot, or later e-mail / SharePoint intake — goes through
+// browser, the Emails screen or SharePoint intake — goes through
 // here, and the database only ever keeps the returned reference
 // ("storage:<path>"), never the file contents. Stage 4 swaps Supabase Storage
 // for SharePoint behind these same functions.
@@ -13,7 +13,7 @@ function checkFolder(folder: string) {
   if (!isUploadFolder(folder)) throw new Error(`Invalid upload folder: ${folder}`)
 }
 
-/** Saves file bytes the server already holds (e.g. downloaded from Telegram). Returns the reference to store. */
+/** Saves file bytes the server already holds (e.g. downloaded from the mailbox). Returns the reference to store. */
 export async function saveFile(
   folder: string,
   fileName: string,
