@@ -242,7 +242,7 @@ Checks afterwards:
 
 ---
 
-## [ ] 5.2 Daily renewal reminders — set up, then check (parked: nice to have)
+## [ ] 5.2 Daily renewal reminders — checks (set up 2 Nov 2026)
 
 Every morning at 8am (Malaysia time), DocFlow checks for policies expiring
 within 60 and 30 days, creates a renewal follow-up for each, and emails one
@@ -251,10 +251,12 @@ at 60 days and once at 30 days. Active policies past their expiry date are
 marked Expired.
 
 Set up (Vercel → Settings → Environment Variables), then redeploy:
-- `CRON_SECRET`: any long random text (Vercel uses it to call the job safely).
+- [x] `CRON_SECRET`: any long random text (Vercel uses it to call the job safely).
   The same daily job also renews the "new email" arrangement with Microsoft
   for the Emails screen (see the Emails screen section)
-- `OPS_NOTIFY_EMAIL`: who receives the summary (already used for ops notices)
+- [x] `OPS_NOTIFY_EMAIL`: who receives the summary (already used for ops notices)
+- [x] First run done by hand on 2 Nov 2026: worked (no policies due, nothing
+      to archive)
 
 Checks:
 - [ ] Vercel → Settings → Cron Jobs shows `/api/cron/daily` once a day
@@ -329,7 +331,9 @@ To switch it on:
       permission change is Microsoft still catching up — wait up to 2 hours)
 - [ ] Check: send a quotation email from a live case now that the Microsoft
       settings are in Vercel
-- [ ] Parked (nice to have): **new emails appear by themselves**, already read
+- [ ] Check: send an email with a PDF to `operation@`; within a minute it is
+      on the Emails screen without Refresh, already read by the AI
+- [x] Done 2 Nov 2026 (Microsoft link created, renewed daily): **new emails appear by themselves**, already read
       by the AI before anyone opens the screen. Add in Vercel two settings,
       each any long random text (different from each other), then redeploy:
       `GRAPH_WEBHOOK_SECRET` (Microsoft repeats it on every "new email" call
