@@ -364,7 +364,7 @@ export default function EmailsPage() {
   const finished = async (message: string) => {
     setModal(null)
     setNotice(message)
-    if (selected) await reloadOne(selected.id)
+    await load()   // filing can change the suggestions of other emails (same thread or reference)
   }
 
   const q = search.trim().toLowerCase()

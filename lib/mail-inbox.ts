@@ -4,7 +4,8 @@ import { graphConfigured, graphDownload, graphRequest } from './msGraph'
 import type { Customer, MailAttachment, MailReference, MailSuggestion } from './types'
 import { CASE_TYPES, MAIL_ACTIONS, REFERENCE_KINDS, REQUEST_TYPES } from './types'
 import {
-  applyCaseMatch, cleanReferences, findCaseMatch, normalizeReference, recordFiling, type CaseLinkStore,
+  applyCaseMatch, cleanReferences, findCaseMatch, loadedStore, normalizeReference, recordFiling, splitReferences,
+  type CaseLinkStore, type CaseMatch,
 } from './mail-links'
 import { matchCustomer, ssmKey } from './ssm'
 import { activeDocumentTypes, resolveRequiredDocForCase } from './intake-ai'
@@ -382,7 +383,7 @@ export async function fileMessage(
   // So later replies and emails carrying the same numbers find these cases
   const s = row.ai_suggestion as MailSuggestion | null
   const references: MailReference[] = [
-    ...(s?.referenceNumbers ?? []),
+    ...(s?.referenceNumbers ?? splitReferences(s?.references)),
     ...(s?.policies ?? []).filter(p => p.policyNumber).map(p => ({ kind: 'policy' as const, value: p.policyNumber })),
   ]
   await recordFiling(caseLinks(sb), { mailId: id, caseIds: allCaseIds, conversationId: row.conversation_id, references })
@@ -391,7 +392,64 @@ export async function fileMessage(
     attachments, case_ids: [...linked], status: 'filed',
     decided_by: decidedBy, decided_at: new Date().toISOString(),
   }).eq('id', id)
+
+  try {
+    await rematchWaiting(sb)
+  } catch (err) {
+    console.error('[mail] rematch failed:', err instanceof Error ? err.message : err)
+  }
   return outcome
+}
+
+/**
+ * After a filing: emails still waiting for a decision that are in a filed
+ * thread, or carry a reference now kept on a case, get that case suggested
+ * straight away — without asking the AI again.
+ */
+async function rematchWaiting(sb: SupabaseClient) {
+  const { data: waiting } = await sb.from('mail_messages')
+    .select('id, subject, body_text, attachments, conversation_id, ai_suggestion')
+    .eq('status', 'ready').not('ai_suggestion', 'is', null).limit(500)
+  const rows = (waiting ?? []).filter(m => !(m.ai_suggestion as MailSuggestion).matchReason)
+  if (rows.length === 0) return
+
+  const conversationIds = [...new Set(rows.map(m => m.conversation_id).filter(Boolean))] as string[]
+  const conversations: { caseId: string; conversationId: string }[] = []
+  for (let i = 0; i < conversationIds.length; i += 100) {
+    const { data } = await sb.from('case_conversations').select('case_id, conversation_id')
+      .in('conversation_id', conversationIds.slice(i, i + 100)).order('created_at', { ascending: false })
+    conversations.push(...(data ?? []).map(c => ({ caseId: c.case_id, conversationId: c.conversation_id })))
+  }
+  const { data: refRows } = await sb.from('case_references').select('case_id, kind, value, value_normalized').limit(10000)
+  const store = loadedStore(conversations, (refRows ?? []).map(r => ({
+    caseId: r.case_id, kind: r.kind, value: r.value, valueNormalized: r.value_normalized,
+  })))
+
+  const found: { id: string; s: MailSuggestion; match: CaseMatch }[] = []
+  for (const m of rows) {
+    const s = m.ai_suggestion as MailSuggestion
+    const match = await findCaseMatch(store, {
+      conversationId: m.conversation_id,
+      references: s.referenceNumbers ?? splitReferences(s.references),
+      text: [m.subject, m.body_text, ...((m.attachments ?? []) as MailAttachment[]).map(a => a.name)].join('\n'),
+    })
+    if (match) found.push({ id: m.id, s, match })
+  }
+  if (found.length === 0) return
+
+  const cases: OpenCase[] = []
+  await addCases(sb, cases, [...new Set(found.flatMap(f => f.match.by === 'thread' ? f.match.caseIds : [f.match.caseId]))])
+  const label = (caseId: string) => {
+    const c = cases.find(x => x.id === caseId)
+    return c?.case_number || c?.case_title || 'a case'
+  }
+  for (const { id, s, match } of found) {
+    const next = applyCaseMatch(s, match, label)
+    if (next === s) continue
+    const chosen = next.action === 'existing_case' ? cases.find(c => c.id === next.caseId) : undefined
+    if (chosen?.customer_id) next.customer = { id: chosen.customer_id, name: chosen.customer_name ?? '', isNew: false }
+    await sb.from('mail_messages').update({ ai_suggestion: next }).eq('id', id).eq('status', 'ready')
+  }
 }
 
 // ─── Threads and references (lib/mail-links.ts) ─────────────────────────────

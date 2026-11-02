@@ -58,7 +58,21 @@ export function cleanReferences(refs: MailReference[]): MailReference[] {
     })
 }
 
-export const describeReference = (r: MailReference) => `${KIND_LABELS[r.kind] ?? 'Reference'} ${r.value}`
+/** References from a suggestion made before they were listed by kind ("QTS: B62716/26; KL40465"). */
+export function splitReferences(text?: string): MailReference[] {
+  return (text ?? '').split(/[;,\n]/).map(v => v.trim()).filter(Boolean).map(value => ({ kind: 'other' as const, value }))
+}
+
+/** A store over rows already loaded — to check many emails with a few queries. */
+export function loadedStore(conversations: { caseId: string; conversationId: string }[], references: StoredReference[]): CaseLinkStore {
+  return {
+    async casesForConversation(id) { return conversations.filter(c => c.conversationId === id).map(c => c.caseId) },
+    async findReferences(normalized) { return references.filter(r => normalized.includes(r.valueNormalized)) },
+    async link() { throw new Error('read only') },
+  }
+}
+
+export const describeReference =(r: MailReference) => `${KIND_LABELS[r.kind] ?? 'Reference'} ${r.value}`
 
 // ─── Store ──────────────────────────────────────────────────────────────────
 
