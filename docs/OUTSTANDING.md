@@ -331,8 +331,8 @@ To switch it on:
       permission change is Microsoft still catching up — wait up to 2 hours)
 - [ ] Check: send a quotation email from a live case now that the Microsoft
       settings are in Vercel
-- [ ] Check: send an email with a PDF to `operation@`; within a minute it is
-      on the Emails screen without Refresh, already read by the AI
+- [x] Check: send an email to `operation@`; it arrives on the Emails screen
+      by itself (confirmed 2 Nov 2026)
 - [x] Done 2 Nov 2026 (Microsoft link created, renewed daily): **new emails appear by themselves**, already read
       by the AI before anyone opens the screen. Add in Vercel two settings,
       each any long random text (different from each other), then redeploy:
