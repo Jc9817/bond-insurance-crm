@@ -412,7 +412,7 @@ the Emails screen, the SharePoint `_Inbox` folder and uploads. Telegram
 documents already in the Inbox stay there and can still be filed.
 
 - [x] Code removed and deployed
-- [ ] Supabase SQL Editor: run
+- [x] Supabase SQL Editor: run (done 2 Nov 2026)
       [20261102120000_remove_telegram.sql](../supabase/migrations/20261102120000_remove_telegram.sql)
       (drops the bot's two tables; the 8 old Telegram documents stay in the Inbox)
 - [ ] Vercel → Settings → Environment Variables: delete
