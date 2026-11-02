@@ -1,13 +1,19 @@
+import { createHash } from 'node:crypto'
 import { STORAGE_BUCKET, isStorageFile, isUploadFolder, newStoragePath, resolveFileUrl, storagePath, toStorageRef } from './storage'
 import { serviceClient } from './supabase-service'
 
 // Server-only. The one place DocFlow writes files: every upload — from the
-// browser, the Emails screen or SharePoint intake — goes through
+// browser or the Emails screen — goes through
 // here, and the database only ever keeps the returned reference
 // ("storage:<path>"), never the file contents. Stage 4 swaps Supabase Storage
 // for SharePoint behind these same functions.
 //
 // Uses the service-role key, so callers must check who is asking first.
+
+/** SHA-256 of a file, hex — the fingerprint used to spot the same file twice. */
+export function sha256(bytes: ArrayBuffer | Buffer): string {
+  return createHash('sha256').update(Buffer.from(bytes as ArrayBuffer)).digest('hex')
+}
 
 function checkFolder(folder: string) {
   if (!isUploadFolder(folder)) throw new Error(`Invalid upload folder: ${folder}`)

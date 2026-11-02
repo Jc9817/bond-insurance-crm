@@ -16,7 +16,6 @@ how long it is kept, as required by Malaysia's Personal Data Protection Act
 | Case files | Documents customers send: IC copies, directors' and guarantors' financial statements, bank statements, SSM records, letters of award, signed indemnities | Insurers require them to issue bonds and policies |
 | Policies | Policy and bond numbers, sums insured, premiums, dates | To track cover and remind customers before it expires |
 | Emails, notes, follow-ups, history | Messages sent to customers and insurers; staff notes; who did what and when | Record of the work done on each case |
-| Inbox | Documents waiting to be filed; the name of who sent them (e.g. the person who uploaded them) | To file documents to the right case |
 | Users | Staff names, work emails, roles | To control who can log in and what they can do |
 
 The most sensitive items are **IC copies, financial statements and bank
@@ -50,8 +49,6 @@ statements**.
 | Closed cases and their files | 7 years after the case's last policy expires (or after closing, if it had no policy) | Archived automatically; an Admin deletes them for good |
 | Lost / cancelled cases that never went ahead | 2 years after closing | Archived automatically; an Admin deletes them for good |
 | Open cases | As long as they are open | — |
-| Discarded Inbox documents | File deleted immediately; a short record (name, sender, who discarded) kept | — |
-| Duplicate Inbox documents | Not stored; a short record kept | — |
 | Deactivated user accounts | _Not decided — their names stay on case history; an Admin can remove the login in Supabase when no longer needed_ | — |
 
 **How the rule runs:** every morning DocFlow archives cases whose keep

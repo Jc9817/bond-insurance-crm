@@ -6,23 +6,14 @@ import type {
   Customer, Contact, Case, CaseNote, FollowUp, PicUser,
   User, CaseFile, ActivityLog, SettingsItem, SettingsCategory,
   WorkflowTemplate, RequiredDocument, WorkflowStep,
-  Product, ProductPackage, SubmissionLetterTemplate, EmailTemplate, CaseEmailLog, IntakeItem, Policy,
+  Product, ProductPackage, SubmissionLetterTemplate, EmailTemplate, CaseEmailLog, Policy,
 } from './types'
-import { OPEN_INTAKE_STATUSES } from './types'
 import { mockWorkflowTemplates } from './mock-data'
 import { generateId, nowIso } from './utils'
 import { getWorkflowTemplate } from './workflow'
 import { STORAGE_BUCKET, storagePath } from './storage'
 
 type SettingsData = Record<SettingsCategory, SettingsItem[]>
-
-/** Where an Inbox item is filed: the case, the document tag, and who decided. */
-export type FileIntakeTarget = {
-  caseId: string
-  documentType: string
-  requiredDocumentId?: string
-  decidedBy: string
-}
 
 type StoreCtx = {
   customers: Customer[]
@@ -40,14 +31,12 @@ type StoreCtx = {
   productPackages: ProductPackage[]
   emailTemplates: EmailTemplate[]
   caseEmails: CaseEmailLog[]
-  intakeItems: IntakeItem[]   // open Unassigned Inbox items
   policies: Policy[]
   loading: boolean
 
-  // Load what the startup load leaves out (see loadAll): call when a case or
-  // the Inbox is opened.
+  // Load what the startup load leaves out (see loadAll): call when a case is
+  // opened.
   loadCase: (caseId: string) => Promise<void>
-  loadInbox: () => Promise<void>
 
   addCustomer: (c: Omit<Customer, 'id' | 'createdAt'>) => string
   updateCustomer: (id: string, c: Partial<Customer>) => void
@@ -120,11 +109,6 @@ type StoreCtx = {
   sendCaseEmail: (data: { caseId: string; templateName?: string; toEmail: string; subject: string; body: string }) => Promise<void>
   notifyOpsTeam: (caseItem: Case) => Promise<void>
 
-  // keepFile: the stored file now belongs to a case file (Inbox "Assign to Case")
-  // Inbox decisions. fileIntakeItem returns the new case file's id (null if
-  // the item's file link hasn't loaded yet).
-  fileIntakeItem: (id: string, target: FileIntakeTarget) => string | null
-  discardIntakeItem: (id: string, decidedBy: string) => void
 
   addPolicy: (p: Omit<Policy, 'id' | 'createdAt'>) => string
   updatePolicy: (id: string, p: Partial<Policy>) => void
@@ -223,15 +207,6 @@ const toCaseEmailLog = (l: CaseEmailLog) => ({
   status: l.status, error_message: l.errorMessage ?? null, sent_at: l.sentAt,
 })
 
-const fromIntakeItem = (r: Row): IntakeItem => ({
-  id: r.id, source: r.source ?? 'upload', sender: r.sender ?? '', receivedAt: r.received_at,
-  fileName: r.file_name ?? '', fileSize: r.file_size ?? 0, fileType: r.file_type ?? '',
-  fileRef: r.file_ref ?? undefined, fileHash: r.file_hash ?? undefined,
-  status: r.status ?? 'received', aiSuggestion: r.ai_suggestion ?? null, confidence: r.confidence ?? null,
-  duplicateOf: r.duplicate_of ?? undefined, caseId: r.case_id ?? undefined,
-  caseFileId: r.case_file_id ?? undefined, decidedBy: r.decided_by ?? undefined,
-  decidedAt: r.decided_at ?? undefined, sourceMeta: r.source_meta ?? {},
-})
 
 const fromCaseNote = (r: Row): CaseNote => ({
   id: r.id, caseId: r.case_id, content: r.content ?? '', createdBy: r.created_by ?? '', createdAt: r.created_at,
@@ -368,9 +343,6 @@ const syncToSharePoint = (body: { caseFileId: string } | { action: 'delete'; ite
 // link, AI-extracted data and AI prompt come with loadCase().
 const CASE_FILE_LIST_COLUMNS =
   'id, case_id, file_name, file_size, file_type, document_type, required_document_id, uploaded_by, uploaded_at, ai_scanned, ai_status'
-// Inbox list and the sidebar count; file links come with loadInbox().
-const INBOX_LIST_COLUMNS =
-  'id, source, sender, received_at, file_name, file_size, file_type, status, confidence, source_meta'
 // When each case entered a workflow step — the dashboard's SLA warnings.
 const STEP_LOG_COLUMNS = 'id, case_id, action_type, new_value, timestamp'
 const RECENT_ACTIVITY_LIMIT = 20
@@ -417,7 +389,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [submissionLetterTemplates, setSubmissionLetterTemplates] = useState<SubmissionLetterTemplate[]>([])
   const [emailTemplates, setEmailTemplates] = useState<EmailTemplate[]>([])
   const [caseEmails, setCaseEmails] = useState<CaseEmailLog[]>([])
-  const [intakeItems, setIntakeItems] = useState<IntakeItem[]>([])
   const [policies, setPolicies] = useState<Policy[]>([])
   const [settingsState, setSettingsState] = useState<SettingsData>(emptySettings)
   const [loading, setLoading] = useState(true)
@@ -425,10 +396,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // ─── Loading ───────────────────────────────────────────────────────────────
   // On startup we load what the lists, dashboard and reports need: every
   // customer, contact, case and follow-up, the settings, and a slim version
-  // of the case files and Inbox (name, tag and status only — no file link,
-  // no AI-extracted data). Things only shown inside one case — its notes,
+  // of the case files (name, tag and status only — no file link, no
+  // AI-extracted data). Things only shown inside one case — its notes,
   // emails, full history and full file rows — are loaded by loadCase() when
-  // that case is opened, and the Inbox's file links by loadInbox().
+  // that case is opened.
 
   // `loading` starts true and is cleared once this finishes
   async function loadAll() {
@@ -446,7 +417,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       { data: steps },
       { data: docs },
       { data: templateRows },
-      { data: intakeRows },
       { data: settingsRows },
       { data: productRows },
       { data: packageRows },
@@ -468,7 +438,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       sb.from('workflow_steps').select('*').order('order'),
       sb.from('required_documents').select('*'),
       sb.from('email_templates').select('*').order('created_at'),
-      sb.from('intake_items').select(INBOX_LIST_COLUMNS).in('status', OPEN_INTAKE_STATUSES).order('received_at', { ascending: false }),
       sb.from('settings_items').select('*').order('sort_order').order('created_at'),
       sb.from('products').select('*').order('sort_order').order('created_at'),
       sb.from('product_packages').select('*').order('sort_order').order('created_at'),
@@ -486,7 +455,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (fileRows) setCaseFiles(fileRows.map(fromCaseFile))
     // Full recent rows listed last so they win over the slim step-change rows
     setActivityLogs(sortLogs(mergeById<ActivityLog>([], [...(stepLogRows ?? []), ...(recentLogRows ?? [])].map(fromActivityLog))))
-    if (intakeRows) setIntakeItems(intakeRows.map(fromIntakeItem))
     if (policyRows) setPolicies(policyRows.map(fromPolicy))
     if (settingsRows) {
       const grouped = emptySettings()
@@ -545,15 +513,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (noteRows) setCaseNotes(prev => replaceForCase(prev, caseId, noteRows.map(fromCaseNote)))
     if (logRows) setActivityLogs(prev => sortLogs(replaceForCase(prev, caseId, logRows.map(fromActivityLog))))
     if (emailRows) setCaseEmails(prev => replaceForCase(prev, caseId, emailRows.map(fromCaseEmailLog)))
-  }, [])
-
-  // The Inbox page's file links (the startup load only has names and sizes).
-  // eslint-disable-next-line react-hooks/preserve-manual-memoization
-  const loadInbox = useCallback(async () => {
-    const { data, error } = await createClient()
-      .from('intake_items').select('*').in('status', OPEN_INTAKE_STATUSES).order('received_at', { ascending: false })
-    if (error) console.error('[Supabase] loadInbox failed:', error.message)
-    if (data) setIntakeItems(data.map(fromIntakeItem))
   }, [])
 
   async function seedEmailTemplates(sb: ReturnType<typeof createClient>) {
@@ -783,49 +742,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     createClient().from('case_emails').insert(toCaseEmailLog(row)).then()
 
     if (status === 'failed') throw new Error(errorMessage)
-  }
-
-  // ─── Unassigned Inbox (intake_items) ──────────────────────────────────────
-  // Items stay in the table after a decision, as a record; the Inbox (and
-  // this state) only holds the open ones.
-
-  const fileIntakeItem = (id: string, target: FileIntakeTarget): string | null => {
-    const item = intakeItems.find(x => x.id === id)
-    if (!item?.fileRef) return null
-    const caseFileId = addCaseFile({
-      caseId: target.caseId,
-      fileName: item.fileName,
-      fileSize: item.fileSize,
-      fileType: item.fileType,
-      documentType: target.documentType,
-      requiredDocumentId: target.requiredDocumentId,
-      uploadedBy: item.sender,
-      fileDataUrl: item.fileRef,
-      fileHash: item.fileHash,
-      aiScanned: false,
-      aiStatus: 'Pending',
-      aiExtractedData: null,
-    })
-    setIntakeItems(prev => prev.filter(x => x.id !== id))
-    createClient().from('intake_items').update({
-      status: 'approved', case_id: target.caseId, case_file_id: caseFileId,
-      decided_by: target.decidedBy, decided_at: nowIso(),
-    }).eq('id', id).then(({ error }) => {
-      if (error) console.error('[Supabase] fileIntakeItem failed:', error.message)
-    })
-    return caseFileId
-  }
-
-  const discardIntakeItem = (id: string, decidedBy: string) => {
-    const item = intakeItems.find(x => x.id === id)
-    setIntakeItems(prev => prev.filter(x => x.id !== id))
-    const sb = createClient()
-    // Keep the row as a record; the file itself is deleted
-    sb.from('intake_items').update({
-      status: 'discarded', file_ref: null, decided_by: decidedBy, decided_at: nowIso(),
-    }).eq('id', id).then()
-    const path = storagePath(item?.fileRef)
-    if (path) sb.storage.from(STORAGE_BUCKET).remove([path]).then()
   }
 
 
@@ -1247,8 +1163,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     <StoreContext.Provider value={{
       customers, contacts, cases, caseNotes, followUps, pics,
       users, caseFiles, activityLogs, settingsData: settingsState, workflowTemplates,
-      products, productPackages, emailTemplates, caseEmails, intakeItems, loading,
-      loadCase, loadInbox,
+      products, productPackages, emailTemplates, caseEmails, loading,
+      loadCase,
       addCustomer, updateCustomer, deleteCustomer,
       addContact, updateContact, deleteContact, setPrimaryContact,
       addCase, addCaseAndWait, updateCase, deleteCase, archiveCase, restoreCase,
@@ -1267,7 +1183,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       submissionLetterTemplates,
       addSubmissionLetterTemplate, updateSubmissionLetterTemplate, deleteSubmissionLetterTemplate,
       addEmailTemplate, updateEmailTemplate, deleteEmailTemplate, sendCaseEmail, notifyOpsTeam,
-      fileIntakeItem, discardIntakeItem,
       policies, addPolicy, updatePolicy, deletePolicy, renewPolicy,
     }}>
       {children}

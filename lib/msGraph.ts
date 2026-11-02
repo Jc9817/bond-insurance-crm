@@ -38,7 +38,7 @@ export function graphConfigured(): boolean {
   )
 }
 
-// ─── General Graph requests (email / SharePoint intake, fix list 4.1 / 4.2) ───
+// ─── General Graph requests (Emails screen and SharePoint copies, fix list 4.1 / 4.4) ───
 
 const GRAPH = 'https://graph.microsoft.com/v1.0'
 

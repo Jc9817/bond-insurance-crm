@@ -5,8 +5,8 @@ import { createClient } from '@/utils/supabase/client'
 import { formatFileSize } from '@/lib/utils'
 import { isInlineFile, isStorageFile, resolveFileUrl } from '@/lib/storage'
 
-// One viewer for every file in DocFlow (case checklist, quotation documents,
-// Unassigned Inbox). Files live in the private bucket and open through a
+// One viewer for every file in DocFlow (case checklist, quotation
+// documents). Files live in the private bucket and open through a
 // short-lived signed URL. Rows not yet moved out of the database (base64
 // data: URLs, see scripts/move-base64-files.mjs) still open, via a blob URL.
 

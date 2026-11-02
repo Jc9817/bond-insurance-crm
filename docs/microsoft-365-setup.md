@@ -5,7 +5,7 @@ finished; it needs the permissions and settings below before it works.
 
 | Part | What it does | Fix list |
 |---|---|---|
-| A–D | Emails to `operation@` appear on DocFlow's **Emails** screen (the AI suggests a case; attachments are filed from there), and files dropped in SharePoint `_Inbox` appear in the DocFlow Inbox | 4.1, 4.2 |
+| A–D | Emails to `operation@` appear on DocFlow's **Emails** screen (the AI suggests a case; attachments are filed from there), and a copy of every case file is kept in SharePoint | 4.1, 4.4 |
 | E | Staff sign in to DocFlow with their Microsoft account | 4.5 |
 
 Do **1.3** first (limit the app to `operation@`; see `docs/OUTSTANDING.md`).
@@ -37,14 +37,12 @@ Grant-PnPAzureADAppSitePermission -AppId <MS_GRAPH_CLIENT_ID> -DisplayName "DocF
   -Site https://<tenant>.sharepoint.com/sites/Operations -Permissions Write
 ```
 
-Write access is needed because DocFlow moves each file it takes in from
-`_Inbox` to `_Inbox/Processed`. Stage 4.4 will also save filed documents there.
+Write access is needed because DocFlow saves a copy of every case file there
+(4.4).
 
-## C. Create the `_Inbox` folder and find the library's id
+## C. Find the Customers library's id
 
-1. In the Operations site, open the **Customers** document library and create
-   a folder named `_Inbox` at the top level.
-2. Open [Graph Explorer](https://developer.microsoft.com/graph/graph-explorer),
+1. Open [Graph Explorer](https://developer.microsoft.com/graph/graph-explorer),
    sign in as an admin and run:
    ```
    GET https://graph.microsoft.com/v1.0/sites/<tenant>.sharepoint.com:/sites/Operations:/drives
@@ -60,24 +58,19 @@ Vercel → the DocFlow project → **Settings → Environment Variables**:
 |---|---|
 | `MAIL_INTAKE_MAILBOX` | `operation@tridentmanagement.com.my` |
 | `SHAREPOINT_DRIVE_ID` | the id from step C |
-| `SHAREPOINT_INBOX_FOLDER` | `_Inbox` (only needed if the folder has another name) |
 | `GRAPH_WEBHOOK_SECRET` | any long random text (e.g. from a password generator) |
 | `NEXT_PUBLIC_APP_URL` | DocFlow's public address, e.g. `https://docflow.vercel.app` (likely already set) |
 | `CRON_SECRET` | any long random text (likely already set for 5.2) |
 
 **Redeploy**, then Vercel → **Settings → Cron Jobs** → `/api/cron/daily` →
-**Run**. The result should say `mail: subscription created` and
-`sharepoint: subscription created`. After that, the daily job keeps them
-renewed by itself.
+**Run**. The result should say `mail: subscription created`. After that, the daily
+job keeps it renewed by itself.
 
 **Checks**
 - [ ] DocFlow → **Emails**: the last 30 days of `operation@` emails are listed
       (the screen checks the mailbox when it opens; **Refresh** checks again)
 - [ ] Email `operation@` with three PDFs attached: within a minute or two it
-      appears on the Emails screen with the AI's suggestion. Nothing is added
-      to the Inbox page
-- [ ] Drag 20 files into SharePoint `Customers/_Inbox` in File Explorer: 20
-      items appear in the Inbox, and the files move to `_Inbox/Processed`
+      appears on the Emails screen with the AI's suggestion
 
 ### Filed documents in SharePoint (fix list 4.4)
 
@@ -95,7 +88,7 @@ folder, and deleting a file in DocFlow moves its copy to the SharePoint
 recycle bin. The daily job copies 15 older files a day until all are there.
 
 **Checks**
-- [ ] Approve a document from the DocFlow Inbox: within a minute it appears in
+- [ ] Upload a document on a case (or file one from the Emails screen): within a minute it appears in
       `Customers/<Customer>/<2026-005 Case>/<topic folder>` with the agreed name
 - [ ] On the case's Files tab, the file shows a **SharePoint** link that opens it
 - [ ] Retag the file as another document type: it moves to the matching folder

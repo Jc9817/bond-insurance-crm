@@ -17,45 +17,12 @@ export function toStorageRef(path: string): string {
   return `${REF_PREFIX}${path}`
 }
 
-// File types DocFlow accepts from intake channels — the types the n8n AI scan
-// can read.
-export const SUPPORTED_MIME_TYPES = [
-  'application/pdf',
-  'image/jpeg',
-  'image/jpg',
-  'image/png',
-  'image/webp',
-  'image/gif',
-] as const
-
-// File types the Inbox accepts from bulk upload and zips (fix list 4.3),
-// by extension. Anything else is skipped and reported back.
-export const INBOX_UPLOAD_TYPES: Record<string, string> = {
-  pdf: 'application/pdf',
-  jpg: 'image/jpeg',
-  jpeg: 'image/jpeg',
-  png: 'image/png',
-  webp: 'image/webp',
-  gif: 'image/gif',
-  doc: 'application/msword',
-  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  xls: 'application/vnd.ms-excel',
-  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-}
-
-export const fileExtension = (fileName: string) =>
-  fileName.includes('.') ? fileName.split('.').pop()!.toLowerCase() : ''
-
-export const isZipFile = (fileName: string) => fileExtension(fileName) === 'zip'
-
-// Every file lives under one of these folders: a case's own folder, or the
-// Unassigned Inbox (documents not yet attached to a case).
-export const INBOX_FOLDER = 'inbox'
+// Every file lives in its case's own folder.
 export const caseFolder = (caseId: string) => `cases/${caseId}`
 
-/** True for a folder uploads may be written to (see INBOX_FOLDER / caseFolder). */
+/** True for a folder uploads may be written to (see caseFolder). */
 export function isUploadFolder(folder: string): boolean {
-  return folder === INBOX_FOLDER || /^cases\/[A-Za-z0-9_-]+$/.test(folder)
+  return /^cases\/[A-Za-z0-9_-]+$/.test(folder)
 }
 
 /**

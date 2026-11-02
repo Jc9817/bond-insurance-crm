@@ -22,6 +22,12 @@ alter table graph_subscriptions enable row level security;
 revoke all on graph_subscriptions from anon, authenticated;
 grant select, insert, update, delete on graph_subscriptions to service_role;
 
--- Fast "was this email / SharePoint file already taken in?" checks
-create index if not exists intake_items_message_idx    on intake_items ((source_meta->>'messageId'));
-create index if not exists intake_items_drive_item_idx on intake_items ((source_meta->>'driveItemId'));
+-- Fast "was this email / SharePoint file already taken in?" checks (skipped
+-- once intake_items is dropped: 20261102130000_remove_inbox.sql)
+do $$
+begin
+  if to_regclass('public.intake_items') is not null then
+    create index if not exists intake_items_message_idx    on intake_items ((source_meta->>'messageId'));
+    create index if not exists intake_items_drive_item_idx on intake_items ((source_meta->>'driveItemId'));
+  end if;
+end $$;

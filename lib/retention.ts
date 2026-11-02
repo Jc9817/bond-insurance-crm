@@ -101,8 +101,6 @@ export async function deleteCasesPermanently(sb: SupabaseClient, caseIds: string
         if (f.sharepoint_item_id) await deleteSharePointCopy(f.sharepoint_item_id).catch(() => {})
       }
     }
-    // Inbox records that were filed to this case keep their record, not the file
-    await sb.from('intake_items').update({ file_ref: null }).eq('case_id', c.id)
     for (const table of ['case_files', 'case_notes', 'follow_ups', 'activity_logs', 'case_emails', 'policies']) {
       await sb.from(table).delete().eq('case_id', c.id)
     }

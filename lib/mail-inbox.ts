@@ -8,11 +8,10 @@ import {
   type CaseLinkStore, type CaseMatch,
 } from './mail-links'
 import { matchCustomer, ssmKey } from './ssm'
-import { activeDocumentTypes, resolveRequiredDocForCase } from './intake-ai'
+import { activeDocumentTypes, resolveRequiredDocForCase } from './document-types'
 import { isReadable, readEmail, type EmailAiResult } from './mail-ai'
 import { caseFolder } from './storage'
-import { saveFile } from './storage-server'
-import { sha256 } from './intake'
+import { saveFile, sha256 } from './storage-server'
 
 // Server-only. The Emails screen: DocFlow's copy of the shared mailbox
 // (MAIL_INTAKE_MAILBOX, i.e. operation@).

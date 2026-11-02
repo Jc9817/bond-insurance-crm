@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { resolveRequiredDocForCase } from '@/lib/intake-ai'
+import { resolveRequiredDocForCase } from '@/lib/document-types'
 
 // n8n calls this when it finishes (or fails) extracting a document that was
 // triggered via POST /api/notify-n8n { event: 'ai_scan_requested', ... }.
@@ -20,7 +20,7 @@ const supabase = createClient(
 // n8n classifies the document (e.g. "Bank Statement") but only knows our
 // data by name, not by internal id — resolve that name to the matching
 // checklist slot (requiredDocumentId) in the case's own workflow template,
-// the same lookup the Inbox suggestions use (lib/intake-ai.ts).
+// the same lookup the Emails screen uses (lib/document-types.ts).
 async function resolveRequiredDoc(caseFileId: string, documentType: string): Promise<string | null> {
   const { data: file } = await supabase.from('case_files').select('case_id').eq('id', caseFileId).single()
   return file ? resolveRequiredDocForCase(supabase, file.case_id, documentType) : null

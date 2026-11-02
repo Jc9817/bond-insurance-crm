@@ -321,58 +321,6 @@ export type CaseFile = {
 }
 
 
-// ─── Unassigned Inbox (intake_items) ──────────────────────────────────────────
-// One row per document that arrived from any channel, waiting to be filed.
-
-// 'telegram': older items only — the Telegram bot was removed (Nov 2026)
-export const INTAKE_SOURCES = ['telegram', 'email', 'sharepoint', 'upload'] as const
-export type IntakeSource = (typeof INTAKE_SOURCES)[number]
-
-export const INTAKE_STATUSES = [
-  'received', 'processing', 'suggested', 'needs_review', 'approved', 'discarded', 'duplicate',
-] as const
-export type IntakeStatus = (typeof INTAKE_STATUSES)[number]
-
-/** Statuses still waiting for a person — what the Inbox shows and counts. */
-export const OPEN_INTAKE_STATUSES: readonly IntakeStatus[] = ['received', 'processing', 'suggested', 'needs_review']
-
-/**
- * What the AI suggests for an Inbox item (fix list 3.3), stored in
- * intake_items.ai_suggestion. Customer and case are either existing records
- * (id set) or new ones to create on approval (isNew) — nothing is created
- * until a person approves.
- */
-export type IntakeSuggestion = {
-  documentType?: string
-  requiredDocumentId?: string           // checklist slot in the suggested case, when it exists
-  customer?: { id?: string; name: string; ssm?: string; isNew: boolean }
-  case?: { id?: string; title: string; isNew: boolean }
-  projectName?: string
-  extracted?: Record<string, unknown>   // everything else the AI read off the document
-  note?: string                         // why it needs review, in plain words
-}
-
-export type IntakeItem = {
-  id: string
-  source: IntakeSource
-  sender: string
-  receivedAt: string
-  fileName: string
-  fileSize: number
-  fileType: string
-  fileRef?: string        // storage reference "storage:<path>"; loaded with the Inbox page
-  fileHash?: string       // SHA-256 of the file
-  status: IntakeStatus
-  aiSuggestion?: IntakeSuggestion | null
-  confidence?: number | null
-  duplicateOf?: string
-  caseId?: string
-  caseFileId?: string
-  decidedBy?: string
-  decidedAt?: string
-  sourceMeta: Record<string, unknown>
-}
-
 // ─── Emails screen (mail_messages) ───────────────────────────────────────────
 // One row per email in the shared mailbox. Attachments stay in the mailbox
 // until someone files them to a case.

@@ -8,9 +8,9 @@ import { STORAGE_BUCKET } from './storage'
  * the row ("storage:<path>"). The server decides where it goes
  * (/api/files/upload-url); the bytes go straight to storage.
  *
- * folder: caseFolder(caseId) or INBOX_FOLDER from lib/storage.
+ * folder: caseFolder(caseId) from lib/storage.
  */
-/** SHA-256 of a file, hex — the same fingerprint the server uses (lib/intake.ts). */
+/** SHA-256 of a file, hex — the same fingerprint the server uses (sha256 in lib/storage-server.ts). */
 export async function fileSha256(file: File): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', await file.arrayBuffer())
   return Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('')

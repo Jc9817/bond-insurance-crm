@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { graphWebhookSecret } from './graph-intake'
 
 // Server-only. Shared handling for Microsoft Graph change notifications
-// (/api/intake/email/notify and /api/intake/sharepoint/notify).
+// (/api/intake/email/notify).
 //
 // - When a subscription is created, Microsoft first calls with
 //   ?validationToken=… and expects it echoed back as plain text within 10s.

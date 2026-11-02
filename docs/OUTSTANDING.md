@@ -97,7 +97,6 @@ Deployed 24 Oct 2026 (PR #1). Check once:
 - [ ] Settings → Users: staff list shows; as Admin, "+ Add User" works
 - [ ] A case report link in a private window goes to the login page
 - [ ] An AI scan finishes and the extracted data appears on the case file (1.5)
-- [ ] An upload on the Inbox page still lands in the Inbox
 
 ---
 
@@ -107,10 +106,8 @@ Going live: see "Putting the finished work live" at the top.
 
 Checks afterwards:
 - [ ] Upload a quotation document, view it, download it
-- [ ] Upload a file on the Inbox page, open it, assign it to a case
-- [ ] Discard an Inbox file: it disappears
 - [ ] AI scan on a quotation file works
-- [ ] Old quotation files and old Telegram Inbox files (from before) still open
+- [ ] Old quotation files (from before) still open
 
 ---
 
@@ -124,7 +121,6 @@ both in). After it is live:
 - [ ] Add a note and a follow-up inside a case: they stay after refresh
 - [ ] Start an AI scan and stay on the case page: the result appears by itself
       within a few seconds of finishing (no refresh needed)
-- [ ] Inbox: View a file, then Assign it to a case
 - [ ] Case report page shows the AI-extracted details
 - [ ] Cases list / board still show the "missing documents" counts
 
@@ -165,23 +161,9 @@ Keep `ANTHROPIC_API_KEY`: it's for the email drafter planned in 5.3.
 
 ---
 
-## [ ] 3.1 / 3.2 New Inbox and duplicate files — checks
+## [ ] 3.2 Duplicate files — check
 
-- [ ] Documents that were waiting in the Inbox before are still there
-- [ ] Upload a file on the Inbox page: it appears with "Upload" and your name
-- [ ] Upload the **same** file again: DocFlow says it was received before,
-      and the Inbox still shows it only once
-- [ ] Assign it to a case: it leaves the Inbox, appears on the case, and the
-      case's Activity tab shows "Filed from Inbox" with your name
 - [ ] Upload the same file twice on a case: DocFlow asks before adding it again
-
----
-
-## [ ] 4.3 Bulk upload and zips — checks
-
-- [ ] Inbox page: drag in several files at once — each appears as its own item
-- [ ] Drag in one zip holding 15 documents — 15 items appear, the zip itself does not
-- [ ] Drag in the same files again — they are reported as "already received" and not added twice
 
 ---
 
@@ -202,30 +184,6 @@ notices and reminders all need someone to click Send.
       the existing customer
 - [ ] Add a customer whose name matches an existing one (e.g. "ABC Sdn Bhd"
       vs "ABC SDN. BHD."): DocFlow asks before saving
-
----
-
-## [ ] 3.3 / 3.5 AI suggestions in the Inbox — set up the n8n workflow, then check
-
-The AI reading runs in n8n, so it needs one new n8n workflow. The full recipe
-(what DocFlow sends, what n8n must send back) is in
-[docs/n8n-intake-classify.md](n8n-intake-classify.md). Until it is set up,
-Inbox items wait as "New" and are filed by hand as before.
-
-1. Build the workflow in n8n as described there and activate it.
-2. In Vercel → Settings → Environment Variables, add `N8N_INTAKE_WEBHOOK_URL`
-   (the workflow's Production webhook URL) and redeploy.
-
-Checks afterwards:
-- [ ] Upload a Letter of Award for an existing customer on the Inbox page:
-      it shows "AI reading…", then a
-      suggested customer, case and document type
-- [ ] Approve it: it lands on that case, in the right checklist slot
-- [ ] A document for a company DocFlow doesn't know shows "Needs review",
-      suggesting a new customer and case; approving creates them
-- [ ] Upload 10 documents at once, "Select all", "Approve selected": all filed
-- [ ] "Change…" lets you pick a different case and document type
-- [ ] Each filing shows in the case's Activity tab with your name
 
 ---
 
@@ -267,7 +225,7 @@ Checks:
 
 ## [ ] 4.6 WhatsApp documents — share the guide
 
-The steps are written in plain words in
+The steps (save the file, then upload it on the case) are in plain words in
 [docs/whatsapp-to-docflow.md](whatsapp-to-docflow.md). Print it or send it
 to whoever handles WhatsApp documents.
 
@@ -296,11 +254,11 @@ three small questions in italics there are still open).
 
 ---
 
-## [ ] 4.1 / 4.2 / 4.4 / 4.5 Email intake, SharePoint _Inbox and filing, Sign in with Microsoft
+## [ ] 4.4 / 4.5 SharePoint copies of case files, Sign in with Microsoft
 
 Finished in DocFlow; they switch on once your Microsoft 365 administrator
 follows [docs/microsoft-365-setup.md](microsoft-365-setup.md) (Azure
-permissions, the SharePoint `_Inbox` folder, a few Vercel settings). Case
+permissions, the Customers library id, a few Vercel settings). Case
 numbers (2026-005) work as soon as the database file above is run. The
 checks are listed at the end of each part of that guide.
 
@@ -311,9 +269,7 @@ checks are listed at the end of each part of that guide.
 New (1 Nov 2026): an **Emails** page shows the shared mailbox (`operation@`,
 last 30 days). For each email the AI suggests **Create case**, **Add to
 existing case**, **Split across cases** or **Not a case**, and you decide.
-Attachments stay in the mailbox until you file them; they no longer go to
-the Inbox page one by one (the Inbox stays for the SharePoint `_Inbox`
-folder and uploads).
+Attachments stay in the mailbox until you file them.
 
 To switch it on:
 - [ ] Merge and deploy the `emails-screen` branch
@@ -404,17 +360,36 @@ Checks (optional — works in the background, nice to have):
 
 ---
 
+## [ ] Inbox removed (2 Nov 2026) — finish the tidy-up
+
+The Inbox page is gone: staff upload documents straight onto the case, and
+emails are sorted on the Emails screen. With it went the SharePoint `_Inbox`
+folder intake (4.2), bulk upload / zips (4.3) and the Inbox's n8n AI
+suggestions (3.3 / 3.5). The WhatsApp guide now says to upload on the case.
+
+- [x] Code removed and deployed
+- [ ] Supabase SQL Editor: run
+      [20261102130000_remove_inbox.sql](../supabase/migrations/20261102130000_remove_inbox.sql)
+      (drops the Inbox table; it only held the 8 old Telegram test uploads)
+- [ ] Supabase → Storage → `case-files` bucket: delete the `inbox` folder
+      (those 8 test files)
+- [ ] Vercel → Settings → Environment Variables: delete
+      `SHAREPOINT_INBOX_FOLDER` and `N8N_INTAKE_WEBHOOK_URL` if they are there.
+      Keep `SHAREPOINT_DRIVE_ID` (used for the SharePoint copies, 4.4)
+- [ ] If an n8n workflow for Inbox suggestions was built, switch it off
+
+---
+
 ## [ ] 5.5 Telegram bot — removed from DocFlow (2 Nov 2026), finish the tidy-up
 
 The bot's code is gone from DocFlow (and the "Back to Inbox" button on case
 files, which only appeared for Telegram files). Documents come in through
-the Emails screen, the SharePoint `_Inbox` folder and uploads. Telegram
-documents already in the Inbox stay there and can still be filed.
+the Emails screen and uploads on the case.
 
 - [x] Code removed and deployed
 - [x] Supabase SQL Editor: run (done 2 Nov 2026)
       [20261102120000_remove_telegram.sql](../supabase/migrations/20261102120000_remove_telegram.sql)
-      (drops the bot's two tables; the 8 old Telegram documents stay in the Inbox)
+      (drops the bot's two tables)
 - [ ] Vercel → Settings → Environment Variables: delete
       `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_CHAT_ID` and `TELEGRAM_WEBHOOK_SECRET`
 - [ ] Telegram: message @BotFather → `/deletebot` → choose the DocFlow bot, so
