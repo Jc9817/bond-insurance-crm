@@ -47,47 +47,23 @@ so this one branch contains all of them.
 
 ## [x] 1.3 Limit the Microsoft 365 app to operation@ only (done 2 Nov 2026)
 
-Done with the group **DocFlow Mailbox** (`docflow-mailbox@tridentmanagement.com.my`,
-only member `operation@`). Test: operation@ Granted, jcfong@ Denied. The same
-restriction covers reading the mailbox for the Emails screen.
+**How it is set up now** (Exchange "RBAC for Applications"):
+- Group **DocFlow Mailbox** (`docflow-mailbox@tridentmanagement.com.my`),
+  only member `operation@`.
+- Exchange management scope **DocFlow Mailbox scope** = members of that group.
+- The app (`6ded8f15-…`, registered in Exchange as "DocFlow (Bond Insurance
+  CRM)") has the roles **Application Mail.Read** and **Application Mail.Send**
+  limited to that scope. `Test-ServicePrincipalAuthorization`: operation@ True,
+  jcfong@ False.
+- Organisation customisation was switched on for this (one-time).
+- The older Application Access Policy was tried first (1 Nov) but blocked
+  every mailbox, including operation@, so it was removed.
 
-**Why:** DocFlow sends email through an Azure app with the *application*
-`Mail.Send` permission. As it stands, that permission lets the app send as
-**any** mailbox in the Trident Management tenant, not just `operation@`. If the
-app secret leaked, someone could send email as anyone in the company.
-
-**Who:** whoever administers Microsoft 365 / Exchange Online. No code change.
-
-**Steps:**
-
-1. In the Microsoft 365 admin centre, create a **mail-enabled security group**,
-   e.g. `DocFlow Senders` (`docflow-senders@tridentmanagement.com.my`), with
-   one member: `operation@tridentmanagement.com.my`.
-2. Open PowerShell and connect to Exchange Online:
-   ```powershell
-   Install-Module ExchangeOnlineManagement   # first time only
-   Connect-ExchangeOnline
-   ```
-3. Restrict the app to that group. `<APP_ID>` is `MS_GRAPH_CLIENT_ID` from
-   Vercel (Azure Portal → App registrations → Bond Insurance CRM →
-   Application (client) ID):
-   ```powershell
-   New-ApplicationAccessPolicy -AppId <APP_ID> `
-     -PolicyScopeGroupId docflow-senders@tridentmanagement.com.my `
-     -AccessRight RestrictAccess `
-     -Description "DocFlow may only send as operation@"
-   ```
-4. Check it (it can take up to an hour to take effect):
-   ```powershell
-   Test-ApplicationAccessPolicy -Identity jcfong@tridentmanagement.com.my -AppId <APP_ID>    # AccessCheckResult: Denied
-   Test-ApplicationAccessPolicy -Identity operation@tridentmanagement.com.my -AppId <APP_ID> # AccessCheckResult: Granted
-   ```
-5. In Vercel, confirm `MS_GRAPH_SENDER_EMAIL` = `operation@tridentmanagement.com.my`.
-
-Microsoft's newer replacement for this is "RBAC for Applications" in Exchange
-Online. The policy above still works and is the simpler of the two.
-
-**Done when:** a test send as `jcfong@` is refused and a send as `operation@` works.
+- [ ] Azure → Bond Insurance CRM → API permissions: **remove** Mail.Read,
+      Mail.ReadWrite and Mail.Send. With RBAC for Applications these must
+      not be granted in Azure, or the app could reach every mailbox.
+      (Keep anything else, e.g. Sites.Selected, User.Read.)
+- [ ] To add a mailbox later, add it to the DocFlow Mailbox group.
 
 ---
 
@@ -344,14 +320,13 @@ To switch it on:
       see [microsoft-365-setup.md](microsoft-365-setup.md) parts A and D).
       The screen checks the mailbox each time it is opened (and on **Refresh**)
 - [x] Supabase table created (run in the SQL Editor, 1 Nov 2026)
-- [x] Restriction so the app can only use `operation@`: group **DocFlow
-      Mailbox** created and the Exchange access policy added (1 Nov 2026);
-      tested 2 Nov: operation@ Granted, jcfong@ Denied
+- [x] The app can only use `operation@` (see 1.3: RBAC for Applications,
+      set up 2 Nov 2026)
 - [x] Microsoft settings added in Vercel (2 Nov 2026): `MAIL_INTAKE_MAILBOX`
       and the four `MS_GRAPH_*` (they were missing, so live email sending
       was not working before either). Sender is `operation@`
-- [ ] Check: Emails → Refresh lists the emails (a 403 "AppOnly AccessPolicy"
-      right after the restriction is Microsoft still catching up — wait an hour)
+- [ ] Check: Emails → Refresh lists the emails (a 403 right after a
+      permission change is Microsoft still catching up — wait up to 2 hours)
 - [ ] Check: send a quotation email from a live case now that the Microsoft
       settings are in Vercel
 - [ ] Parked (nice to have): **new emails appear by themselves**, already read
