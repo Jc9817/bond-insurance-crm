@@ -360,6 +360,45 @@ Checks:
 
 ---
 
+## [ ] Emails screen: threads and reference numbers — run the database file, then check
+
+New (2 Nov 2026): replies to an email now show as **one row** on the
+Emails screen ("3 messages"). Opening it shows the whole conversation,
+oldest first, each message with its attachments. You decide **per
+message**: click a message in the middle to decide on it.
+
+Once an email is filed to a case, DocFlow remembers:
+- its **thread**, so a later reply is suggested for the same case(s)
+  instead of "create new case" ("Same email thread as 2026-031"), and
+- its **reference numbers** (insurer quote refs such as `QTS: B62716/26`,
+  cover note, policy and bond numbers, RFQ, PO, tender and LOA numbers), so
+  a new email carrying one of them is suggested for that case, even a
+  forward that starts a new thread ("Quote ref B62716/26 is on 2026-031").
+
+You can always change the suggestion. This works even when the AI can't
+read the email (the yellow AI note then shows under the suggestion).
+Reference numbers are only kept when an email goes to **one** case. For a
+split email they can't be told apart. Emails filed before this change
+have their thread remembered but not their reference numbers.
+
+To switch it on:
+- [ ] Run [20261102100000_case_threads_references.sql](../supabase/migrations/20261102100000_case_threads_references.sql)
+      in the Supabase SQL Editor (safe to run twice). Until then the screen
+      still works, without the thread / reference suggestions
+- [ ] Deploy to Vercel
+
+Checks:
+- [ ] An email with two replies shows as one row with "3 messages"; opening
+      it lists all three, oldest first, each with its attachments
+- [ ] File the first email to a case; then **Ask the AI again** on a reply:
+      it suggests that case, with "Same email thread as …" and 95% or more
+- [ ] Forward a filed quotation (with its QTS number) to `operation@`: the
+      forward suggests the same case and names the quote reference
+- [ ] **Add to existing case** / **Create case** still let you pick a
+      different case than the one suggested
+
+---
+
 ## [ ] 5.5 Telegram: keep for phone photos, or remove
 
 Telegram is now marked as an optional extra in DocFlow. Once email intake

@@ -1,33 +1,37 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/utils/supabase/client'
 import { useStore } from '@/lib/store'
 import { useAuth } from '@/lib/auth'
 import type { MailMessage, MailStatus, MailSuggestion } from '@/lib/types'
 import { formatCurrency, formatDate, formatFileSize, timeAgo } from '@/lib/utils'
+import { groupThreads, type Thread } from '@/lib/mail-links'
 import { CreateCaseFromEmail, FileEmailModal } from '@/components/ui/EmailDecisionModals'
 
 // The Emails screen: a read-only view of the shared mailbox (operation@).
 // For each email the AI suggests what it is — a new case, part of an existing
 // case, split across cases, or not a case — and a person decides. Attachments
 // stay in the mailbox until they are filed (lib/mail-inbox.ts).
+//
+// Emails of one conversation (Outlook's thread) show as one row; opening it
+// shows every message, oldest first. Decisions are made per message.
 
 type Filter = 'todo' | 'done' | 'all'
 const TODO: MailStatus[] = ['new', 'analysing', 'ready']
-const DONE: MailStatus[] = ['filed', 'not_case']
 
 // Emails this recent are read by the AI as soon as the screen opens;
 // older ones when someone opens them
 const AUTO_AI_DAYS = 7
 
 const LIST_COLUMNS =
-  'id, graph_id, subject, from_name, from_address, to_recipients, cc_recipients, received_at, attachments, status, ai_suggestion, ai_error, case_ids, decided_by, decided_at'
+  'id, graph_id, conversation_id, subject, from_name, from_address, to_recipients, cc_recipients, received_at, attachments, status, ai_suggestion, ai_error, case_ids, decided_by, decided_at'
 
 type Row = Record<string, unknown>
 const fromRow = (r: Row): MailMessage => ({
-  id: String(r.id), graphId: String(r.graph_id), subject: String(r.subject ?? ''),
+  id: String(r.id), graphId: String(r.graph_id), conversationId: (r.conversation_id as string | null) ?? undefined,
+  subject: String(r.subject ?? ''),
   fromName: String(r.from_name ?? ''), fromAddress: String(r.from_address ?? ''),
   toRecipients: String(r.to_recipients ?? ''), ccRecipients: String(r.cc_recipients ?? ''),
   receivedAt: String(r.received_at), bodyText: String(r.body_text ?? ''),
@@ -127,23 +131,30 @@ function DecisionPanel({ mail, onAction, onAskAi, onUndo }: {
 
   const expiries = (s?.policies ?? []).map(p => p.expiryDate).filter((d): d is string => !!d).sort()
   const primary = (a: MailSuggestion['action']) => s?.action === a ? 'btn-primary' : 'btn-secondary'
+  const aiErrorBox = (
+    <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+      The AI could not read this email: {mail.aiError}
+    </div>
+  )
 
   return (
     <div className="space-y-3">
       {mail.status === 'analysing' ? (
         <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">The AI is reading this email…</div>
-      ) : mail.aiError ? (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-          The AI could not read this email: {mail.aiError}
-        </div>
       ) : s ? (
-        <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
-          <p className="font-semibold text-blue-800">
-            Suggest: {s.action === 'existing_case' && s.caseId ? `add to ${caseNumber(s.caseId)}` : ACTION_LABELS[s.action]}
-          </p>
-          {s.summary && <p className="text-sm text-gray-600 mt-0.5">{s.summary}</p>}
-          <p className="text-xs text-gray-400 mt-1">AI {Math.round(s.confidence * 100)}% sure</p>
-        </div>
+        <>
+          <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+            <p className="font-semibold text-blue-800">
+              Suggest: {s.action === 'existing_case' && s.caseId ? `add to ${caseNumber(s.caseId)}` : ACTION_LABELS[s.action]}
+            </p>
+            {s.matchReason && <p className="text-sm font-medium text-blue-900 mt-0.5">{s.matchReason}</p>}
+            {s.summary && <p className="text-sm text-gray-600 mt-0.5">{s.summary}</p>}
+            <p className="text-xs text-gray-400 mt-1">{Math.round(s.confidence * 100)}% sure</p>
+          </div>
+          {mail.aiError && aiErrorBox}
+        </>
+      ) : mail.aiError ? (
+        aiErrorBox
       ) : (
         <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">Not read by the AI yet.</div>
       )}
@@ -183,17 +194,74 @@ function DecisionPanel({ mail, onAction, onAskAi, onUndo }: {
   )
 }
 
+// ─── One message in the middle pane ──────────────────────────────────────────
+
+function MessageCard({ mail, title, body, selected, single, onSelect }: {
+  mail: MailMessage
+  title: string            // the thread's subject; shown again only when this message's differs
+  body: string | undefined
+  selected: boolean
+  single: boolean          // the only message of its thread
+  onSelect: () => void
+}) {
+  const caseNumber = useCaseNumber()
+  const frame = single ? '' : selected
+    ? 'rounded-xl border border-blue-300 bg-blue-50/40 p-4'
+    : 'rounded-xl border border-gray-200 p-4 hover:bg-gray-50 cursor-pointer'
+  return (
+    <div onClick={onSelect} className={frame}>
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+        <p className="text-sm font-semibold text-gray-900 break-words">
+          {mail.fromName ? `${mail.fromName} <${mail.fromAddress}>` : mail.fromAddress}
+        </p>
+        <div className="flex items-center gap-2 shrink-0">
+          {!single && <Tag mail={mail} />}
+          <span className="text-xs text-gray-400">{new Date(mail.receivedAt).toLocaleString()}</span>
+        </div>
+      </div>
+      {mail.subject && mail.subject !== title && <p className="text-sm text-gray-700 break-words">{mail.subject}</p>}
+      {mail.toRecipients && <p className="text-xs text-gray-500 break-words">To {mail.toRecipients}</p>}
+      {mail.ccRecipients && <p className="text-xs text-gray-500 break-words">Cc {mail.ccRecipients}</p>}
+
+      <div className={`mt-3 text-sm text-gray-800 whitespace-pre-wrap break-words ${selected || single ? '' : 'line-clamp-3'}`}>
+        {body === undefined ? 'Loading…' : body || '(no text)'}
+      </div>
+
+      {mail.attachments.length > 0 && (
+        <div className="mt-4 flex flex-wrap gap-2">
+          {mail.attachments.map(a => {
+            const ai = mail.aiSuggestion?.attachments[a.id]
+            return (
+              <a key={a.id} href={`/api/mail/attachment?id=${mail.id}&att=${encodeURIComponent(a.id)}`}
+                target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
+                className="block border border-gray-200 bg-white rounded-lg px-3 py-2 hover:bg-gray-50 max-w-full">
+                <p className="text-sm font-medium text-gray-800 truncate">{a.name}</p>
+                <p className="text-xs text-blue-700">
+                  {a.filedTo ? `✓ ${a.filedTo.documentType} → ${caseNumber(a.filedTo.caseId)}`
+                    : ai ? ai.documentType : formatFileSize(a.size)}
+                </p>
+              </a>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Page ────────────────────────────────────────────────────────────────────
+
+const isTodo = (m: MailMessage) => TODO.includes(m.status)
 
 export default function EmailsPage() {
   const { currentUser } = useAuth()
-  const caseNumber = useCaseNumber()
   const [mails, setMails] = useState<MailMessage[]>([])
   const [loaded, setLoaded] = useState(false)
   const [filter, setFilter] = useState<Filter>('todo')
   const [search, setSearch] = useState('')
+  const [threadKey, setThreadKey] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [body, setBody] = useState<{ id: string; text: string } | null>(null)
+  const [bodies, setBodies] = useState<Record<string, string>>({})
   const [syncing, setSyncing] = useState(false)
   const [notice, setNotice] = useState('')
   const [modal, setModal] = useState<'create' | 'existing' | 'split' | null>(null)
@@ -236,11 +304,13 @@ export default function EmailsPage() {
     Promise.resolve().then(load).then(sync)
   }, [load, sync])
 
-  // Recent emails with attachments are read by the AI straight away, two at a time
+  // Recent emails are read by the AI straight away, two at a time: those with
+  // attachments, and replies in a thread already filed to a case
   useEffect(() => {
     const since = Date.now() - AUTO_AI_DAYS * 86400000
-    const queue = mails.filter(m => m.status === 'new' && m.attachments.length > 0
-      && Date.parse(m.receivedAt) >= since && !asked.current.has(m.id))
+    const filedThreads = new Set(mails.filter(m => m.status === 'filed' && m.conversationId).map(m => m.conversationId))
+    const queue = mails.filter(m => m.status === 'new' && Date.parse(m.receivedAt) >= since && !asked.current.has(m.id)
+      && (m.attachments.length > 0 || filedThreads.has(m.conversationId)))
     if (queue.length === 0) return
     queue.forEach(m => asked.current.add(m.id))
     let next = 0
@@ -249,16 +319,31 @@ export default function EmailsPage() {
     worker()
   }, [mails, askAi])
 
-  const selected = mails.find(m => m.id === selectedId) ?? null
+  const threads = useMemo(() => groupThreads(mails), [mails])
+  const thread = threads.find(t => t.key === threadKey) ?? null
+  const selected = thread?.messages.find(m => m.id === selectedId) ?? null
 
-  // The email's text is loaded when it is opened; older emails go to the AI then
+  const openThread = (t: Thread<MailMessage>) => {
+    setThreadKey(t.key)
+    // The newest message still to sort out, else the newest
+    const todo = t.messages.filter(isTodo)
+    setSelectedId((todo[todo.length - 1] ?? t.latest).id)
+  }
+
+  // An older email goes to the AI when it is chosen
   useEffect(() => {
-    if (!selected) return
-    if (selected.status === 'new' && !asked.current.has(selected.id)) askAi(selected.id)
-    if (body?.id === selected.id) return
-    createClient().from('mail_messages').select('body_text').eq('id', selected.id).single()
-      .then(({ data }) => setBody({ id: selected.id, text: String(data?.body_text ?? '') }))
-  }, [selected, body, askAi])
+    if (selected?.status === 'new' && !asked.current.has(selected.id)) askAi(selected.id)
+  }, [selected, askAi])
+
+  // The thread's texts are loaded when it is opened
+  useEffect(() => {
+    const missing = (thread?.messages ?? []).filter(m => !(m.id in bodies)).map(m => m.id)
+    if (missing.length === 0) return
+    createClient().from('mail_messages').select('id, body_text').in('id', missing).then(({ data }) => {
+      const text = new Map((data ?? []).map(r => [String(r.id), String(r.body_text ?? '')]))
+      setBodies(prev => ({ ...prev, ...Object.fromEntries(missing.map(id => [id, text.get(id) ?? ''])) }))
+    })
+  }, [thread, bodies])
 
   const decide = async (status: 'not_case' | 'undo') => {
     if (!selected) return
@@ -283,10 +368,12 @@ export default function EmailsPage() {
   }
 
   const q = search.trim().toLowerCase()
-  const shown = mails
-    .filter(m => filter === 'all' || (filter === 'todo' ? TODO : DONE).includes(m.status))
-    .filter(m => !q || `${m.subject} ${m.fromName} ${m.fromAddress} ${m.attachments.map(a => a.name).join(' ')}`.toLowerCase().includes(q))
-  const todoCount = mails.filter(m => TODO.includes(m.status)).length
+  const shown = threads
+    .filter(t => filter === 'all' || t.messages.some(isTodo) === (filter === 'todo'))
+    .filter(t => !q || t.messages.some(m =>
+      `${m.subject} ${m.fromName} ${m.fromAddress} ${m.attachments.map(a => a.name).join(' ')}`.toLowerCase().includes(q)))
+  const todoCount = threads.filter(t => t.messages.some(isTodo)).length
+  const title = thread?.messages[0].subject ?? ''
 
   return (
     <div className="p-4 sm:p-8 max-w-screen-2xl mx-auto">
@@ -310,7 +397,7 @@ export default function EmailsPage() {
       )}
 
       <div className="card overflow-hidden grid lg:grid-cols-[320px_1fr_300px] lg:h-[calc(100vh-170px)]">
-        {/* ── List ── */}
+        {/* ── List: one row per thread ── */}
         <div className="border-b lg:border-b-0 lg:border-r border-gray-200 flex flex-col min-h-0 max-h-[50vh] lg:max-h-none">
           <div className="p-3 border-b border-gray-200 space-y-2">
             <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
@@ -328,68 +415,63 @@ export default function EmailsPage() {
               <p className="p-4 text-sm text-gray-400">Loading…</p>
             ) : shown.length === 0 ? (
               <p className="p-4 text-sm text-gray-400">{filter === 'todo' ? 'Nothing to sort out.' : 'No emails.'}</p>
-            ) : shown.map(m => (
-              <button key={m.id} onClick={() => setSelectedId(m.id)}
-                className={`w-full text-left px-4 py-3 border-b border-gray-100 ${m.id === selectedId ? 'bg-blue-50' : 'hover:bg-gray-50'}`}>
-                <div className="flex justify-between gap-2">
-                  <span className="text-sm font-semibold text-gray-900 truncate">{m.fromName || m.fromAddress}</span>
-                  <span className="text-xs text-gray-400 shrink-0">{timeAgo(m.receivedAt)}</span>
-                </div>
-                <p className="text-sm text-gray-700 truncate">{m.subject || '(no subject)'}</p>
-                <div className="mt-1.5 flex items-center gap-2">
-                  <Tag mail={m} />
-                  {m.attachments.length > 0 && <span className="text-[11px] text-gray-400">📎 {m.attachments.length}</span>}
-                </div>
-              </button>
-            ))}
+            ) : shown.map(t => {
+              const m = t.latest
+              const earlierTodo = isTodo(m) ? 0 : t.messages.filter(isTodo).length
+              const files = t.messages.reduce((n, x) => n + x.attachments.length, 0)
+              return (
+                <button key={t.key} onClick={() => openThread(t)}
+                  className={`w-full text-left px-4 py-3 border-b border-gray-100 ${t.key === threadKey ? 'bg-blue-50' : 'hover:bg-gray-50'}`}>
+                  <div className="flex justify-between gap-2">
+                    <span className="text-sm font-semibold text-gray-900 truncate">{m.fromName || m.fromAddress}</span>
+                    <span className="text-xs text-gray-400 shrink-0">{timeAgo(m.receivedAt)}</span>
+                  </div>
+                  <p className="text-sm text-gray-700 truncate">{m.subject || '(no subject)'}</p>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                    <Tag mail={m} />
+                    {t.messages.length > 1 && <span className="text-[11px] font-medium text-gray-500">{t.messages.length} messages</span>}
+                    {earlierTodo > 0 && <span className="text-[11px] text-amber-700">{earlierTodo} earlier to do</span>}
+                    {files > 0 && <span className="text-[11px] text-gray-400">📎 {files}</span>}
+                  </div>
+                </button>
+              )
+            })}
           </div>
         </div>
 
-        {/* ── Email ── */}
+        {/* ── Thread, oldest first ── */}
         <div className="border-b lg:border-b-0 lg:border-r border-gray-200 overflow-y-auto min-h-0">
-          {!selected ? (
+          {!thread ? (
             <p className="p-6 text-sm text-gray-400">Choose an email on the left.</p>
           ) : (
             <div className="p-5 sm:p-6">
-              <p className="text-xs text-gray-400 mb-3">Read-only view of the shared mailbox</p>
-              <h2 className="text-lg font-semibold text-gray-900 break-words">{selected.subject || '(no subject)'}</h2>
-              <p className="text-sm text-gray-500 mt-1 break-words">
-                {selected.fromName ? `${selected.fromName} <${selected.fromAddress}>` : selected.fromAddress}
-                {selected.toRecipients && <> → {selected.toRecipients}</>}
+              <p className="text-xs text-gray-400 mb-3">
+                Read-only view of the shared mailbox
+                {thread.messages.length > 1 && ` · ${thread.messages.length} messages, oldest first — click one to decide on it`}
               </p>
-              {selected.ccRecipients && <p className="text-sm text-gray-500 break-words">Cc {selected.ccRecipients}</p>}
-              <p className="text-xs text-gray-400 mt-1">{new Date(selected.receivedAt).toLocaleString()}</p>
-
-              <div className="mt-5 text-sm text-gray-800 whitespace-pre-wrap break-words">
-                {body?.id === selected.id ? (body.text || '(no text)') : 'Loading…'}
+              <h2 className="text-lg font-semibold text-gray-900 break-words mb-4">{title || '(no subject)'}</h2>
+              <div className="space-y-3">
+                {thread.messages.map(m => (
+                  <MessageCard key={m.id} mail={m} title={title} body={bodies[m.id]}
+                    selected={m.id === selectedId} single={thread.messages.length === 1}
+                    onSelect={() => setSelectedId(m.id)} />
+                ))}
               </div>
-
-              {selected.attachments.length > 0 && (
-                <div className="mt-6 flex flex-wrap gap-2">
-                  {selected.attachments.map(a => {
-                    const ai = selected.aiSuggestion?.attachments[a.id]
-                    return (
-                      <a key={a.id} href={`/api/mail/attachment?id=${selected.id}&att=${encodeURIComponent(a.id)}`}
-                        target="_blank" rel="noopener noreferrer"
-                        className="block border border-gray-200 rounded-lg px-3 py-2 hover:bg-gray-50 max-w-full">
-                        <p className="text-sm font-medium text-gray-800 truncate">{a.name}</p>
-                        <p className="text-xs text-blue-700">
-                          {a.filedTo ? `✓ ${a.filedTo.documentType} → ${caseNumber(a.filedTo.caseId)}`
-                            : ai ? ai.documentType : formatFileSize(a.size)}
-                        </p>
-                      </a>
-                    )
-                  })}
-                </div>
-              )}
             </div>
           )}
         </div>
 
-        {/* ── Decision ── */}
+        {/* ── Decision, for the chosen message ── */}
         <div className="p-4 overflow-y-auto min-h-0 bg-gray-50/50">
-          {selected ? (
-            <DecisionPanel mail={selected} onAction={onAction} onAskAi={() => askAi(selected.id)} onUndo={() => decide('undo')} />
+          {selected && thread ? (
+            <>
+              {thread.messages.length > 1 && (
+                <p className="text-xs text-gray-500 mb-2">
+                  Message {thread.messages.indexOf(selected) + 1} of {thread.messages.length} — {selected.fromName || selected.fromAddress}, {timeAgo(selected.receivedAt)}
+                </p>
+              )}
+              <DecisionPanel mail={selected} onAction={onAction} onAskAi={() => askAi(selected.id)} onUndo={() => decide('undo')} />
+            </>
           ) : (
             <p className="text-sm text-gray-400">The AI&apos;s suggestion and your options appear here.</p>
           )}

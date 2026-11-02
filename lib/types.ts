@@ -399,6 +399,12 @@ export type MailPolicySuggestion = {
   expiryDate?: string
 }
 
+// Reference numbers kept against a case (case_references) so later emails
+// carrying the same number find the case — see lib/mail-links.ts
+export const REFERENCE_KINDS = ['quote', 'cover_note', 'policy', 'rfq', 'po', 'tender', 'loa', 'other'] as const
+export type ReferenceKind = (typeof REFERENCE_KINDS)[number]
+export type MailReference = { kind: ReferenceKind; value: string }
+
 /** What the AI suggests for one email. Nothing is created until a person decides. */
 export type MailSuggestion = {
   action: MailAction
@@ -412,7 +418,9 @@ export type MailSuggestion = {
   principal?: string                     // employer / project owner
   amount?: number                        // contract value
   coverTypes?: string                    // e.g. "CAR + WC"
-  references?: string                    // RFQ, PO, tender numbers
+  references?: string                    // RFQ, PO, tender numbers, for display
+  referenceNumbers?: MailReference[]     // the same, by kind; saved to the case when filed
+  matchReason?: string                   // set when DocFlow chose the case: same thread, or a known reference
   policies: MailPolicySuggestion[]
   attachments: Record<string, { documentType: string; caseId?: string }>   // by attachment id
 }
@@ -420,6 +428,7 @@ export type MailSuggestion = {
 export type MailMessage = {
   id: string
   graphId: string
+  conversationId?: string  // Outlook's thread id; replies and the original share it
   subject: string
   fromName: string
   fromAddress: string

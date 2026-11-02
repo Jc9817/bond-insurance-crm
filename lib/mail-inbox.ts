@@ -1,8 +1,11 @@
 import { randomUUID } from 'crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { graphConfigured, graphDownload, graphRequest } from './msGraph'
-import type { Customer, MailAttachment, MailSuggestion } from './types'
-import { CASE_TYPES, MAIL_ACTIONS, REQUEST_TYPES } from './types'
+import type { Customer, MailAttachment, MailReference, MailSuggestion } from './types'
+import { CASE_TYPES, MAIL_ACTIONS, REFERENCE_KINDS, REQUEST_TYPES } from './types'
+import {
+  applyCaseMatch, cleanReferences, findCaseMatch, normalizeReference, recordFiling, type CaseLinkStore,
+} from './mail-links'
 import { matchCustomer, ssmKey } from './ssm'
 import { activeDocumentTypes, resolveRequiredDocForCase } from './intake-ai'
 import { isReadable, readEmail, type EmailAiResult } from './mail-ai'
@@ -19,9 +22,11 @@ import { sha256 } from './intake'
 //   DocFlow hasn't seen (the Refresh button and the daily job). New emails also
 //   arrive straight away through /api/intake/email/notify.
 // - analyseMessage() has the AI read the email (lib/mail-ai.ts) and stores
-//   its suggestion.
+//   its suggestion — overruled by an earlier email of the same thread, or a
+//   reference number already kept on a case (lib/mail-links.ts).
 // - fileMessage() files a person's decision: downloads the chosen attachments
-//   from the mailbox into the cases and links the email to them.
+//   from the mailbox into the cases, links the email to them and records its
+//   thread and reference numbers against them.
 //
 // Needs the Mail.Read application permission on the Azure app, scoped to
 // operation@ (docs/microsoft-365-setup.md). DocFlow never changes the mailbox.
@@ -139,8 +144,8 @@ export async function analyseMessage(sb: SupabaseClient, id: string): Promise<vo
   await sb.from('mail_messages').update({ status: 'analysing', ai_error: null }).eq('id', id)
 
   try {
-    const suggestion = await suggest(sb, row)
-    await sb.from('mail_messages').update({ status: 'ready', ai_suggestion: suggestion, ai_error: null }).eq('id', id)
+    const { suggestion, error } = await suggest(sb, row)
+    await sb.from('mail_messages').update({ status: 'ready', ai_suggestion: suggestion, ai_error: error ?? null }).eq('id', id)
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     console.error('[mail] AI failed:', id, message)
@@ -149,40 +154,86 @@ export async function analyseMessage(sb: SupabaseClient, id: string): Promise<vo
 }
 
 type OpenCase = { id: string; case_number: string | null; case_title: string | null; customer_id: string | null; customer_name: string | null; bond_principal: string | null; amount: number | null }
+const CASE_COLUMNS = 'id, case_number, case_title, customer_id, customer_name, bond_principal, amount'
 
-async function suggest(sb: SupabaseClient, row: Record<string, unknown>): Promise<MailSuggestion> {
+/** Adds these cases to the list when missing (e.g. a closed case a thread was filed to). */
+async function addCases(sb: SupabaseClient, cases: OpenCase[], ids: string[]) {
+  const missing = ids.filter(id => !cases.some(c => c.id === id))
+  if (missing.length === 0) return
+  const { data } = await sb.from('cases').select(CASE_COLUMNS).in('id', missing)
+  cases.push(...((data ?? []) as OpenCase[]))
+}
+
+/**
+ * The AI's reading of the email, with a thread or reference match applied.
+ * When the AI fails but a match is found, the match is still suggested and
+ * the AI's error returned alongside.
+ */
+async function suggest(sb: SupabaseClient, row: Record<string, unknown>): Promise<{ suggestion: MailSuggestion; error?: string }> {
   const attachments = (row.attachments ?? []) as MailAttachment[]
-
-  // Readable attachments go to the AI, within limits; the rest by name only
-  let budget = MAX_AI_BYTES, sent = 0
-  const files = await Promise.all(attachments.map(async a => {
-    if (!isReadable(a.contentType) || sent >= MAX_AI_FILES || a.size > budget) return { ...a, content: undefined }
-    sent++
-    budget -= a.size
-    return { ...a, content: await downloadAttachment(String(row.graph_id), a.id) }
-  }))
+  const links = caseLinks(sb)
+  const conversationId = (row.conversation_id as string | null) ?? null
+  const threadCaseIds = conversationId ? await links.casesForConversation(conversationId) : []
 
   const { data: caseRows } = await sb
-    .from('cases').select('id, case_number, case_title, customer_id, customer_name, bond_principal, amount')
+    .from('cases').select(CASE_COLUMNS)
     .is('archived_at', null).neq('current_status', 'Done')
     .order('created_at', { ascending: false }).limit(MAX_OPEN_CASES)
-  const openCases = (caseRows ?? []) as OpenCase[]
+  const cases = (caseRows ?? []) as OpenCase[]
+  await addCases(sb, cases, threadCaseIds)
+  const label = (id: string) => {
+    const c = cases.find(x => x.id === id)
+    return c?.case_number || c?.case_title || 'a case'
+  }
 
-  const r = await readEmail({
-    subject: String(row.subject ?? ''),
-    from: row.from_name ? `${row.from_name} <${row.from_address}>` : String(row.from_address ?? ''),
-    to: String(row.to_recipients ?? ''),
-    cc: String(row.cc_recipients ?? ''),
-    receivedAt: String(row.received_at),
-    body: String(row.body_text ?? ''),
-    attachments: files,
-    openCases: openCases.filter(c => c.case_number).map(c => ({
-      caseNumber: c.case_number!, title: c.case_title ?? '', customer: c.customer_name ?? '',
-      principal: c.bond_principal ?? '', amount: Number(c.amount ?? 0),
-    })),
-    documentTypes: await activeDocumentTypes(sb),
+  let r: EmailAiResult | undefined
+  let error: string | undefined
+  try {
+    // Readable attachments go to the AI, within limits; the rest by name only
+    let budget = MAX_AI_BYTES, sent = 0
+    const files = await Promise.all(attachments.map(async a => {
+      if (!isReadable(a.contentType) || sent >= MAX_AI_FILES || a.size > budget) return { ...a, content: undefined }
+      sent++
+      budget -= a.size
+      return { ...a, content: await downloadAttachment(String(row.graph_id), a.id) }
+    }))
+
+    r = await readEmail({
+      subject: String(row.subject ?? ''),
+      from: row.from_name ? `${row.from_name} <${row.from_address}>` : String(row.from_address ?? ''),
+      to: String(row.to_recipients ?? ''),
+      cc: String(row.cc_recipients ?? ''),
+      receivedAt: String(row.received_at),
+      body: String(row.body_text ?? ''),
+      attachments: files,
+      openCases: cases.filter(c => c.case_number).map(c => ({
+        caseNumber: c.case_number!, title: c.case_title ?? '', customer: c.customer_name ?? '',
+        principal: c.bond_principal ?? '', amount: Number(c.amount ?? 0),
+      })),
+      threadCases: threadCaseIds.map(id => cases.find(c => c.id === id)?.case_number).filter((n): n is string => !!n),
+      documentTypes: await activeDocumentTypes(sb),
+    })
+  } catch (err) {
+    error = err instanceof Error ? err.message : String(err)
+  }
+
+  const match = await findCaseMatch(links, {
+    conversationId,
+    references: r?.references ?? [],
+    text: [row.subject, row.body_text, ...attachments.map(a => a.name)].join('\n'),
   })
-  return resolveSuggestion(sb, r, attachments, openCases)
+  if (!r && !match) throw new Error(error)
+  if (match?.by === 'reference') await addCases(sb, cases, [match.caseId])
+
+  const base: MailSuggestion = r
+    ? await resolveSuggestion(sb, r, attachments, cases)
+    : { action: 'not_case', summary: '', confidence: 0, policies: [], attachments: {} }
+  const s = applyCaseMatch(base, match, label)
+
+  // The chosen case's customer, rather than one the AI guessed
+  const chosen = match && s.action === 'existing_case' ? cases.find(c => c.id === s.caseId) : undefined
+  if (chosen?.customer_id) s.customer = { id: chosen.customer_id, name: chosen.customer_name ?? '', isNew: false }
+  return { suggestion: s, error }
 }
 
 /** Turns the AI's answer into ids DocFlow knows (cases by number, customer by SSM / name). */
@@ -190,6 +241,8 @@ async function resolveSuggestion(sb: SupabaseClient, r: EmailAiResult, attachmen
   const caseByNumber = new Map(openCases.filter(c => c.case_number).map(c => [c.case_number!.trim(), c]))
   const findCase = (n: string) => caseByNumber.get(n.trim())
   const text = (s: string) => s.trim() || undefined
+  const referenceNumbers = cleanReferences(
+    (r.references ?? []).filter(x => (REFERENCE_KINDS as readonly string[]).includes(x.kind)))
 
   const s: MailSuggestion = {
     action: MAIL_ACTIONS.includes(r.action) ? r.action : 'not_case',
@@ -200,7 +253,8 @@ async function resolveSuggestion(sb: SupabaseClient, r: EmailAiResult, attachmen
     principal: text(r.principal),
     amount: r.amount > 0 ? r.amount : undefined,
     coverTypes: text(r.coverTypes),
-    references: text(r.references),
+    references: text(referenceNumbers.map(x => x.value).join(', ')),
+    referenceNumbers: referenceNumbers.length ? referenceNumbers : undefined,
     policies: r.policies
       .filter(p => p.policyNumber.trim() || p.policyType.trim())
       .map(p => ({
@@ -325,9 +379,57 @@ export async function fileMessage(
     linked.add(caseId)
   }
 
+  // So later replies and emails carrying the same numbers find these cases
+  const s = row.ai_suggestion as MailSuggestion | null
+  const references: MailReference[] = [
+    ...(s?.referenceNumbers ?? []),
+    ...(s?.policies ?? []).filter(p => p.policyNumber).map(p => ({ kind: 'policy' as const, value: p.policyNumber })),
+  ]
+  await recordFiling(caseLinks(sb), { mailId: id, caseIds: allCaseIds, conversationId: row.conversation_id, references })
+
   await sb.from('mail_messages').update({
     attachments, case_ids: [...linked], status: 'filed',
     decided_by: decidedBy, decided_at: new Date().toISOString(),
   }).eq('id', id)
   return outcome
+}
+
+// ─── Threads and references (lib/mail-links.ts) ─────────────────────────────
+
+/** case_conversations / case_references. Problems are logged, never block filing. */
+function caseLinks(sb: SupabaseClient): CaseLinkStore {
+  const warn = (what: string, error: { message: string } | null) => {
+    if (error) console.error(`[mail] ${what}:`, error.message)
+  }
+  return {
+    async casesForConversation(conversationId) {
+      const { data, error } = await sb.from('case_conversations').select('case_id')
+        .eq('conversation_id', conversationId).order('created_at', { ascending: false })
+      warn('thread lookup failed', error)
+      return (data ?? []).map(r => r.case_id as string)
+    },
+    async findReferences(normalized) {
+      const { data, error } = await sb.from('case_references')
+        .select('case_id, kind, value, value_normalized').in('value_normalized', normalized)
+      warn('reference lookup failed', error)
+      return (data ?? []).map(r => ({ caseId: r.case_id, kind: r.kind, value: r.value, valueNormalized: r.value_normalized }))
+    },
+    async link(caseIds, conversationId, references, referencesCaseId, mailId) {
+      if (conversationId && caseIds.length) {
+        const { error } = await sb.from('case_conversations').upsert(
+          caseIds.map(case_id => ({ case_id, conversation_id: conversationId })),
+          { onConflict: 'conversation_id,case_id', ignoreDuplicates: true })
+        warn('saving thread failed', error)
+      }
+      if (referencesCaseId && references.length) {
+        const { error } = await sb.from('case_references').upsert(
+          references.map(r => ({
+            case_id: referencesCaseId, kind: r.kind, value: r.value,
+            value_normalized: normalizeReference(r.value), mail_message_id: mailId,
+          })),
+          { onConflict: 'kind,value_normalized', ignoreDuplicates: true })
+        warn('saving references failed', error)
+      }
+    },
+  }
 }

@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk'
-import { CASE_TYPES, MAIL_ACTIONS, REQUEST_TYPES } from './types'
+import { CASE_TYPES, MAIL_ACTIONS, REFERENCE_KINDS, REQUEST_TYPES, type MailReference } from './types'
 
 // Server-only. Claude reads one email from the shared mailbox — its text and
 // its PDF / image attachments — and says what it is (Emails screen):
@@ -25,6 +25,7 @@ export type EmailForAi = {
   body: string
   attachments: { name: string; contentType: string; content?: Buffer }[]   // content only for readable files sent
   openCases: { caseNumber: string; title: string; customer: string; principal: string; amount: number }[]
+  threadCases: string[]   // case numbers earlier emails of this thread were filed to
   documentTypes: string[]
 }
 
@@ -42,7 +43,7 @@ export type EmailAiResult = {
   principal: string
   amount: number
   coverTypes: string
-  references: string
+  references: MailReference[]
   policies: { policyType: string; policyNumber: string; insurer: string; sumInsured: number; startDate: string; expiryDate: string }[]
   attachments: { index: number; documentType: string; caseNumber: string }[]
 }
@@ -69,7 +70,19 @@ const SCHEMA = {
     principal: str('The employer / project owner the work is for, "" if unknown'),
     amount: { type: 'number', description: 'Contract value in RM, 0 if unknown' },
     coverTypes: str('Bonds / covers involved, e.g. "CAR + WC" or "Performance Bond", "" if none'),
-    references: str('Reference numbers worth keeping (RFQ, PO, tender, LOA numbers), "" if none'),
+    references: {
+      type: 'array',
+      description: 'Every reference number in the email and its attachments, each once',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['kind', 'value'],
+        properties: {
+          kind: { type: 'string', enum: [...REFERENCE_KINDS], description: 'quote = insurer quotation ref; cover_note; policy = policy or bond number; rfq; po; tender; loa; other' },
+          value: str('The number as written, without its label: "QTS: B62716/26" → "B62716/26"'),
+        },
+      },
+    },
     policies: {
       type: 'array',
       description: 'Each cover note, policy or bond issued in this email (not quotations)',
@@ -111,6 +124,10 @@ const SYSTEM = `You sort incoming emails for Trident Management, a Malaysian bon
 - split: it covers several open cases at once, e.g. one payment advice or statement for several projects. Give each attachment its case.
 - not_case: nothing to file — newsletters, marketing, performance reports, system notices, internal chatter.
 
+If THREAD CASES lists a case, earlier emails of this thread were filed there: use existing_case with that case (or split between those cases) unless the email is clearly about something else.
+
+List every reference number you see — insurer quotation refs, cover note, policy and bond numbers, RFQ, PO, tender and LOA numbers — including the cover note / policy numbers you also give under policies.
+
 Extract the details you can find from the email and its attachments. For each attachment pick a document type from the given list (exact name), or "Other". Never invent numbers or dates: leave text "" and numbers 0 when not shown. Dates are YYYY-MM-DD.`
 
 function prompt(e: EmailForAi): string {
@@ -133,6 +150,9 @@ ${attachments}
 
 OPEN CASES (case number | title | customer)
 ${cases}
+
+THREAD CASES
+${e.threadCases.join('\n') || '(none)'}
 
 DOCUMENT TYPES
 ${e.documentTypes.join('\n') || '(none set up — use "Other")'}`
