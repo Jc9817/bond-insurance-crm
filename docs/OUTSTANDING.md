@@ -386,12 +386,14 @@ split email they can't be told apart. Emails filed before this change
 have their thread remembered but not their reference numbers.
 
 To switch it on:
-- [ ] Run [20261102100000_case_threads_references.sql](../supabase/migrations/20261102100000_case_threads_references.sql)
-      in the Supabase SQL Editor (safe to run twice). Until then the screen
-      still works, without the thread / reference suggestions
-- [ ] Deploy to Vercel
+- [x] Run [20261102100000_case_threads_references.sql](../supabase/migrations/20261102100000_case_threads_references.sql)
+      in the Supabase SQL Editor (done 2 Nov 2026)
+- [x] Deploy to Vercel
+- [ ] Optional (nice to have): run [20261102110000_case_references_backfill.sql](../supabase/migrations/20261102110000_case_references_backfill.sql)
+      so emails filed before 2 Nov afternoon also have their reference
+      numbers kept. Emails filed from now on don't need it
 
-Checks:
+Checks (optional — works in the background, nice to have):
 - [ ] An email with two replies shows as one row with "3 messages"; opening
       it lists all three, oldest first, each with its attachments
 - [ ] File the first email to a case; then **Ask the AI again** on a reply:
