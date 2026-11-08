@@ -15,6 +15,7 @@ import { formatDate, formatCurrency, timeAgo, getDaysUntil } from '@/lib/utils'
 import { isStorageFile } from '@/lib/storage'
 import StatusBadge from '@/components/ui/StatusBadge'
 import Modal from '@/components/ui/Modal'
+import DeleteCaseModal from '@/components/ui/DeleteCaseModal'
 import DocumentChecklist from '@/components/ui/DocumentChecklist'
 import AIScanPanel from '@/components/ui/AIScanPanel'
 import QuotationEmailPanel from '@/components/ui/QuotationEmailPanel'
@@ -74,6 +75,7 @@ export default function CaseDetailPage() {
   const [editPkgId, setEditPkgId] = useState('')
   const [addingCustomer, setAddingCustomer] = useState(false)
   const [closingModal, setClosingModal] = useState(false)
+  const [deleteModal, setDeleteModal] = useState(false)
   const [closingForm, setClosingForm] = useState({
     result: '', closingRemarks: '', lossReason: '', finalAmount: 0, finalInsurer: '', acceptanceDate: '', acceptedBy: '',
   })
@@ -314,6 +316,14 @@ export default function CaseDetailPage() {
             >
               Edit
             </button>
+            {currentUser?.role === 'Admin' && (
+              <button
+                onClick={() => setDeleteModal(true)}
+                className="btn-secondary text-sm text-red-600 border-red-200 hover:bg-red-50"
+              >
+                Delete
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -869,6 +879,10 @@ export default function CaseDetailPage() {
       </div>
 
       {/* ── Case Result Modal ─────────────────────────────────────────────────── */}
+      {deleteModal && (
+        <DeleteCaseModal caseItem={caseItem} onClose={() => setDeleteModal(false)} onDeleted={() => router.push('/cases')} />
+      )}
+
       <Modal isOpen={closingModal} onClose={() => setClosingModal(false)} title="Case Result" maxWidth="sm">
         <form onSubmit={submitClosing} className="px-6 py-5 space-y-4">
           <div>

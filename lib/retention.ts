@@ -86,26 +86,36 @@ export async function runRetention(sb: SupabaseClient) {
 }
 
 /**
- * Deletes cases for good: their files (DocFlow storage and SharePoint copies),
- * notes, follow-ups, emails, history, policies and the cases themselves.
- * Only cases still past their keep period are deleted. Returns the cases deleted.
+ * Deletes one case for good: its files (DocFlow storage and SharePoint copies),
+ * notes, follow-ups, emails, history, policies and the case itself. The files
+ * go last, so a failed delete never leaves a case with its documents missing.
  */
+export async function deleteCaseAndFiles(sb: SupabaseClient, caseId: string): Promise<void> {
+  const { data: files } = await sb.from('case_files').select('file_data_url, sharepoint_item_id').eq('case_id', caseId)
+  for (const table of ['case_files', 'case_notes', 'follow_ups', 'activity_logs', 'case_emails', 'policies']) {
+    await sb.from(table).delete().eq('case_id', caseId)
+  }
+  const { error } = await sb.from('cases').delete().eq('id', caseId)
+  if (error) throw new Error(error.message)
+
+  const paths = (files ?? []).map(f => storagePath(f.file_data_url)).filter((p): p is string => !!p)
+  if (paths.length) await sb.storage.from(STORAGE_BUCKET).remove(paths)
+  if (sharePointStorageEnabled()) {
+    for (const f of files ?? []) {
+      if (f.sharepoint_item_id) await deleteSharePointCopy(f.sharepoint_item_id).catch(() => {})
+    }
+  }
+}
+
+/** Deletes cases still past their keep period. Returns the cases deleted. */
 export async function deleteCasesPermanently(sb: SupabaseClient, caseIds: string[]): Promise<DueCase[]> {
   const due = (await casesPastRetention(sb)).filter(c => caseIds.includes(c.id))
   for (const c of due) {
-    const { data: files } = await sb.from('case_files').select('file_data_url, sharepoint_item_id').eq('case_id', c.id)
-    const paths = (files ?? []).map(f => storagePath(f.file_data_url)).filter((p): p is string => !!p)
-    if (paths.length) await sb.storage.from(STORAGE_BUCKET).remove(paths)
-    if (sharePointStorageEnabled()) {
-      for (const f of files ?? []) {
-        if (f.sharepoint_item_id) await deleteSharePointCopy(f.sharepoint_item_id).catch(() => {})
-      }
+    try {
+      await deleteCaseAndFiles(sb, c.id)
+    } catch (err) {
+      throw new Error(`Could not delete case ${c.caseNumber}: ${err instanceof Error ? err.message : 'failed'}`)
     }
-    for (const table of ['case_files', 'case_notes', 'follow_ups', 'activity_logs', 'case_emails', 'policies']) {
-      await sb.from(table).delete().eq('case_id', c.id)
-    }
-    const { error } = await sb.from('cases').delete().eq('id', c.id)
-    if (error) throw new Error(`Could not delete case ${c.caseNumber}: ${error.message}`)
   }
   return due
 }

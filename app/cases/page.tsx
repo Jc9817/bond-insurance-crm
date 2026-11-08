@@ -4,6 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { useStore } from '@/lib/store'
+import { useAuth } from '@/lib/auth'
 import type { Case } from '@/lib/types'
 import { CASE_STATUSES } from '@/lib/types'
 import { formatCurrency, timeAgo, formatDate } from '@/lib/utils'
@@ -11,6 +12,7 @@ import { getWorkflowTemplate, getMissingRequiredDocs, getRequiredDocs } from '@/
 import PageHeader from '@/components/ui/PageHeader'
 import StatusBadge from '@/components/ui/StatusBadge'
 import Modal from '@/components/ui/Modal'
+import DeleteCaseModal from '@/components/ui/DeleteCaseModal'
 import KanbanBoard from '@/components/ui/KanbanBoard'
 import CaseForm, { emptyCase } from '@/components/ui/CaseForm'
 
@@ -21,7 +23,9 @@ const WAITING_COLOR: Record<string, string> = {
 }
 
 export default function CasesPage() {
-  const { cases, customers, pics, caseFiles, followUps, workflowTemplates, addCase, updateCase, deleteCase, archiveCase, restoreCase } = useStore()
+  const { cases, customers, pics, caseFiles, followUps, workflowTemplates, addCase, updateCase, archiveCase, restoreCase } = useStore()
+  const { currentUser } = useAuth()
+  const isAdmin = currentUser?.role === 'Admin'
   const searchParams = useSearchParams()
   const [view, setView] = useState<'list' | 'board'>('list')
   const [search, setSearch] = useState('')
@@ -32,6 +36,7 @@ export default function CasesPage() {
   const [modal, setModal] = useState<'add' | 'edit' | null>(null)
   const [selected, setSelected] = useState<Case | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Case | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState<Case | null>(null)
 
   const filtered = cases.filter(c => {
     if (showArchived ? !c.archivedAt : c.archivedAt) return false
@@ -180,6 +185,7 @@ export default function CasesPage() {
                           ? <button onClick={() => restoreCase(c.id)} className="btn-xs bg-green-50 text-green-700 hover:bg-green-100">Restore</button>
                           : <button onClick={() => setDeleteTarget(c)} className="btn-xs bg-amber-50 text-amber-700 hover:bg-amber-100">Archive</button>
                         }
+                        {isAdmin && <button onClick={() => setConfirmDelete(c)} className="btn-xs bg-red-50 text-red-600 hover:bg-red-100">Delete</button>}
                       </div>
                     </td>
                   </tr>
@@ -227,17 +233,23 @@ export default function CasesPage() {
                 Archive Case
               </button>
             </div>
-            <div className="mt-3 pt-3 border-t border-gray-100">
-              <button
-                onClick={() => { deleteCase(deleteTarget.id); setDeleteTarget(null) }}
-                className="w-full text-xs text-red-500 hover:text-red-700 transition-colors py-1"
-              >
-                Delete permanently instead
-              </button>
-            </div>
+            {isAdmin && (
+              <div className="mt-3 pt-3 border-t border-gray-100">
+                <button
+                  onClick={() => { setConfirmDelete(deleteTarget); setDeleteTarget(null) }}
+                  className="w-full text-xs text-red-500 hover:text-red-700 transition-colors py-1"
+                >
+                  Delete permanently instead
+                </button>
+              </div>
+            )}
           </div>
         )}
       </Modal>
+
+      {confirmDelete && (
+        <DeleteCaseModal caseItem={confirmDelete} onClose={() => setConfirmDelete(null)} onDeleted={() => setConfirmDelete(null)} />
+      )}
     </div>
   )
 }

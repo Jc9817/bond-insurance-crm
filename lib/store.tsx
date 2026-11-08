@@ -50,7 +50,7 @@ type StoreCtx = {
   addCase: (c: Omit<Case, 'id' | 'createdAt'>) => string
   addCaseAndWait: (c: Omit<Case, 'id' | 'createdAt'>) => Promise<string>   // resolves once saved (throws if not)
   updateCase: (id: string, c: Partial<Case>) => void
-  deleteCase: (id: string) => void
+  deleteCase: (id: string) => Promise<void>
   archiveCase: (id: string) => void
   restoreCase: (id: string) => void
 
@@ -745,25 +745,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }
 
 
-  const deleteCase = (id: string) => {
-    // Remove from memory immediately
+  // Throws if the delete fails, and only then leaves the case on screen
+  const deleteCase = async (id: string) => {
+    const res = await fetch('/api/cases/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ caseId: id }),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.error ?? `Delete failed (${res.status})`)
+
     setCases(prev => prev.filter(x => x.id !== id))
     setCaseNotes(prev => prev.filter(x => x.caseId !== id))
     setFollowUps(prev => prev.filter(x => x.caseId !== id))
-    setPolicies(prev => prev.filter(x => x.caseId !== id))   // the database deletes them with the case
+    setPolicies(prev => prev.filter(x => x.caseId !== id))
     setActivityLogs(prev => prev.filter(x => x.caseId !== id))
     setCaseFiles(prev => prev.filter(x => x.caseId !== id))
-
-    // Delete from Supabase — related records first to avoid FK constraint errors
-    const sb = createClient()
-    sb.from('case_files').delete().eq('case_id', id).then()
-    sb.from('case_notes').delete().eq('case_id', id).then()
-    sb.from('follow_ups').delete().eq('case_id', id).then()
-    sb.from('activity_logs').delete().eq('case_id', id).then()
-    sb.from('cases').delete().eq('id', id).then(({ error }) => {
-      if (error) console.error('[Supabase] deleteCase failed:', error.message)
-      else console.log('[Supabase] deleteCase removed:', id)
-    })
+    setCaseEmails(prev => prev.filter(x => x.caseId !== id))
   }
   const archiveCase = (id: string) => {
     const archivedAt = nowIso()
