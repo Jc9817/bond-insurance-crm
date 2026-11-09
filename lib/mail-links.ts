@@ -63,6 +63,13 @@ export function splitReferences(text?: string): MailReference[] {
   return (text ?? '').split(/[;,\n]/).map(v => v.trim()).filter(Boolean).map(value => ({ kind: 'other' as const, value }))
 }
 
+/** The attachment named after this policy or cover note number, e.g. ANCKL0032785_1793.pdf. */
+export function attachmentForPolicy<T extends { name: string }>(policyNumber: string, attachments: T[]): T | undefined {
+  const clean = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, '')
+  const number = clean(policyNumber)
+  return number ? attachments.find(a => clean(a.name).includes(number)) : undefined
+}
+
 /** A store over rows already loaded — to check many emails with a few queries. */
 export function loadedStore(conversations: { caseId: string; conversationId: string }[], references: StoredReference[]): CaseLinkStore {
   return {

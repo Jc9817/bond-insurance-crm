@@ -301,7 +301,10 @@ async function resolveSuggestion(sb: SupabaseClient, r: EmailAiResult, attachmen
 // ─── Filing ─────────────────────────────────────────────────────────────────
 
 export type FileAssignment = { attachmentId: string; caseId: string; documentType: string }
-export type FileOutcome = { filed: string[]; duplicates: string[]; failed: string[]; caseFileIds: string[] }
+export type FileOutcome = {
+  filed: string[]; duplicates: string[]; failed: string[]; caseFileIds: string[]
+  files: { name: string; caseId: string; caseFileId: string }[]   // every attachment now on a case, new or already there
+}
 
 /**
  * Files a person's decision: each assignment's attachment is copied from the
@@ -314,7 +317,7 @@ export async function fileMessage(
   const { data: row } = await sb.from('mail_messages').select('*').eq('id', id).single()
   if (!row) throw new Error('Email not found')
   const attachments = (row.attachments ?? []) as MailAttachment[]
-  const outcome: FileOutcome = { filed: [], duplicates: [], failed: [], caseFileIds: [] }
+  const outcome: FileOutcome = { filed: [], duplicates: [], failed: [], caseFileIds: [], files: [] }
   const from = row.from_name || row.from_address
 
   const allCaseIds = [...new Set([...caseIds, ...assignments.map(a => a.caseId)])]
@@ -327,11 +330,14 @@ export async function fileMessage(
     const att = attachments.find(x => x.id === a.attachmentId)
     if (!att) continue
     // Each attachment can go to several cases, once per case
-    if (filedCases(att).some(f => f.caseId === a.caseId)) {
+    const earlier = filedCases(att).find(f => f.caseId === a.caseId)
+    if (earlier) {
       outcome.duplicates.push(att.name)
+      outcome.files.push({ name: att.name, caseId: a.caseId, caseFileId: earlier.caseFileId })
       continue
     }
     const record = (caseFileId: string) => {
+      outcome.files.push({ name: att.name, caseId: a.caseId, caseFileId })
       const filing = { caseId: a.caseId, caseFileId, documentType: a.documentType }
       if (att.filedTo) att.alsoFiledTo = [...(att.alsoFiledTo ?? []), filing]
       else att.filedTo = filing

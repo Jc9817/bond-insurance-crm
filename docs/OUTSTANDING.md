@@ -320,6 +320,9 @@ Checks:
       "Received"
 - [ ] **Split across cases**: each attachment lands on its own case; the list
       tag shows "split · 2 cases"
+- [ ] **Add to existing case** and **Split across cases** list the policies the
+      AI found; ticked ones appear on the case's Policies tab, linked to their
+      cover note, and are not added twice
 - [ ] **Not a case** moves it to Done; **Undo** brings it back
 - [ ] Filing the same PDF to the same case twice does not add it twice
 - [ ] Filed files get their SharePoint copy (if SharePoint is set up)
