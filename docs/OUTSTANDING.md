@@ -382,12 +382,13 @@ suggestions (3.3 / 3.5). The WhatsApp guide now says to upload on the case.
 
 ## [ ] Delete a case — checks
 
-Any logged-in user can now delete a case (Cases list or inside the case),
-after confirming twice. It is permanent: files, notes, emails, policies and
+Admins can delete a case (Cases list or inside the case), after confirming
+twice. It is permanent: files, notes, emails, policies and
 history all go.
 
-- [ ] Log in as Staff: the **Delete** button shows; on a throwaway case, go
+- [ ] Log in as Admin: the **Delete** button shows; on a throwaway case, go
       through both confirmations; the case disappears
+- [ ] Log in as Staff: there is no **Delete** button
 - [ ] An email that was filed only to that case comes back to **To do** on the
       Emails screen and can be filed again
 
