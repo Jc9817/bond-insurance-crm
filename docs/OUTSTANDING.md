@@ -148,16 +148,23 @@ Note: with every email now going through the Microsoft 365 app, item 1.3
 
 ---
 
-## [ ] 2.6 One AI path — n8n settings
+## [ ] AI Scan reads documents directly with Claude (n8n removed) — checks
 
-DocFlow no longer reads documents itself; all document reading runs in n8n.
-In n8n, open the AI-scan workflow's Claude/Anthropic step and check which
-model it uses. Current models: `claude-haiku-4-5` (cheapest, fine for simple
-forms), `claude-sonnet-5` (better on messy scans), `claude-opus-5` (best, priced highest).
-There is no "Haiku 5.5" yet, despite the example in the fix list.
+The **AI Scan** button no longer uses n8n. DocFlow sends the document straight
+to Claude and saves the result on the case file. It needs `ANTHROPIC_API_KEY`
+in Vercel, which the Emails screen already uses.
 
-Tidy-up: the `AI_MOCK` setting is no longer used (delete from `.env.local`).
-Keep `ANTHROPIC_API_KEY`: it's for the email drafter planned in 5.3.
+- [ ] Vercel → Settings → Environment Variables: delete
+      `N8N_DOCFLOW_WEBHOOK_URL`, `N8N_AI_SCAN_WEBHOOK_URL` and `N8N_CALLBACK_SECRET`
+- [ ] Delete the old `AI_MOCK` setting from `.env.local` if it is there
+
+Checks:
+- [ ] On a case, click **AI Scan** on a Letter of Award PDF: within about a
+      minute it shows **Extracted →** and the details are right
+- [ ] AI Scan on another document type (e.g. Bank Statement) also works
+- [ ] The details appear on the case report
+- [ ] AI Scan on a Word file: a message asks for a PDF; the button stays
+- [ ] **Cancel** next to Scanning… puts the button back
 
 ---
 

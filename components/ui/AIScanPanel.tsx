@@ -29,8 +29,8 @@ export default function AIScanPanel({ file, onClose }: Props) {
   const { currentUser } = useAuth()
   const [saved, setSaved] = useState(false)
   const [form, setForm] = useState<AiExtractedData>(() => ({
-    // Base defaults always applied first — aiExtractedData from the n8n
-    // pipeline may only carry { fields, reasoning, confidence } with none
+    // Base defaults always applied first — aiExtractedData from the AI
+    // scan may only carry { fields, reasoning, confidence } with none
     // of these, and leaving them undefined would make the fixed-form
     // inputs below flip from uncontrolled to controlled.
     customerName: '', projectName: '', caseType: '',
@@ -113,7 +113,7 @@ export default function AIScanPanel({ file, onClose }: Props) {
 
             <div className="space-y-3 mb-6">
               {hasDynamicFields ? (
-                // n8n-driven pipeline — one flat, doc-type-specific field bucket
+                // AI scan — one flat, doc-type-specific field bucket
                 <CustomRawFields raw={form.fields as Record<string, unknown>} onChange={setDynamicField} />
               ) : file.aiPrompt ? (
                 // Custom prompt — show raw extracted fields directly, no remapping confusion

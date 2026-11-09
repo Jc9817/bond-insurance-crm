@@ -283,9 +283,8 @@ export type User = {
 
 // ─── Case Files ───────────────────────────────────────────────────────────────
 
-// Driven by an n8n workflow: Pending (not scanned yet) -> Processing (n8n
-// triggered, awaiting result) -> Extracted (n8n reported success, data
-// filled in) or Failed (n8n reported an extraction error).
+// The AI scan (lib/document-scan.ts): Pending (not scanned yet) -> Processing
+// (being read) -> Extracted (data filled in) or Failed.
 export const AI_STATUSES = [
   'Pending',
   'Processing',
@@ -303,7 +302,7 @@ export type AiExtractedData = {
   expiryDate: string
   notes: string
   raw?: Record<string, unknown>   // full parsed response when a custom prompt schema is used
-  // n8n-driven pipeline's shape — one flat bucket of whatever fields matter
+  // The AI scan's shape — one flat bucket of whatever fields matter
   // for this document type (e.g. an LOA sends award_date/award_amount/
   // awarding_body; a Bank Statement sends different keys entirely).
   // Rendered generically — no per-field whitelist to maintain per doc type.

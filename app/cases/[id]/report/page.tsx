@@ -206,7 +206,10 @@ function ExtractedDocSection({ file }: { file: CaseFile }) {
   if (isCustomSST) return <CustomSSTDocSection file={file} data={data} />
   if (isSSTDoc) return <SSTDocSection file={file} data={data} />
 
-  const extras = data.raw ? Object.entries(data.raw).filter(([k]) => !STANDARD_KEYS.has(k)) : []
+  const extras: [string, unknown][] = [
+    ...Object.entries(data.raw ?? {}).filter(([k]) => !STANDARD_KEYS.has(k)),
+    ...Object.entries(data.fields ?? {}).filter(([, v]) => v !== ''),
+  ]
 
   return (
     <div className="mb-8 break-inside-avoid">

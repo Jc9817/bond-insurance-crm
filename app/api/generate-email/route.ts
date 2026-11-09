@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 
 // Drafts an email with Claude (Haiku — short, low-cost drafting). Not wired to
 // a screen yet; kept for fix-list 5.3 (AI drafts reviewed before sending).
-// Document extraction is NOT done here — that runs in n8n (see notify-n8n).
+// Document extraction is NOT done here — see lib/document-scan.ts.
 
 export async function POST(req: NextRequest) {
   const apiKey = process.env.ANTHROPIC_API_KEY

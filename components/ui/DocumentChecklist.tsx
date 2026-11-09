@@ -160,6 +160,7 @@ export default function DocumentChecklist({ caseId, caseTitle, template, caseFil
                 startAiScan(f.id)
                 addActivityLog({ caseId, caseTitle, actionType: 'AI_SCAN_STARTED', title: 'AI scan started', description: `AI scanning ${f.fileName}`, changedBy: currentUser?.fullName ?? 'Unknown' })
               }}
+              onCancelScan={() => updateCaseFile(f.id, { aiStatus: 'Pending' })}
               onReview={() => onScanReady(f)}
               onView={() => setViewingFile(f)}
             />
@@ -187,13 +188,14 @@ type FileRowProps = {
   onRetag: (docId: string | null, docName: string) => void
   onDelete: () => void
   onScan: () => void
+  onCancelScan: () => void
   onReview: () => void
   onView: () => void
 }
 
 function FileRow({
   file, docs, deleteConfirmId, setDeleteConfirmId,
-  onRetag, onDelete, onScan, onReview, onView,
+  onRetag, onDelete, onScan, onCancelScan, onReview, onView,
 }: FileRowProps) {
   const isTagged = !!file.requiredDocumentId && docs.some(d => d.id === file.requiredDocumentId)
   // Letter of Award is the one document the whole case revolves around —
@@ -232,7 +234,9 @@ function FileRow({
         </button>
       )}
       {file.aiStatus === 'Processing' && (
-        <span className="text-xs text-amber-600 font-medium shrink-0">Scanning…</span>
+        <span className="text-xs text-amber-600 font-medium shrink-0">
+          Scanning… <button onClick={onCancelScan} className="underline hover:text-amber-800">Cancel</button>
+        </span>
       )}
       {file.aiStatus === 'Pending' && (
         <button onClick={onScan} className="btn-xs bg-white border border-gray-200 hover:bg-violet-50 text-violet-700 shrink-0">

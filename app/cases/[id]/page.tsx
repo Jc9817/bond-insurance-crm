@@ -512,7 +512,7 @@ export default function CaseDetailPage() {
                                 </div>
                               )}
                               <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-3">
-                                {/* n8n-driven pipeline — one flat, doc-type-specific field bucket */}
+                                {/* AI scan — one flat, doc-type-specific field bucket */}
                                 {Object.entries(d.fields ?? {})
                                   .filter(([, v]) => v != null && v !== '')
                                   .map(([key, value]) => (

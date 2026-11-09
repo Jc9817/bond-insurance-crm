@@ -33,7 +33,7 @@ type Props = {
 }
 
 export default function QuotationDocumentPanel({ caseId, caseTitle, caseFiles }: Props) {
-  const { addCaseFile, deleteCaseFile, startAiScan, addActivityLog } = useStore()
+  const { addCaseFile, deleteCaseFile, updateCaseFile, startAiScan, addActivityLog } = useStore()
   const { currentUser } = useAuth()
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
@@ -214,7 +214,7 @@ export default function QuotationDocumentPanel({ caseId, caseTitle, caseFiles }:
                   {file.aiStatus === 'Processing' && (
                     <span className="flex items-center gap-1.5 text-xs text-violet-600 font-medium">
                       <span className="w-3 h-3 border-2 border-violet-400 border-t-transparent rounded-full animate-spin" />
-                      Scanning…
+                      Scanning… <button onClick={() => updateCaseFile(file.id, { aiStatus: 'Pending' })} className="underline hover:text-violet-800">Cancel</button>
                     </span>
                   )}
                   {file.aiStatus === 'Extracted' && (

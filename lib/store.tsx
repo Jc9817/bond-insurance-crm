@@ -509,7 +509,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }
 
   // Everything about one case that the startup load leaves out. Also picks up
-  // changes made elsewhere since (e.g. an AI scan result from n8n).
+  // changes made elsewhere since (e.g. an AI scan result).
   // Stable across renders so pages can call it from useEffect without looping.
   // (React Compiler is not enabled, so its memoization lint does not apply.)
   // eslint-disable-next-line react-hooks/preserve-manual-memoization
@@ -868,32 +868,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   // ─── Case Files ───────────────────────────────────────────────────────────
 
-  const notifyDocFlow = (file: CaseFile) => {
-    fetch('/api/notify-n8n', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        event: 'case_file_uploaded',
-        caseId: file.caseId,
-        fileId: file.id,
-        fileName: file.fileName,
-        fileType: file.fileType,
-        fileSize: file.fileSize,
-        documentType: file.documentType,
-        uploadedBy: file.uploadedBy,
-        uploadedAt: file.uploadedAt,
-        fileUrl: file.fileDataUrl,
-      }),
-    }).catch(err => console.error('[n8n] docflow notify failed:', err))
-  }
-
   const addCaseFile = (f: Omit<CaseFile, 'id' | 'uploadedAt'>): string => {
     const row: CaseFile = { ...f, id: generateId(), uploadedAt: nowIso() }
     setCaseFiles(prev => [...prev, row])
     createClient().from('case_files').upsert(toCaseFile(row)).then(({ error }) => {
       if (!error) syncToSharePoint({ caseFileId: row.id })
     })
-    notifyDocFlow(row)
     return row.id
   }
   const deleteCaseFile = (id: string) => {
@@ -921,53 +901,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       })
   }
 
-  // Scanning itself happens in n8n, not here — this just fires the trigger
-  // and flips the file to "Processing". n8n reports the actual result
-  // (Extracted + data, or Failed) back via POST /api/ai-scan/callback.
-  //
-  // Prompt resolution: file.aiPrompt (an explicit per-file override, e.g.
-  // Quotation panel) if set, else the checklist slot's own prompt —
-  // required_documents.aiPrompt for file.requiredDocumentId, edited under
-  // Settings → Workflow Templates → Required Documents. Files are always
-  // tagged to a required document before being scanned, so there's no
-  // untagged case to fall back for.
-  const resolveRequiredDocPrompt = (requiredDocumentId: string | undefined): string | undefined => {
-    if (!requiredDocumentId) return undefined
-    for (const t of workflowTemplates) {
-      const doc = t.requiredDocuments.find(d => d.id === requiredDocumentId)
-      if (doc?.aiPrompt?.trim()) return doc.aiPrompt.trim()
-    }
-    return undefined
-  }
-
+  // The scan runs on the server (/api/ai-scan, lib/document-scan.ts) and saves
+  // its result on the file; the case page checks for it while it's Processing.
+  // A file the AI can't read is refused before the scan starts.
   const startAiScan = (id: string) => {
-    const file = caseFiles.find(f => f.id === id)
-    if (!file?.fileDataUrl) return
-
     updateCaseFile(id, { aiStatus: 'Processing' })
-
-    fetch('/api/notify-n8n', {
+    fetch('/api/ai-scan', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        event: 'ai_scan_requested',
-        caseFileId: id,
-        caseId: file.caseId,
-        fileName: file.fileName,
-        fileType: file.fileType,
-        documentType: file.documentType,
-        aiPrompt: file.aiPrompt ?? resolveRequiredDocPrompt(file.requiredDocumentId),
-        fileUrl: file.fileDataUrl,
-      }),
+      body: JSON.stringify({ caseFileId: id }),
     })
       .then(async res => {
         const data = await res.json().catch(() => ({}))
-        if (!res.ok || data.error) throw new Error(data.error ?? `n8n trigger failed (${res.status})`)
+        if (!res.ok) throw new Error(data.error ?? `AI scan failed (${res.status})`)
       })
       .catch((err: unknown) => {
-        const msg = err instanceof Error ? err.message : 'AI scan trigger failed'
-        updateCaseFile(id, { aiStatus: 'Failed' })
-        alert(`AI Scan failed: ${msg}`)
+        updateCaseFile(id, { aiStatus: 'Pending' })
+        alert(err instanceof Error ? err.message : 'AI scan failed')
       })
   }
 

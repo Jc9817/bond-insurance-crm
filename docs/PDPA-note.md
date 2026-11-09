@@ -28,9 +28,8 @@ statements**.
   (about 5 minutes) given to logged-in staff.
 - **Email:** sent from `operation@tridentmanagement.com.my` through
   Microsoft 365. Copies are kept in its Sent Items.
-- **AI document reading:** documents are sent to n8n and Anthropic (Claude) to
-  extract details. _Check that n8n and Anthropic data retention settings are
-  acceptable._
+- **AI document reading:** documents are sent to Anthropic (Claude) to extract
+  details. _Check that Anthropic's data retention settings are acceptable._
 
 ## Who can see it
 

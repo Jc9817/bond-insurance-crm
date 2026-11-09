@@ -65,7 +65,7 @@ export async function removeFile(value?: string | null): Promise<void> {
   if (error) console.error('[Storage] remove failed:', path, error.message)
 }
 
-/** Signed URL for a Storage file (default 1 hour, so a queued n8n run can still fetch it); other values pass through. */
+/** Signed URL for a Storage file (default 1 hour); other values pass through. */
 export async function signFileUrlForServer(value: string, expiresInSeconds = 3600): Promise<string> {
   if (!isStorageFile(value)) return value
   return resolveFileUrl(serviceClient(), value, expiresInSeconds)

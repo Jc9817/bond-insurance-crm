@@ -3,14 +3,12 @@ import { serviceClient } from '@/lib/supabase-service'
 import { requireUser } from '@/lib/admin-auth'
 import { fileMessage, type FileAssignment } from '@/lib/mail-inbox'
 import { sharePointStorageEnabled, syncCaseFile } from '@/lib/sharepoint-files'
-import { notifyDocFlowWebhook } from '@/lib/n8n'
-import { signFileUrlForServer } from '@/lib/storage-server'
 
 // Emails screen: files a decision.
 //   { id, assignments: [{ attachmentId, caseId, documentType }], caseIds: [...] }
 // Each attachment is copied from the mailbox into its case; the email is
 // linked to every case named. Afterwards (in the background) the new files
-// are copied to SharePoint and announced to n8n, as for any upload.
+// get their SharePoint copies.
 
 export const maxDuration = 300
 
@@ -33,19 +31,10 @@ export async function POST(req: NextRequest) {
     const outcome = await fileMessage(sb, body.id, assignments, caseIds, who.name)
 
     after(async () => {
+      if (!sharePointStorageEnabled()) return
       for (const caseFileId of outcome.caseFileIds) {
-        if (sharePointStorageEnabled()) {
-          await syncCaseFile(sb, caseFileId)
-            .catch(err => console.error('[sharepoint] sync failed:', caseFileId, err instanceof Error ? err.message : err))
-        }
-        const { data: f } = await sb.from('case_files').select('*').eq('id', caseFileId).single()
-        if (!f) continue
-        await notifyDocFlowWebhook({
-          event: 'case_file_uploaded', caseId: f.case_id, fileId: f.id, fileName: f.file_name,
-          fileType: f.file_type, fileSize: f.file_size, documentType: f.document_type,
-          uploadedBy: f.uploaded_by, uploadedAt: f.uploaded_at,
-          fileUrl: await signFileUrlForServer(f.file_data_url),
-        })
+        await syncCaseFile(sb, caseFileId)
+          .catch(err => console.error('[sharepoint] sync failed:', caseFileId, err instanceof Error ? err.message : err))
       }
     })
     return NextResponse.json(outcome)
