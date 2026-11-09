@@ -5,7 +5,7 @@ import type { CaseProduct, CompanyType, Product, ProductDocument, RequiredDocume
 //
 // - Documents: every selected product's documents (product_documents, set in
 //   Settings → Product Master), each counted once. The list differs for
-//   Sdn. Bhd. and Sole Proprietor customers.
+//   Sdn. Bhd., Sole Proprietor and Partnership customers.
 // - Steps: one workflow, the most complete among the selected products'.
 //
 // Renewal, Claim, Endorsement and Servicing keep their own workflow, steps
@@ -31,7 +31,7 @@ const REQUEST_WORKFLOWS: Record<string, string> = {
 
 /** Customers with no company type, and every other type, use the Sdn. Bhd. list. */
 export const companyTypeFor = (businessType?: string): CompanyType =>
-  businessType === 'Sole Proprietor' ? 'Sole Proprietor' : 'Sdn. Bhd.'
+  businessType === 'Sole Proprietor' || businessType === 'Partnership' ? businessType : 'Sdn. Bhd.'
 
 type Form = { caseType: string; requestType?: string; selectedProducts?: CaseProduct[] }
 

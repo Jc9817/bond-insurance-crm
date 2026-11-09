@@ -75,7 +75,7 @@ export type Product = {
   workflowType?: string   // the workflow whose steps this product follows
 }
 
-export const COMPANY_TYPES = ['Sdn. Bhd.', 'Sole Proprietor'] as const
+export const COMPANY_TYPES = ['Sdn. Bhd.', 'Sole Proprietor', 'Partnership'] as const
 export type CompanyType = (typeof COMPANY_TYPES)[number]
 
 /** One document a product needs, for one company type (see lib/product-documents.ts). */

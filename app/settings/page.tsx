@@ -1005,12 +1005,12 @@ function ProductMasterTab() {
               <div>
                 <label className="label">Documents needed</label>
                 <div className="border border-gray-200 rounded-xl divide-y divide-gray-100">
-                  <div className="grid grid-cols-[1fr_110px_110px] gap-2 px-3 py-2 text-xs font-semibold text-gray-400">
+                  <div className="grid grid-cols-[1fr_105px_105px_105px] gap-2 px-3 py-2 text-xs font-semibold text-gray-400">
                     <span>Document</span>
                     {COMPANY_TYPES.map(t => <span key={t}>{t}</span>)}
                   </div>
                   {masterDocs.map(d => (
-                    <div key={d.id} className="grid grid-cols-[1fr_110px_110px] gap-2 px-3 py-1.5 items-center">
+                    <div key={d.id} className="grid grid-cols-[1fr_105px_105px_105px] gap-2 px-3 py-1.5 items-center">
                       <span className="text-sm text-gray-800">{d.name}</span>
                       {COMPANY_TYPES.map(t => (
                         <select

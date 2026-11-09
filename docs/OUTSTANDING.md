@@ -397,7 +397,8 @@ history all go.
 ## [ ] Documents follow the products — run the database file, then check
 
 Staff now just tick the products. The checklist is every selected product's
-documents, each counted once, and differs for Sdn. Bhd. and Sole Proprietor.
+documents, each counted once, and differs for Sdn. Bhd., Sole Proprietor and
+Partnership.
 Workflow Type moved to the bottom of the form and is optional ("Automatic").
 Existing cases keep the checklist they have. The starting lists were built
 from the old workflow lists, to fine-tune in Settings → Product Master → Edit.
@@ -408,11 +409,11 @@ To switch it on, in this order:
 - [ ] Then put the code live
 
 Checks:
-- [ ] New case, New Business, Performance Bond: "8 documents needed" for a
-      Sdn. Bhd., 7 for a Sole Proprietor; the case's checklist matches
-- [ ] Add WC to that case: Application Form, Workers List and Supporting
-      Documents are added (11 in total for a Sdn. Bhd.); the
-      documents already there are not repeated
+- [ ] New case, New Business, Performance Bond: "19 documents needed", with
+      11 required for a Sdn. Bhd. and 8 for a Sole Proprietor or Partnership;
+      the case's checklist matches
+- [ ] New case with Tender Bond and WC: the documents they share are not
+      repeated
 - [ ] New case with only CAR follows Project Insurance steps; WC alone follows
       Simple Policy steps
 - [ ] Request Type = Claim: follows Claim Workflow with its own documents
