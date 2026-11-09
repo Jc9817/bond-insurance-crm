@@ -8,7 +8,7 @@ import { useAuth } from '@/lib/auth'
 import type { CaseFile, WorkflowStep, CaseProduct, CaseStatus, LoaAiStatus } from '@/lib/types'
 import { WAITING_FOR_OPTIONS, REQUEST_TYPES, CASE_STATUSES } from '@/lib/types'
 import {
-  resolveTemplate, getWorkflowTemplate, getActiveSteps, getCaseReadiness, getDocumentCompleteness,
+  getWorkflowTemplate, getActiveSteps, getCaseReadiness, getDocumentCompleteness,
   getMissingRequiredDocs, getCurrentStep, getNextStep, getUnassignedFiles, getNextRecommendedAction,
 } from '@/lib/workflow'
 import { formatDate, formatCurrency, timeAgo, getDaysUntil } from '@/lib/utils'
@@ -16,6 +16,8 @@ import { isStorageFile } from '@/lib/storage'
 import StatusBadge from '@/components/ui/StatusBadge'
 import Modal from '@/components/ui/Modal'
 import DeleteCaseModal from '@/components/ui/DeleteCaseModal'
+import ProductDocsSummary from '@/components/ui/ProductDocsSummary'
+import { PRODUCT_DOCS_TEMPLATE_ID, workflowForSave } from '@/lib/product-documents'
 import DocumentChecklist from '@/components/ui/DocumentChecklist'
 import AIScanPanel from '@/components/ui/AIScanPanel'
 import QuotationEmailPanel from '@/components/ui/QuotationEmailPanel'
@@ -45,7 +47,7 @@ export default function CaseDetailPage() {
     cases, customers, contacts, caseNotes, followUps, pics, workflowTemplates,
     activityLogs, updateCase, addCase, addCaseNote, addFollowUp, toggleFollowUp, deleteFollowUp,
     addActivityLog, caseFiles, settingsData, products, productPackages, addCustomer,
-    loadCase, loading, policies,
+    loadCase, loading, policies, caseTemplate,
   } = useStore()
   const { currentUser } = useAuth()
 
@@ -93,11 +95,11 @@ export default function CaseDetailPage() {
   }
 
   const customer = customers.find(c => c.id === caseItem.customerId)
-  const template = resolveTemplate(caseItem, workflowTemplates, customer?.businessType)
+  const template = caseTemplate(caseItem)
   const steps = getActiveSteps(template)
   const caseDocs = caseFiles.filter(f => f.caseId === id)
   const unassignedDocs = getUnassignedFiles(id, template, caseDocs)
-  const caseTypeOptions = [...new Set(workflowTemplates.filter(t => t.isActive).map(t => t.caseType))]
+  const caseTypeOptions = [...new Set(workflowTemplates.filter(t => t.isActive && t.id !== PRODUCT_DOCS_TEMPLATE_ID).map(t => t.caseType))]
   const custContacts = contacts.filter(c => c.customerId === caseItem.customerId)
 
   const currentStep = getCurrentStep(caseItem.currentWorkflowStepId, template)
@@ -309,7 +311,7 @@ export default function CaseDetailPage() {
             </button>
             <button
               onClick={() => {
-                setEditInfoForm({ caseTitle: caseItem.caseTitle, caseType: caseItem.caseType, amount: caseItem.amount, personInCharge: caseItem.personInCharge, bondPrincipal: caseItem.bondPrincipal ?? '', bondExpiryDate: caseItem.bondExpiryDate ?? '', waitingFor: caseItem.waitingFor ?? '', targetInsurer: caseItem.finalInsurer ?? '', customerId: caseItem.customerId, requestType: caseItem.requestType ?? '', selectedProducts: caseItem.selectedProducts ?? [] }); setEditPkgId('')
+                setEditInfoForm({ caseTitle: caseItem.caseTitle, caseType: caseItem.usesProductDocuments ? '' : caseItem.caseType, amount: caseItem.amount, personInCharge: caseItem.personInCharge, bondPrincipal: caseItem.bondPrincipal ?? '', bondExpiryDate: caseItem.bondExpiryDate ?? '', waitingFor: caseItem.waitingFor ?? '', targetInsurer: caseItem.finalInsurer ?? '', customerId: caseItem.customerId, requestType: caseItem.requestType ?? '', selectedProducts: caseItem.selectedProducts ?? [] }); setEditPkgId('')
                 setEditInfoModal(true)
               }}
               className="btn-secondary text-sm"
@@ -598,7 +600,7 @@ export default function CaseDetailPage() {
               <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Case Information</h2>
               <button
                 onClick={() => {
-                  setEditInfoForm({ caseTitle: caseItem.caseTitle, caseType: caseItem.caseType, amount: caseItem.amount, personInCharge: caseItem.personInCharge, bondPrincipal: caseItem.bondPrincipal ?? '', bondExpiryDate: caseItem.bondExpiryDate ?? '', waitingFor: caseItem.waitingFor ?? '', targetInsurer: caseItem.finalInsurer ?? '', customerId: caseItem.customerId, requestType: caseItem.requestType ?? '', selectedProducts: caseItem.selectedProducts ?? [] }); setEditPkgId('')
+                  setEditInfoForm({ caseTitle: caseItem.caseTitle, caseType: caseItem.usesProductDocuments ? '' : caseItem.caseType, amount: caseItem.amount, personInCharge: caseItem.personInCharge, bondPrincipal: caseItem.bondPrincipal ?? '', bondExpiryDate: caseItem.bondExpiryDate ?? '', waitingFor: caseItem.waitingFor ?? '', targetInsurer: caseItem.finalInsurer ?? '', customerId: caseItem.customerId, requestType: caseItem.requestType ?? '', selectedProducts: caseItem.selectedProducts ?? [] }); setEditPkgId('')
                   setEditInfoModal(true)
                 }}
                 className="btn-xs bg-gray-100 hover:bg-gray-200 text-gray-700"
@@ -948,7 +950,8 @@ export default function CaseDetailPage() {
             const newCustomer = customers.find(c => c.id === editInfoForm.customerId)
             if (editInfoForm.customerId !== caseItem.customerId) changes.push(`Main Contractor: ${caseItem.customerName} → ${newCustomer?.customerName ?? '—'}`)
             if (editInfoForm.caseTitle !== caseItem.caseTitle) changes.push(`Title: "${caseItem.caseTitle}" → "${editInfoForm.caseTitle}"`)
-            if (editInfoForm.caseType !== caseItem.caseType) changes.push(`Type: ${caseItem.caseType || '—'} → ${editInfoForm.caseType || '—'}`)
+            const workflow = workflowForSave(editInfoForm, products, t => getWorkflowTemplate(t, workflowTemplates, newCustomer?.businessType ?? customer?.businessType), caseItem)
+            if (workflow.caseType !== caseItem.caseType) changes.push(`Type: ${caseItem.caseType || '—'} → ${workflow.caseType || '—'}`)
             if (editInfoForm.amount !== caseItem.amount) changes.push(`Amount: RM ${caseItem.amount.toLocaleString()} → RM ${editInfoForm.amount.toLocaleString()}`)
             if (editInfoForm.personInCharge !== caseItem.personInCharge) changes.push(`Person in Charge: ${caseItem.personInCharge || '—'} → ${editInfoForm.personInCharge || '—'}`)
             if (editInfoForm.bondPrincipal !== (caseItem.bondPrincipal ?? '')) changes.push(`Contractor: ${caseItem.bondPrincipal || '—'} → ${editInfoForm.bondPrincipal || '—'}`)
@@ -956,10 +959,7 @@ export default function CaseDetailPage() {
             if (editInfoForm.waitingFor !== (caseItem.waitingFor ?? '')) changes.push(`Waiting For: ${caseItem.waitingFor || '—'} → ${editInfoForm.waitingFor || '—'}`)
             if (editInfoForm.targetInsurer !== (caseItem.finalInsurer ?? '')) changes.push(`Target Insurer: ${caseItem.finalInsurer || '—'} → ${editInfoForm.targetInsurer || '—'}`)
             if (editInfoForm.requestType !== (caseItem.requestType ?? '')) changes.push(`Request Type: ${caseItem.requestType || '—'} → ${editInfoForm.requestType || '—'}`)
-            const newTemplateId = editInfoForm.caseType !== caseItem.caseType
-              ? getWorkflowTemplate(editInfoForm.caseType, workflowTemplates, newCustomer?.businessType ?? customer?.businessType)?.id
-              : caseItem.workflowTemplateId
-            updateCase(id, { customerId: editInfoForm.customerId, customerName: newCustomer?.customerName ?? caseItem.customerName, caseTitle: editInfoForm.caseTitle, caseType: editInfoForm.caseType, amount: editInfoForm.amount, personInCharge: editInfoForm.personInCharge, bondPrincipal: editInfoForm.bondPrincipal || undefined, bondExpiryDate: editInfoForm.bondExpiryDate || undefined, waitingFor: (editInfoForm.waitingFor as typeof WAITING_FOR_OPTIONS[number]) || null, finalInsurer: editInfoForm.targetInsurer || undefined, workflowTemplateId: newTemplateId, requestType: editInfoForm.requestType || undefined, selectedProducts: editInfoForm.selectedProducts.length > 0 ? editInfoForm.selectedProducts : undefined })
+            updateCase(id, { customerId: editInfoForm.customerId, customerName: newCustomer?.customerName ?? caseItem.customerName, caseTitle: editInfoForm.caseTitle, ...workflow, amount: editInfoForm.amount, personInCharge: editInfoForm.personInCharge, bondPrincipal: editInfoForm.bondPrincipal || undefined, bondExpiryDate: editInfoForm.bondExpiryDate || undefined, waitingFor: (editInfoForm.waitingFor as typeof WAITING_FOR_OPTIONS[number]) || null, finalInsurer: editInfoForm.targetInsurer || undefined, requestType: editInfoForm.requestType || undefined, selectedProducts: editInfoForm.selectedProducts.length > 0 ? editInfoForm.selectedProducts : undefined })
             if (changes.length > 0) {
               addActivityLog({ caseId: id, caseTitle: editInfoForm.caseTitle, actionType: 'CASE_UPDATED', title: 'Case info updated', description: changes.join('; '), changedBy: currentUser?.fullName ?? 'Unknown' })
             }
@@ -1003,21 +1003,12 @@ export default function CaseDetailPage() {
               Select only if a <strong>sub-contractor</strong> is executing the works under the Main Contractor&apos;s name or licence. If left blank, the Main Contractor is assumed to be the Contractor.
             </p>
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="label">Request Type</label>
-              <select className="input" value={editInfoForm.requestType} onChange={e => setEditInfoForm(p => ({ ...p, requestType: e.target.value }))}>
-                <option value="">— Select —</option>
-                {REQUEST_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="label">Workflow Type</label>
-              <select className="input" value={editInfoForm.caseType} onChange={e => setEditInfoForm(p => ({ ...p, caseType: e.target.value }))}>
-                <option value="">— Select type —</option>
-                {caseTypeOptions.map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
-            </div>
+          <div>
+            <label className="label">Request Type</label>
+            <select className="input" value={editInfoForm.requestType} onChange={e => setEditInfoForm(p => ({ ...p, requestType: e.target.value }))}>
+              <option value="">— Select —</option>
+              {REQUEST_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
           </div>
           <div>
             <label className="label">Products</label>
@@ -1076,6 +1067,12 @@ export default function CaseDetailPage() {
                 )
               })}
             </div>
+            <ProductDocsSummary
+              caseType={editInfoForm.caseType}
+              requestType={editInfoForm.requestType}
+              selected={editInfoForm.selectedProducts}
+              businessType={customers.find(c => c.id === editInfoForm.customerId)?.businessType}
+            />
           </div>
           <div>
             <label className="label">Estimated Amount (RM)</label>
@@ -1107,6 +1104,14 @@ export default function CaseDetailPage() {
               <option value="">— None —</option>
               {settingsData.insurers.filter(i => i.isActive).map(i => <option key={i.id} value={i.name}>{i.name}</option>)}
             </select>
+          </div>
+          <div>
+            <label className="label">Workflow Type <span className="text-gray-400 font-normal">(optional)</span></label>
+            <select className="input" value={editInfoForm.caseType} onChange={e => setEditInfoForm(p => ({ ...p, caseType: e.target.value }))}>
+              <option value="">Automatic, from the products</option>
+              {caseTypeOptions.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+            <p className="text-xs text-gray-400 mt-1">Leave on Automatic unless this case needs a different process.</p>
           </div>
           <div className="flex gap-3 pt-1">
             <button type="button" onClick={() => setEditInfoModal(false)} className="btn-secondary flex-1">Cancel</button>

@@ -4,7 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { Case, CaseFile, FollowUp, WorkflowTemplate, CASE_STATUSES, CaseStatus } from '@/lib/types'
 import { formatCurrency, getDaysUntil } from '@/lib/utils'
-import { getWorkflowTemplate, getCaseReadiness, getMissingRequiredDocs } from '@/lib/workflow'
+import { getCaseReadiness, getMissingRequiredDocs } from '@/lib/workflow'
 import StatusBadge from './StatusBadge'
 
 const statusSelectStyle: Record<CaseStatus, string> = {
@@ -17,11 +17,11 @@ type Props = {
   cases: Case[]
   caseFiles: CaseFile[]
   followUps: FollowUp[]
-  workflowTemplates: WorkflowTemplate[]
+  caseTemplate: (c: Case) => WorkflowTemplate | null
   onStatusChange: (caseId: string, newStatus: CaseStatus) => void
 }
 
-export default function KanbanBoard({ cases, caseFiles, followUps, workflowTemplates, onStatusChange }: Props) {
+export default function KanbanBoard({ cases, caseFiles, followUps, caseTemplate, onStatusChange }: Props) {
   const [draggedId, setDraggedId] = useState<string | null>(null)
   const [dragOverStatus, setDragOverStatus] = useState<CaseStatus | null>(null)
 
@@ -54,7 +54,7 @@ export default function KanbanBoard({ cases, caseFiles, followUps, workflowTempl
             </div>
             <div className={`space-y-2 min-h-16 rounded-xl transition-colors border-2 ${isDropTarget ? 'bg-blue-50 border-dashed border-blue-300' : 'border-transparent'}`}>
               {col.map(c => {
-                const template = getWorkflowTemplate(c.caseType, workflowTemplates)
+                const template = caseTemplate(c)
                 const readiness = getCaseReadiness(c, template, caseFiles, followUps)
                 const missing = getMissingRequiredDocs(c.id, template, caseFiles)
                 const overdueFollowUps = followUps.filter(f =>

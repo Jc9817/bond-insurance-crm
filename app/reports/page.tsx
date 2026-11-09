@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useStore } from '@/lib/store'
 import { CASE_STATUSES, CASE_TYPES, type Case } from '@/lib/types'
 import { getDaysUntil, formatCurrency, formatDate } from '@/lib/utils'
-import { getWorkflowTemplate, getMissingRequiredDocs, getStuckDays, getCaseReadiness } from '@/lib/workflow'
+import { getMissingRequiredDocs, getStuckDays, getCaseReadiness } from '@/lib/workflow'
 import StatCard from '@/components/ui/StatCard'
 import StatusBadge from '@/components/ui/StatusBadge'
 import PageHeader from '@/components/ui/PageHeader'
@@ -13,7 +13,7 @@ import Link from 'next/link'
 type ReportTab = 'strategic' | 'operational' | 'insurer'
 
 export default function ReportsPage() {
-  const { cases, followUps, customers, caseFiles, workflowTemplates } = useStore()
+  const { cases, followUps, customers, caseFiles, caseTemplate } = useStore()
   const [tab, setTab] = useState<ReportTab>('strategic')
 
   const now = new Date()
@@ -126,13 +126,13 @@ export default function ReportsPage() {
 
   // Operational
   const casesWithMissingDocs = activeCases.filter(c => {
-    const template = getWorkflowTemplate(c.caseType, workflowTemplates)
+    const template = caseTemplate(c)
     if (!template) return false
     return getMissingRequiredDocs(c.id, template, caseFiles).length > 0
   })
   const stuckCases = activeCases.filter(c => getStuckDays(c) > 14)
   const readyToMove = activeCases.filter(c => {
-    const template = getWorkflowTemplate(c.caseType, workflowTemplates)
+    const template = caseTemplate(c)
     if (!template) return false
     return getMissingRequiredDocs(c.id, template, caseFiles).length === 0 &&
       !overdueFollowUps.some(f => f.caseId === c.id)
@@ -485,7 +485,7 @@ export default function ReportsPage() {
               <h2 className="text-base font-semibold text-gray-800 mb-5">Stuck Cases <span className="text-sm font-normal text-gray-400">(no update for 14+ days)</span></h2>
               <div className="space-y-3">
                 {stuckCases.map(c => {
-                  const template = getWorkflowTemplate(c.caseType, workflowTemplates)
+                  const template = caseTemplate(c)
                   const readiness = getCaseReadiness(c, template, caseFiles, followUps)
                   return (
                     <Link key={c.id} href={`/cases/${c.id}`} className="flex items-center justify-between group">
@@ -513,7 +513,7 @@ export default function ReportsPage() {
               <h2 className="text-base font-semibold text-gray-800 mb-5">Cases with Missing Documents</h2>
               <div className="space-y-3">
                 {casesWithMissingDocs.map(c => {
-                  const template = getWorkflowTemplate(c.caseType, workflowTemplates)
+                  const template = caseTemplate(c)
                   const missing = template ? getMissingRequiredDocs(c.id, template, caseFiles) : []
                   return (
                     <Link key={c.id} href={`/cases/${c.id}`} className="flex items-center justify-between group">

@@ -6,11 +6,11 @@ import type {
   Customer, Contact, Case, CaseNote, FollowUp, PicUser,
   User, CaseFile, ActivityLog, SettingsItem, SettingsCategory,
   WorkflowTemplate, RequiredDocument, WorkflowStep,
-  Product, ProductPackage, SubmissionLetterTemplate, EmailTemplate, CaseEmailLog, Policy,
+  Product, ProductPackage, SubmissionLetterTemplate, EmailTemplate, CaseEmailLog, Policy, ProductDocument,
 } from './types'
 import { mockWorkflowTemplates } from './mock-data'
 import { generateId, nowIso } from './utils'
-import { getWorkflowTemplate } from './workflow'
+import { getWorkflowTemplate, templateForCase } from './workflow'
 import { STORAGE_BUCKET, storagePath } from './storage'
 
 type SettingsData = Record<SettingsCategory, SettingsItem[]>
@@ -32,6 +32,7 @@ type StoreCtx = {
   emailTemplates: EmailTemplate[]
   caseEmails: CaseEmailLog[]
   policies: Policy[]
+  productDocuments: ProductDocument[]
   loading: boolean
 
   // Load what the startup load leaves out (see loadAll): call when a case is
@@ -110,6 +111,10 @@ type StoreCtx = {
   notifyOpsTeam: (caseItem: Case) => Promise<void>
 
 
+  // A case's steps and checklist (its products' documents when they apply)
+  caseTemplate: (c: Case) => WorkflowTemplate | null
+  saveProductDocuments: (productId: string, docs: Omit<ProductDocument, 'productId'>[]) => void
+
   addPolicy: (p: Omit<Policy, 'id' | 'createdAt'>) => string
   updatePolicy: (id: string, p: Partial<Policy>) => void
   deletePolicy: (id: string) => void
@@ -163,6 +168,7 @@ const fromCase = (r: Row): Case => ({
   workflowTemplateId: r.workflow_template_id ?? undefined,
   requestType: r.request_type ?? undefined,
   selectedProducts: r.selected_products ?? undefined,
+  usesProductDocuments: r.uses_product_documents ?? false,
   loaAiStatus: r.loa_ai_status ?? 'Pending',
 })
 const toCase = (c: Case) => ({
@@ -186,6 +192,7 @@ const toCase = (c: Case) => ({
   // object directly. A blanket `?? null` here would send loa_ai_status: null on
   // every such unrelated update and wipe it back to unset.
   ...(c.loaAiStatus !== undefined ? { loa_ai_status: c.loaAiStatus } : {}),
+  ...(c.usesProductDocuments !== undefined ? { uses_product_documents: c.usesProductDocuments } : {}),
 })
 
 const fromEmailTemplate = (r: Row): EmailTemplate => ({
@@ -299,10 +306,17 @@ const fromSettingsItem = (r: Row): SettingsItem => ({
 
 const fromProduct = (r: Row): Product => ({
   id: r.id, name: r.name ?? '', category: r.category ?? 'Bond',
-  description: r.description ?? '', isActive: r.is_active ?? true,
+  description: r.description ?? '', isActive: r.is_active ?? true, workflowType: r.workflow_type ?? undefined,
 })
 const toProduct = (p: Partial<Product>) => ({
-  id: p.id, name: p.name, category: p.category, description: p.description, is_active: p.isActive,
+  id: p.id, name: p.name, category: p.category, description: p.description, is_active: p.isActive, workflow_type: p.workflowType,
+})
+
+const fromProductDocument = (r: Row): ProductDocument => ({
+  productId: r.product_id, documentId: r.document_id, companyType: r.company_type, required: r.required ?? true,
+})
+const toProductDocument = (d: ProductDocument) => ({
+  product_id: d.productId, document_id: d.documentId, company_type: d.companyType, required: d.required,
 })
 
 const fromProductPackage = (r: Row): ProductPackage => ({
@@ -390,6 +404,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [emailTemplates, setEmailTemplates] = useState<EmailTemplate[]>([])
   const [caseEmails, setCaseEmails] = useState<CaseEmailLog[]>([])
   const [policies, setPolicies] = useState<Policy[]>([])
+  const [productDocuments, setProductDocuments] = useState<ProductDocument[]>([])
   const [settingsState, setSettingsState] = useState<SettingsData>(emptySettings)
   const [loading, setLoading] = useState(true)
 
@@ -424,6 +439,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       { data: picRows },
       { data: userRows },
       { data: policyRows },
+      { data: productDocumentRows },
     ] = await Promise.all([
       sb.from('customers').select('*').order('created_at', { ascending: false }),
       sb.from('contacts').select('*'),
@@ -445,6 +461,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       sb.from('pics').select('*').order('created_at'),
       sb.from('user_roles').select('*').order('created_at'),
       sb.from('policies').select('*').order('expiry_date', { ascending: true, nullsFirst: false }),
+      sb.from('product_documents').select('*'),
     ])
 
     if (custErr) console.error('[Supabase] customers load error:', custErr.message)
@@ -456,6 +473,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     // Full recent rows listed last so they win over the slim step-change rows
     setActivityLogs(sortLogs(mergeById<ActivityLog>([], [...(stepLogRows ?? []), ...(recentLogRows ?? [])].map(fromActivityLog))))
     if (policyRows) setPolicies(policyRows.map(fromPolicy))
+    if (productDocumentRows) setProductDocuments(productDocumentRows.map(fromProductDocument))
     if (settingsRows) {
       const grouped = emptySettings()
       for (const r of settingsRows) grouped[r.category as SettingsCategory]?.push(fromSettingsItem(r))
@@ -644,9 +662,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }
   const updateCase = (id: string, c: Partial<Case>) => {
     const updated = { ...c, updatedAt: nowIso() }
+    const existing = cases.find(x => x.id === id)
     setCases(prev => prev.map(x => x.id === id ? { ...x, ...updated } : x))
-    createClient().from('cases').update(toCase({ ...updated, id } as Case)).eq('id', id).then()
+    // Only the columns this update changes: toCase() turns any field it isn't
+    // given into null, which would wipe the products, workflow and more
+    const before: Row = existing ? toCase(existing) : {}
+    const after = Object.entries(toCase({ ...existing, ...updated, id } as Case))
+    const changed = Object.fromEntries(after.filter(([k, v]) => JSON.stringify(v) !== JSON.stringify(before[k])))
+    createClient().from('cases').update(changed).eq('id', id).then()
   }
+
+  const caseTemplate = (c: Case) =>
+    templateForCase(c, workflowTemplates, productDocuments, customers.find(x => x.id === c.customerId)?.businessType)
 
   // ─── Email Templates (customer-facing, sent manually from a case) ──────────
 
@@ -1125,6 +1152,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     createClient().from('products').delete().eq('id', id).then()
   }
 
+  const saveProductDocuments = (productId: string, docs: Omit<ProductDocument, 'productId'>[]) => {
+    const rows = docs.map(d => ({ ...d, productId }))
+    setProductDocuments(prev => [...prev.filter(x => x.productId !== productId), ...rows])
+    const sb = createClient()
+    sb.from('product_documents').delete().eq('product_id', productId).then(({ error }) => {
+      if (error) { console.error('[Supabase] saveProductDocuments failed:', error.message); return }
+      if (rows.length === 0) return
+      sb.from('product_documents').insert(rows.map(toProductDocument)).then(res => {
+        if (res.error) console.error('[Supabase] saveProductDocuments failed:', res.error.message)
+      })
+    })
+  }
+
   const addProductPackage = (p: Omit<ProductPackage, 'id'>) => {
     const row: ProductPackage = { ...p, id: generateId() }
     setProductPackages(prev => [...prev, row])
@@ -1182,6 +1222,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       addSubmissionLetterTemplate, updateSubmissionLetterTemplate, deleteSubmissionLetterTemplate,
       addEmailTemplate, updateEmailTemplate, deleteEmailTemplate, sendCaseEmail, notifyOpsTeam,
       policies, addPolicy, updatePolicy, deletePolicy, renewPolicy,
+      productDocuments, caseTemplate, saveProductDocuments,
     }}>
       {children}
     </StoreContext.Provider>

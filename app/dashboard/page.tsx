@@ -4,13 +4,13 @@ import Link from 'next/link'
 import { useStore } from '@/lib/store'
 import { useAuth } from '@/lib/auth'
 import { getDaysUntil, formatCurrency, timeAgo } from '@/lib/utils'
-import { getWorkflowTemplate, getCaseReadiness, getMissingRequiredDocs, getStuckDays } from '@/lib/workflow'
+import { getCaseReadiness, getMissingRequiredDocs, getStuckDays } from '@/lib/workflow'
 import { getActionMeta, ACTION_COLOR_DOT } from '@/lib/activity'
 import StatCard from '@/components/ui/StatCard'
 import StatusBadge from '@/components/ui/StatusBadge'
 
 export default function HomePage() {
-  const { customers, cases, followUps, activityLogs, caseFiles, workflowTemplates } = useStore()
+  const { customers, cases, followUps, activityLogs, caseFiles, caseTemplate } = useStore()
   const { currentUser } = useAuth()
 
   const today = new Date()
@@ -34,13 +34,13 @@ export default function HomePage() {
   })
 
   const casesWithMissingDocs = activeCases.filter(c => {
-    const template = getWorkflowTemplate(c.caseType, workflowTemplates)
+    const template = caseTemplate(c)
     if (!template) return false
     return getMissingRequiredDocs(c.id, template, caseFiles).length > 0
   })
 
   const casesReadyToMove = activeCases.filter(c => {
-    const template = getWorkflowTemplate(c.caseType, workflowTemplates)
+    const template = caseTemplate(c)
     if (!template) return false
     const missing = getMissingRequiredDocs(c.id, template, caseFiles)
     const caseOD = overdueFollowUps.some(f => f.caseId === c.id)
@@ -66,7 +66,7 @@ export default function HomePage() {
   })
 
   const getSLADaysOver = (c: typeof activeCases[0]) => {
-    const template = getWorkflowTemplate(c.caseType, workflowTemplates)
+    const template = caseTemplate(c)
     const currentStep = template?.workflowSteps.find(s => s.id === c.currentWorkflowStepId)
     if (!currentStep?.slaDays) return 0
     const stepLog = activityLogs
@@ -79,7 +79,7 @@ export default function HomePage() {
 
   const needsAttentionCases = activeCases.filter(c => {
     const hasOD = overdueFollowUps.some(f => f.caseId === c.id)
-    const template = getWorkflowTemplate(c.caseType, workflowTemplates)
+    const template = caseTemplate(c)
     const hasMissingDocs = template ? getMissingRequiredDocs(c.id, template, caseFiles).length > 0 : false
     const isStuck = getStuckDays(c) > 14
     const slaOver = getSLADaysOver(c) > 0
@@ -188,7 +188,7 @@ export default function HomePage() {
           ) : (
             <div className="space-y-4">
               {needsAttentionCases.map(c => {
-                const template = getWorkflowTemplate(c.caseType, workflowTemplates)
+                const template = caseTemplate(c)
                 const missing = template ? getMissingRequiredDocs(c.id, template, caseFiles) : []
                 const hasOD = overdueFollowUps.some(f => f.caseId === c.id)
                 const isStuck = getStuckDays(c) > 14
@@ -282,7 +282,7 @@ export default function HomePage() {
           ) : (
             <div className="space-y-3">
               {casesWithMissingDocs.slice(0, 5).map(c => {
-                const template = getWorkflowTemplate(c.caseType, workflowTemplates)
+                const template = caseTemplate(c)
                 const missing = template ? getMissingRequiredDocs(c.id, template, caseFiles) : []
                 return (
                   <Link key={c.id} href={`/cases/${c.id}`} className="block group">
@@ -312,7 +312,7 @@ export default function HomePage() {
           ) : (
             <div className="space-y-3">
               {casesReadyToMove.slice(0, 5).map(c => {
-                const template = getWorkflowTemplate(c.caseType, workflowTemplates)
+                const template = caseTemplate(c)
                 const readiness = getCaseReadiness(c, template, caseFiles, followUps)
                 return (
                   <Link key={c.id} href={`/cases/${c.id}`} className="block group">

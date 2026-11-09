@@ -3,7 +3,8 @@
 import { useState } from 'react'
 import { useStore } from '@/lib/store'
 import { useAuth } from '@/lib/auth'
-import { USER_ROLES, USER_STATUSES, BUSINESS_TYPES, PRODUCT_CATEGORIES } from '@/lib/types'
+import { USER_ROLES, USER_STATUSES, BUSINESS_TYPES, PRODUCT_CATEGORIES, COMPANY_TYPES, type CompanyType } from '@/lib/types'
+import { PRODUCT_DOCS_TEMPLATE_ID, PRODUCT_WORKFLOWS } from '@/lib/product-documents'
 import type { SettingsCategory, User, UserRole, UserStatus, WorkflowTemplate, WorkflowStep, RequiredDocument, Product, ProductPackage, ProductCategory, SubmissionLetterTemplate, SubmissionLetterDocItem, EmailTemplate } from '@/lib/types'
 import PageHeader from '@/components/ui/PageHeader'
 import Modal from '@/components/ui/Modal'
@@ -834,7 +835,7 @@ function WorkflowTemplatesTab() {
                 >
                   Configure
                 </button>
-                {deleteId === t.id ? (
+                {t.id === PRODUCT_DOCS_TEMPLATE_ID ? null : deleteId === t.id ? (
                   <>
                     <button onClick={() => { deleteWorkflowTemplate(t.id); setDeleteId(null) }} className="btn-xs bg-red-600 text-white hover:bg-red-700">Confirm</button>
                     <button onClick={() => setDeleteId(null)} className="btn-xs bg-gray-100 text-gray-600">Cancel</button>
@@ -886,22 +887,39 @@ function WorkflowTemplatesTab() {
 // ─── Product Master tab ───────────────────────────────────────────────────────
 
 function ProductMasterTab() {
-  const { products, addProduct, updateProduct, deleteProduct } = useStore()
+  const { products, addProduct, updateProduct, deleteProduct, workflowTemplates, productDocuments, saveProductDocuments } = useStore()
   const [modal, setModal] = useState<'add' | 'edit' | null>(null)
   const [selected, setSelected] = useState<Product | null>(null)
   const [deleteId, setDeleteId] = useState<string | null>(null)
-  const [form, setForm] = useState<{ name: string; category: ProductCategory; description: string }>({ name: '', category: 'Bond', description: '' })
+  const [form, setForm] = useState<{ name: string; category: ProductCategory; description: string; workflowType: string }>({ name: '', category: 'Bond', description: '', workflowType: PRODUCT_WORKFLOWS[0] })
+  const [docChoices, setDocChoices] = useState<Record<string, 'required' | 'optional'>>({})
   const [error, setError] = useState('')
 
-  const openAdd = () => { setForm({ name: '', category: 'Bond', description: '' }); setError(''); setModal('add') }
-  const openEdit = (p: Product) => { setSelected(p); setForm({ name: p.name, category: p.category, description: p.description }); setError(''); setModal('edit') }
+  const masterDocs = workflowTemplates.find(t => t.id === PRODUCT_DOCS_TEMPLATE_ID)?.requiredDocuments.filter(d => d.isActive) ?? []
+  const docKey = (documentId: string, companyType: CompanyType) => `${documentId}|${companyType}`
+
+  const openAdd = () => { setForm({ name: '', category: 'Bond', description: '', workflowType: PRODUCT_WORKFLOWS[0] }); setError(''); setModal('add') }
+  const openEdit = (p: Product) => {
+    setSelected(p)
+    setForm({ name: p.name, category: p.category, description: p.description, workflowType: p.workflowType || (p.category === 'Bond' ? 'Bond Workflow' : 'Simple Policy Workflow') })
+    setDocChoices(Object.fromEntries(productDocuments.filter(d => d.productId === p.id)
+      .map(d => [docKey(d.documentId, d.companyType), d.required ? 'required' : 'optional'])))
+    setError('')
+    setModal('edit')
+  }
   const closeModal = () => { setModal(null); setSelected(null) }
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!form.name.trim()) { setError('Product name is required.'); return }
     if (modal === 'add') addProduct({ ...form, name: form.name.trim(), isActive: true })
-    else if (selected) updateProduct(selected.id, { ...form, name: form.name.trim() })
+    else if (selected) {
+      updateProduct(selected.id, { ...form, name: form.name.trim() })
+      saveProductDocuments(selected.id, Object.entries(docChoices).map(([key, choice]) => {
+        const [documentId, companyType] = key.split('|')
+        return { documentId, companyType: companyType as CompanyType, required: choice === 'required' }
+      }))
+    }
     closeModal()
   }
 
@@ -958,7 +976,7 @@ function ProductMasterTab() {
       </div>
 
       {(modal === 'add' || modal === 'edit') && (
-        <Modal isOpen onClose={closeModal} title={modal === 'add' ? 'Add Product' : 'Edit Product'} maxWidth="sm">
+        <Modal isOpen onClose={closeModal} title={modal === 'add' ? 'Add Product' : 'Edit Product'} maxWidth={modal === 'edit' ? 'lg' : 'sm'}>
           <form onSubmit={submit} className="px-6 py-5 space-y-4">
             {error && <p className="text-sm text-red-600 bg-red-50 rounded-xl p-3">{error}</p>}
             <div>
@@ -975,6 +993,53 @@ function ProductMasterTab() {
               <label className="label">Description</label>
               <input className="input" value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} placeholder="Brief description for staff reference" />
             </div>
+            <div>
+              <label className="label">Process steps</label>
+              <select className="input" value={form.workflowType} onChange={e => setForm(p => ({ ...p, workflowType: e.target.value }))}>
+                {PRODUCT_WORKFLOWS.map(w => <option key={w} value={w}>{w}</option>)}
+              </select>
+              <p className="text-xs text-gray-400 mt-1">When a case has several products, the most complete of their workflows is used.</p>
+            </div>
+            {modal === 'add' && <p className="text-xs text-gray-500">After adding the product, click Edit to choose its documents.</p>}
+            {modal === 'edit' && masterDocs.length > 0 && (
+              <div>
+                <label className="label">Documents needed</label>
+                <div className="border border-gray-200 rounded-xl divide-y divide-gray-100">
+                  <div className="grid grid-cols-[1fr_110px_110px] gap-2 px-3 py-2 text-xs font-semibold text-gray-400">
+                    <span>Document</span>
+                    {COMPANY_TYPES.map(t => <span key={t}>{t}</span>)}
+                  </div>
+                  {masterDocs.map(d => (
+                    <div key={d.id} className="grid grid-cols-[1fr_110px_110px] gap-2 px-3 py-1.5 items-center">
+                      <span className="text-sm text-gray-800">{d.name}</span>
+                      {COMPANY_TYPES.map(t => (
+                        <select
+                          key={t}
+                          aria-label={`${d.name}, ${t}`}
+                          className="input text-xs"
+                          value={docChoices[docKey(d.id, t)] ?? ''}
+                          onChange={e => {
+                            const key = docKey(d.id, t)
+                            const choice = e.target.value as '' | 'required' | 'optional'
+                            setDocChoices(prev => {
+                              const next = { ...prev }
+                              if (choice) next[key] = choice
+                              else delete next[key]
+                              return next
+                            })
+                          }}
+                        >
+                          <option value="">Not needed</option>
+                          <option value="required">Required</option>
+                          <option value="optional">Optional</option>
+                        </select>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-400 mt-1">Other company types use the Sdn. Bhd. column. To add or rename a document, go to Workflow Templates → Product Documents.</p>
+              </div>
+            )}
             <div className="flex gap-3 pt-1">
               <button type="button" onClick={closeModal} className="btn-secondary flex-1">Cancel</button>
               <button type="submit" className="btn-primary flex-1">{modal === 'add' ? 'Add Product' : 'Save Changes'}</button>

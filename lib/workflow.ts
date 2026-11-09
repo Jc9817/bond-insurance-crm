@@ -1,4 +1,5 @@
-import type { Case, CaseFile, FollowUp, WorkflowTemplate, RequiredDocument, WorkflowStep } from './types'
+import type { Case, CaseFile, FollowUp, ProductDocument, WorkflowTemplate, RequiredDocument, WorkflowStep } from './types'
+import { PRODUCT_DOCS_TEMPLATE_ID, productChecklist } from './product-documents'
 import { getDaysUntil } from './utils'
 
 export function getWorkflowTemplate(
@@ -42,6 +43,19 @@ export function resolveTemplate(
     if (byId) return byId
   }
   return getWorkflowTemplate(caseItem.caseType, templates, businessType)
+}
+
+/** A case's steps and checklist: its workflow, with the documents of its products when they apply. */
+export function templateForCase(
+  caseItem: Pick<Case, 'workflowTemplateId' | 'caseType' | 'usesProductDocuments' | 'selectedProducts'>,
+  templates: WorkflowTemplate[],
+  links: ProductDocument[],
+  businessType?: string
+): WorkflowTemplate | null {
+  const process = resolveTemplate(caseItem, templates, businessType)
+  if (!process || !caseItem.usesProductDocuments) return process
+  const master = templates.find(t => t.id === PRODUCT_DOCS_TEMPLATE_ID)?.requiredDocuments ?? []
+  return { ...process, requiredDocuments: productChecklist(caseItem.selectedProducts ?? [], businessType, links, master) }
 }
 
 export function getActiveSteps(template: WorkflowTemplate | null): WorkflowStep[] {

@@ -5,6 +5,8 @@ import { useStore } from '@/lib/store'
 import type { Case, CaseProduct } from '@/lib/types'
 import { CASE_TYPES, WAITING_FOR_OPTIONS, REQUEST_TYPES } from '@/lib/types'
 import { getWorkflowTemplate } from '@/lib/workflow'
+import { workflowForSave } from '@/lib/product-documents'
+import ProductDocsSummary from '@/components/ui/ProductDocsSummary'
 import Modal from '@/components/ui/Modal'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 import CustomerForm, { emptyCustomerForm, type CustomerFormData } from '@/components/ui/CustomerForm'
@@ -30,8 +32,9 @@ export const emptyCase = (customers: { id: string; customerName: string }[]): Fo
   selectedProducts: [],
 })
 
-export default function CaseForm({ initial, customers, pics, onSave, onCancel, newCustomerDraft, saveLabel = 'Save Case', saving = false, children }: {
+export default function CaseForm({ initial, existing, customers, pics, onSave, onCancel, newCustomerDraft, saveLabel = 'Save Case', saving = false, children }: {
   initial: FormData
+  existing?: Case                       // the case being edited
   customers: { id: string; customerName: string; businessType?: string }[]
   pics: { name: string }[]
   onSave: (d: FormData) => void
@@ -57,22 +60,9 @@ export default function CaseForm({ initial, customers, pics, onSave, onCancel, n
     (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
       if (k === 'customerId') {
         const c = customers.find(x => x.id === e.target.value)
-        setForm(prev => {
-          const caseType = prev.caseType
-          if (caseType) {
-            const template = getWorkflowTemplate(caseType, workflowTemplates, c?.businessType)
-            const firstStep = template?.workflowSteps.filter(s => s.isActive).sort((a, b) => a.order - b.order)[0]
-            return { ...prev, customerId: e.target.value, customerName: c?.customerName ?? '', currentWorkflowStepId: firstStep?.id ?? prev.currentWorkflowStepId }
-          }
-          return { ...prev, customerId: e.target.value, customerName: c?.customerName ?? '' }
-        })
+        setForm(prev => ({ ...prev, customerId: e.target.value, customerName: c?.customerName ?? '' }))
       } else if (k === 'amount') {
         setForm(prev => ({ ...prev, amount: Number(e.target.value) }))
-      } else if (k === 'caseType') {
-        const c = customers.find(x => x.id === form.customerId)
-        const template = getWorkflowTemplate(e.target.value, workflowTemplates, c?.businessType)
-        const firstStep = template?.workflowSteps.filter(s => s.isActive).sort((a, b) => a.order - b.order)[0]
-        setForm(prev => ({ ...prev, caseType: e.target.value, currentWorkflowStepId: firstStep?.id ?? '' }))
       } else if (k === 'waitingFor') {
         setForm(prev => ({ ...prev, waitingFor: (e.target.value || null) as FormData['waitingFor'] }))
       } else {
@@ -117,7 +107,8 @@ export default function CaseForm({ initial, customers, pics, onSave, onCancel, n
     if (!form.caseTitle.trim()) { setError('Case title is required.'); return }
     if (!form.customerId) { setError('Please select a main contractor.'); return }
     if (!form.requestType) { setError('Please select a request type.'); return }
-    onSave(form)
+    const businessType = customers.find(c => c.id === form.customerId)?.businessType
+    onSave({ ...form, ...workflowForSave(form, products, t => getWorkflowTemplate(t, workflowTemplates, businessType), existing) })
   }
 
   return (
@@ -130,22 +121,12 @@ export default function CaseForm({ initial, customers, pics, onSave, onCancel, n
         <label className="label">Case Title *</label>
         <input className="input" value={form.caseTitle} onChange={set('caseTitle')} placeholder="e.g. Performance Bond — Project XYZ" />
       </div>
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="label">Request Type *</label>
-          <select className="input" value={form.requestType ?? ''} onChange={e => setForm(prev => ({ ...prev, requestType: e.target.value }))}>
-            <option value="">— Select —</option>
-            {REQUEST_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="label">Workflow Type</label>
-          <select className="input" value={form.caseType} onChange={set('caseType')}>
-            <option value="">— Select —</option>
-            {CASE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-          </select>
-          <p className="text-xs text-gray-400 mt-1">Determines the workflow checklist.</p>
-        </div>
+      <div>
+        <label className="label">Request Type *</label>
+        <select className="input" value={form.requestType ?? ''} onChange={e => setForm(prev => ({ ...prev, requestType: e.target.value }))}>
+          <option value="">— Select —</option>
+          {REQUEST_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+        </select>
       </div>
       <div>
         <div className="flex items-center justify-between">
@@ -235,6 +216,12 @@ export default function CaseForm({ initial, customers, pics, onSave, onCancel, n
               </div>
             ))}
         </div>
+        <ProductDocsSummary
+          caseType={form.caseType}
+          requestType={form.requestType}
+          selected={form.selectedProducts ?? []}
+          businessType={customers.find(c => c.id === form.customerId)?.businessType}
+        />
       </div>
 
       {/* ── Optional fields ── */}
@@ -260,6 +247,14 @@ export default function CaseForm({ initial, customers, pics, onSave, onCancel, n
             {WAITING_FOR_OPTIONS.map(w => <option key={w} value={w}>{w}</option>)}
           </select>
         </div>
+      </div>
+      <div>
+        <label className="label">Workflow Type <span className="text-gray-400 font-normal">(optional)</span></label>
+        <select className="input" value={form.caseType} onChange={set('caseType')}>
+          <option value="">Automatic, from the products</option>
+          {CASE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+        </select>
+        <p className="text-xs text-gray-400 mt-1">Leave on Automatic unless this case needs a different process.</p>
       </div>
       {children}
       <div className="flex gap-3 pt-1">

@@ -72,6 +72,18 @@ export type Product = {
   category: ProductCategory
   description: string
   isActive: boolean
+  workflowType?: string   // the workflow whose steps this product follows
+}
+
+export const COMPANY_TYPES = ['Sdn. Bhd.', 'Sole Proprietor'] as const
+export type CompanyType = (typeof COMPANY_TYPES)[number]
+
+/** One document a product needs, for one company type (see lib/product-documents.ts). */
+export type ProductDocument = {
+  productId: string
+  documentId: string      // a required_documents row in the master list
+  companyType: CompanyType
+  required: boolean       // false = optional
 }
 
 export type ProductPackage = {
@@ -142,6 +154,7 @@ export type Case = {
   acceptanceDate?: string   // date customer confirmed / accepted the quotation
   acceptedBy?: string       // name of contact who confirmed acceptance
   workflowTemplateId?: string  // snapshot of template ID at case creation — insulates from future template edits
+  usesProductDocuments?: boolean  // checklist comes from selectedProducts, not the workflow's own list
   requestType?: string         // New Business | Renewal | Endorsement | Cancellation | Claim | Servicing
   selectedProducts?: CaseProduct[]  // products selected for this case (from Product Master)
   loaAiStatus?: LoaAiStatus     // defaults to 'Pending' when unset

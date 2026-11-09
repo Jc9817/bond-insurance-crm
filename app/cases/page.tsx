@@ -8,7 +8,7 @@ import { useAuth } from '@/lib/auth'
 import type { Case } from '@/lib/types'
 import { CASE_STATUSES } from '@/lib/types'
 import { formatCurrency, timeAgo, formatDate } from '@/lib/utils'
-import { getWorkflowTemplate, getMissingRequiredDocs, getRequiredDocs } from '@/lib/workflow'
+import { getMissingRequiredDocs, getRequiredDocs } from '@/lib/workflow'
 import PageHeader from '@/components/ui/PageHeader'
 import StatusBadge from '@/components/ui/StatusBadge'
 import Modal from '@/components/ui/Modal'
@@ -23,7 +23,7 @@ const WAITING_COLOR: Record<string, string> = {
 }
 
 export default function CasesPage() {
-  const { cases, customers, pics, caseFiles, followUps, workflowTemplates, addCase, updateCase, archiveCase, restoreCase } = useStore()
+  const { cases, customers, pics, caseFiles, followUps, caseTemplate, addCase, updateCase, archiveCase, restoreCase } = useStore()
   const { currentUser } = useAuth()
   const isAdmin = currentUser?.role === 'Admin'
   const searchParams = useSearchParams()
@@ -100,7 +100,7 @@ export default function CasesPage() {
           cases={filtered}
           caseFiles={caseFiles}
           followUps={followUps}
-          workflowTemplates={workflowTemplates}
+          caseTemplate={caseTemplate}
           onStatusChange={(caseId, newStatus) => updateCase(caseId, { currentStatus: newStatus })}
         />
       ) : (
@@ -126,8 +126,7 @@ export default function CasesPage() {
               {filtered.length === 0 ? (
                 <tr><td colSpan={11} className="px-5 py-12 text-center text-gray-400">No cases found.</td></tr>
               ) : filtered.map(c => {
-                const cust = customers.find(cu => cu.id === c.customerId)
-                const template = getWorkflowTemplate(c.caseType, workflowTemplates, cust?.businessType)
+                const template = caseTemplate(c)
                 const required = getRequiredDocs(template)
                 const missing = getMissingRequiredDocs(c.id, template, caseFiles)
                 const uploaded = required.length - missing.length
@@ -205,7 +204,8 @@ export default function CasesPage() {
       <Modal isOpen={modal === 'edit'} onClose={closeModal} title="Edit Case" maxWidth="lg">
         {selected && (
           <CaseForm
-            initial={{ caseTitle: selected.caseTitle, customerId: selected.customerId, customerName: selected.customerName, bondPrincipal: selected.bondPrincipal ?? '', caseType: selected.caseType, amount: selected.amount, personInCharge: selected.personInCharge, currentStatus: selected.currentStatus, currentWorkflowStepId: selected.currentWorkflowStepId ?? '', result: selected.result, closingRemarks: selected.closingRemarks, bondExpiryDate: selected.bondExpiryDate ?? '', waitingFor: selected.waitingFor ?? null }}
+            initial={{ caseTitle: selected.caseTitle, customerId: selected.customerId, customerName: selected.customerName, bondPrincipal: selected.bondPrincipal ?? '', caseType: selected.usesProductDocuments ? '' : selected.caseType, requestType: selected.requestType ?? '', selectedProducts: selected.selectedProducts ?? [], amount: selected.amount, personInCharge: selected.personInCharge, currentStatus: selected.currentStatus, currentWorkflowStepId: selected.currentWorkflowStepId ?? '', result: selected.result, closingRemarks: selected.closingRemarks, bondExpiryDate: selected.bondExpiryDate ?? '', waitingFor: selected.waitingFor ?? null }}
+            existing={selected}
             customers={customers}
             pics={pics}
             onSave={d => { updateCase(selected.id, d); closeModal() }}

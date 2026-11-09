@@ -394,6 +394,36 @@ history all go.
 
 ---
 
+## [ ] Documents follow the products — run the database file, then check
+
+Staff now just tick the products. The checklist is every selected product's
+documents, each counted once, and differs for Sdn. Bhd. and Sole Proprietor.
+Workflow Type moved to the bottom of the form and is optional ("Automatic").
+Existing cases keep the checklist they have. The starting lists were built
+from the old workflow lists, to fine-tune in Settings → Product Master → Edit.
+
+To switch it on, in this order:
+- [ ] Run [20261109100000_product_documents.sql](../supabase/migrations/20261109100000_product_documents.sql)
+      in the Supabase SQL Editor
+- [ ] Then put the code live
+
+Checks:
+- [ ] New case, New Business, Performance Bond: "8 documents needed" for a
+      Sdn. Bhd., 7 for a Sole Proprietor; the case's checklist matches
+- [ ] Add WC to that case: Application Form, Workers List and Supporting
+      Documents are added (11 in total for a Sdn. Bhd.); the
+      documents already there are not repeated
+- [ ] New case with only CAR follows Project Insurance steps; WC alone follows
+      Simple Policy steps
+- [ ] Request Type = Claim: follows Claim Workflow with its own documents
+- [ ] Pick a Workflow Type by hand: the case uses that workflow's own documents
+- [ ] Move a case to its next step, reload: its products are still there
+- [ ] Settings → Product Master → Edit: change a document, then see it on a
+      case with that product
+- [ ] Cancellation has no workflow of its own: choose one by hand if needed
+
+---
+
 ## [ ] 5.5 Telegram bot — removed from DocFlow (2 Nov 2026), finish the tidy-up
 
 The bot's code is gone from DocFlow (and the "Back to Inbox" button on case
