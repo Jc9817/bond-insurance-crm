@@ -148,7 +148,7 @@ export type Case = {
   finalAmount?: number
   finalInsurer?: string
   closedAt?: string
-  bondPrincipal?: string     // entity named on the bond (if different from customer)
+  bondPrincipal?: string     // shown as "Contractor / Customers": a company name, blank = same as the Principal (customerName)
   bondExpiryDate?: string   // ISO date — when the bond expires
   waitingFor?: WaitingFor | null  // who is currently blocking progress
   archivedAt?: string       // set when case is archived (soft delete)

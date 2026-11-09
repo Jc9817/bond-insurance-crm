@@ -156,7 +156,7 @@ export default function ReportsPage() {
     const today = new Date().toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' })
     const rows = caseList.map((c, i) => {
       const daysSince = Math.floor((Date.now() - new Date(c.updatedAt ?? c.createdAt).getTime()) / 86400000)
-      return `${i + 1}. ${c.customerName}${c.bondPrincipal && c.bondPrincipal !== c.customerName ? ` (Principal: ${c.bondPrincipal})` : ''}\n   Type: ${c.caseType} | Amount: ${formatCurrency(c.amount)} | Status: ${c.currentStatus} | Pending: ${daysSince}d`
+      return `${i + 1}. ${c.customerName}${c.bondPrincipal && c.bondPrincipal !== c.customerName ? ` (Contractor / Customer: ${c.bondPrincipal})` : ''}\n   Type: ${c.caseType} | Amount: ${formatCurrency(c.amount)} | Status: ${c.currentStatus} | Pending: ${daysSince}d`
     })
     const total = caseList.reduce((s, c) => s + c.amount, 0)
     const text = [

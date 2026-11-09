@@ -594,11 +594,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }
   const updateCustomer = (id: string, c: Partial<Customer>) => {
     // Cases and follow-ups keep their own copy of the name, shown on their lists
-    if (c.customerName && c.customerName !== customers.find(x => x.id === id)?.customerName) {
+    const oldName = customers.find(x => x.id === id)?.customerName
+    if (c.customerName && oldName && c.customerName !== oldName) {
       const customerName = c.customerName
-      setCases(prev => prev.map(x => x.customerId === id ? { ...x, customerName } : x))
+      setCases(prev => prev.map(x => ({
+        ...x,
+        customerName: x.customerId === id ? customerName : x.customerName,
+        bondPrincipal: x.bondPrincipal === oldName ? customerName : x.bondPrincipal,
+      })))
       setFollowUps(prev => prev.map(x => x.customerId === id ? { ...x, customerName } : x))
       createClient().from('cases').update({ customer_name: customerName }).eq('customer_id', id).then()
+      createClient().from('cases').update({ bond_principal: customerName }).eq('bond_principal', oldName).then()
       createClient().from('follow_ups').update({ customer_name: customerName }).eq('customer_id', id).then()
     }
     setCustomers(prev => prev.map(x => x.id === id ? { ...x, ...c } : x))

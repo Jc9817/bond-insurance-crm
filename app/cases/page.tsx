@@ -30,7 +30,12 @@ export default function CasesPage() {
   const [view, setView] = useState<'list' | 'board'>('list')
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('All')
-  const [principalFilter, setPrincipalFilter] = useState<string>(() => searchParams.get('principal') ?? 'All')
+  // Set by "View Cases" on the Customers page's Principals and Contractor / Customers tabs
+  const [partyFilter, setPartyFilter] = useState<{ field: 'Principal' | 'Contractor / Customer'; name: string } | null>(() => {
+    const principal = searchParams.get('principal')
+    const contractor = searchParams.get('contractor')
+    return principal ? { field: 'Principal', name: principal } : contractor ? { field: 'Contractor / Customer', name: contractor } : null
+  })
   const [now] = useState(Date.now)
   const [showArchived, setShowArchived] = useState(false)
   const [modal, setModal] = useState<'add' | 'edit' | null>(null)
@@ -41,11 +46,11 @@ export default function CasesPage() {
   const filtered = cases.filter(c => {
     if (showArchived ? !c.archivedAt : c.archivedAt) return false
     const matchStatus = statusFilter === 'All' || c.currentStatus === statusFilter
-    const matchPrincipal = principalFilter === 'All' || c.bondPrincipal === principalFilter
+    const matchParty = !partyFilter || (partyFilter.field === 'Principal' ? c.customerName : c.bondPrincipal) === partyFilter.name
     const matchSearch = search === '' || [c.caseNumber, c.caseTitle, c.customerName, c.bondPrincipal, c.caseType, c.personInCharge].some(f =>
       f?.toLowerCase().includes(search.toLowerCase())
     )
-    return matchStatus && matchPrincipal && matchSearch
+    return matchStatus && matchParty && matchSearch
   })
   const archivedCount = cases.filter(c => !!c.archivedAt).length
 
@@ -55,7 +60,7 @@ export default function CasesPage() {
     <div className="p-8 max-w-screen-xl mx-auto">
       <PageHeader
         title="Cases"
-        subtitle={principalFilter !== 'All' ? `Showing cases for contractor: ${principalFilter}` : `${cases.length} total cases`}
+        subtitle={partyFilter ? `Showing cases for ${partyFilter.field.toLowerCase()}: ${partyFilter.name}` : `${cases.length} total cases`}
         action={<button className="btn-primary" onClick={() => setModal('add')}>+ New Case</button>}
       />
 
@@ -66,14 +71,14 @@ export default function CasesPage() {
           <option value="All">All Statuses</option>
           {CASE_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
-        {principalFilter !== 'All' && (
+        {partyFilter && (
           <div className="flex items-center gap-1.5 bg-indigo-50 border border-indigo-200 text-indigo-700 text-sm font-medium rounded-xl px-3 py-2">
-            <span className="text-xs text-indigo-400 font-normal">Contractor:</span>
-            {principalFilter}
+            <span className="text-xs text-indigo-400 font-normal">{partyFilter.field}:</span>
+            {partyFilter.name}
             <button
-              onClick={() => setPrincipalFilter('All')}
+              onClick={() => setPartyFilter(null)}
               className="ml-1 text-indigo-400 hover:text-indigo-700 leading-none"
-              aria-label="Clear principal filter"
+              aria-label="Clear this filter"
             >
               ✕
             </button>
@@ -143,7 +148,7 @@ export default function CasesPage() {
                     <td className="table-td">
                       <span className="text-gray-500 whitespace-nowrap">{c.customerName}</span>
                       {c.bondPrincipal && c.bondPrincipal !== c.customerName && (
-                        <p className="text-xs text-indigo-600 whitespace-nowrap mt-0.5">Contractor: {c.bondPrincipal}</p>
+                        <p className="text-xs text-indigo-600 whitespace-nowrap mt-0.5">Contractor / Customer: {c.bondPrincipal}</p>
                       )}
                     </td>
                     <td className="table-td text-gray-500 whitespace-nowrap">{c.caseType || '—'}</td>

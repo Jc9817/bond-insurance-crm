@@ -267,7 +267,7 @@ export function CreateCaseFromEmail({ mail, onClose, onDone }: {
       {newCustomer && (
         <p className="mx-6 mt-5 text-sm bg-amber-50 text-amber-800 rounded-xl p-3">
           The AI found a contractor that isn&apos;t in DocFlow yet: <b>{newCustomer.name}</b>
-          {newCustomer.ssm && <> ({newCustomer.ssm})</>}. Click <b>+ New Contractor</b> to add it — the form is pre-filled.
+          {newCustomer.ssm && <> ({newCustomer.ssm})</>}. Click <b>+ New Principal</b> to add it — the form is pre-filled.
         </p>
       )}
       <CaseForm

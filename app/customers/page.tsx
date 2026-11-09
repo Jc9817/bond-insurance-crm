@@ -3,15 +3,115 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useStore } from '@/lib/store'
-import type { Customer } from '@/lib/types'
+import type { Case, Customer } from '@/lib/types'
 import { formatCurrency } from '@/lib/utils'
 import PageHeader from '@/components/ui/PageHeader'
 import Modal from '@/components/ui/Modal'
 import CustomerForm, { customerFormData, emptyCustomerForm as empty } from '@/components/ui/CustomerForm'
 
+type Tab = 'all' | 'principals' | 'contractors'
+
+type PartyRow = {
+  name: string
+  linked: string[]   // the names on the other side of the same cases
+  totalCases: number
+  activeCases: number
+  wonCases: number
+  totalExposure: number
+}
+
+/** One row per name, from the cases that aren't archived. Cases with no name for this side are left out. */
+function summarise(cases: Case[], nameOf: (c: Case) => string | undefined, linkedOf: (c: Case) => string | undefined): PartyRow[] {
+  const groups = new Map<string, Case[]>()
+  for (const c of cases) {
+    const name = nameOf(c)?.trim()
+    if (!name || c.archivedAt) continue
+    groups.set(name, [...(groups.get(name) ?? []), c])
+  }
+  return Array.from(groups, ([name, list]) => ({
+    name,
+    linked: Array.from(new Set(list.map(c => linkedOf(c)?.trim()).filter((n): n is string => !!n))),
+    totalCases: list.length,
+    activeCases: list.filter(c => c.currentStatus !== 'Done' && !c.result).length,
+    wonCases: list.filter(c => c.result === 'Won').length,
+    totalExposure: list.reduce((sum, c) => sum + (c.finalAmount ?? c.amount), 0),
+  })).sort((a, b) => b.totalCases - a.totalCases)
+}
+
+function PartyTable({ rows, nameHeading, linkedHeading, casesParam, emptyMessage }: {
+  rows: PartyRow[]; nameHeading: string; linkedHeading: string; casesParam: 'principal' | 'contractor'; emptyMessage: string
+}) {
+  return (
+    <div className="card overflow-hidden">
+      <div className="overflow-x-auto">
+      <table className="min-w-full">
+        <thead>
+          <tr className="border-b border-gray-100 bg-stone-50">
+            <th className="table-th">{nameHeading}</th>
+            <th className="table-th">{linkedHeading}</th>
+            <th className="table-th">Total Cases</th>
+            <th className="table-th">Active</th>
+            <th className="table-th">Won</th>
+            <th className="table-th">Total Exposure</th>
+            <th className="table-th">Actions</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-50">
+          {rows.length === 0 ? (
+            <tr>
+              <td colSpan={7} className="px-5 py-12 text-center text-gray-400">{emptyMessage}</td>
+            </tr>
+          ) : rows.map(p => (
+            <tr key={p.name} className="hover:bg-stone-50 transition-colors">
+              <td className="table-td">
+                <p className="font-semibold text-indigo-700 whitespace-nowrap">{p.name}</p>
+              </td>
+              <td className="table-td">
+                {p.linked.length > 0 ? (
+                  <div className="flex flex-wrap gap-1">
+                    {p.linked.map(n => (
+                      <span key={n} className="text-xs bg-gray-100 text-gray-600 rounded-full px-2 py-0.5">{n}</span>
+                    ))}
+                  </div>
+                ) : <span className="text-gray-400">—</span>}
+              </td>
+              <td className="table-td">
+                <span className="text-sm font-semibold text-gray-800">{p.totalCases}</span>
+                <span className="text-xs text-gray-400 ml-1">case{p.totalCases !== 1 ? 's' : ''}</span>
+              </td>
+              <td className="table-td">
+                {p.activeCases > 0
+                  ? <span className="text-xs font-semibold bg-blue-100 text-blue-700 rounded-full px-2 py-0.5">{p.activeCases} active</span>
+                  : <span className="text-xs text-gray-300">—</span>}
+              </td>
+              <td className="table-td">
+                {p.wonCases > 0
+                  ? <span className="text-xs font-semibold bg-green-100 text-green-700 rounded-full px-2 py-0.5">{p.wonCases} won</span>
+                  : <span className="text-xs text-gray-300">—</span>}
+              </td>
+              <td className="table-td font-semibold text-gray-800 whitespace-nowrap">
+                {formatCurrency(p.totalExposure)}
+              </td>
+              <td className="table-td whitespace-nowrap">
+                <Link
+                  href={`/cases?${casesParam}=${encodeURIComponent(p.name)}`}
+                  className="btn-xs bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
+                >
+                  View Cases →
+                </Link>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      </div>
+    </div>
+  )
+}
+
 export default function CustomersPage() {
   const { customers, contacts, cases, addCustomer, updateCustomer, deleteCustomer } = useStore()
-  const [tab, setTab] = useState<'customers' | 'principals'>('customers')
+  const [tab, setTab] = useState<Tab>('all')
   const [search, setSearch] = useState('')
   const [modal, setModal] = useState<'add' | 'edit' | null>(null)
   const [selected, setSelected] = useState<Customer | null>(null)
@@ -29,37 +129,31 @@ export default function CustomersPage() {
 
   const getCaseCount = (customerId: string) => cases.filter(c => c.customerId === customerId && !c.archivedAt).length
 
-  // Build principals list from cases
-  const principalsMap = cases
-    .filter(c => c.bondPrincipal && c.bondPrincipal.trim() && !c.archivedAt)
-    .reduce<Record<string, { name: string; cases: typeof cases }>>((acc, c) => {
-      const key = c.bondPrincipal!
-      if (!acc[key]) acc[key] = { name: key, cases: [] }
-      acc[key].cases.push(c)
-      return acc
-    }, {})
+  const principals = summarise(cases, c => c.customerName, c => c.bondPrincipal)
+  const contractors = summarise(cases, c => c.bondPrincipal, c => c.customerName)
 
-  const principals = Object.values(principalsMap)
-    .map(p => ({
-      name: p.name,
-      totalCases: p.cases.length,
-      activeCases: p.cases.filter(c => c.currentStatus !== 'Done' && !c.result).length,
-      wonCases: p.cases.filter(c => c.result === 'Won').length,
-      totalExposure: p.cases.reduce((sum, c) => sum + (c.finalAmount ?? c.amount), 0),
-      customers: Array.from(new Set(p.cases.map(c => c.customerName))),
-    }))
-    .filter(p => !search || p.name.toLowerCase().includes(search.toLowerCase()) || p.customers.some(c => c.toLowerCase().includes(search.toLowerCase())))
-    .sort((a, b) => b.totalCases - a.totalCases)
+  const q = search.toLowerCase()
+  const matching = (rows: PartyRow[]) => rows.filter(p => [p.name, ...p.linked].some(n => n.toLowerCase().includes(q)))
 
   const closeModal = () => { setModal(null); setSelected(null) }
+
+  const tabs: { key: Tab; label: string; count?: number }[] = [
+    { key: 'all', label: 'All' },
+    { key: 'principals', label: 'Principals', count: principals.length },
+    { key: 'contractors', label: 'Contractor / Customers', count: contractors.length },
+  ]
 
   return (
     <div className="p-8 max-w-screen-xl mx-auto">
       <PageHeader
         title="Customers"
-        subtitle={tab === 'customers' ? `${customers.length} companies on record` : `${Object.keys(principalsMap).length} principals across all cases`}
+        subtitle={
+          tab === 'all' ? `${customers.length} companies on record`
+          : tab === 'principals' ? `${principals.length} principals across all cases`
+          : `${contractors.length} contractors / customers across all cases`
+        }
         action={
-          tab === 'customers'
+          tab === 'all'
             ? <button className="btn-primary" onClick={() => setModal('add')}>+ Add Customer</button>
             : null
         }
@@ -67,35 +161,32 @@ export default function CustomersPage() {
 
       {/* Tab switcher */}
       <div className="flex gap-1 mb-5 border-b border-gray-200">
-        <button
-          onClick={() => { setTab('customers'); setSearch('') }}
-          className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${tab === 'customers' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-        >
-          Customers
-        </button>
-        <button
-          onClick={() => { setTab('principals'); setSearch('') }}
-          className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${tab === 'principals' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-        >
-          Principals
-          {Object.keys(principalsMap).length > 0 && (
-            <span className={`text-xs font-bold rounded-full px-1.5 py-0.5 leading-none ${tab === 'principals' ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-500'}`}>
-              {Object.keys(principalsMap).length}
-            </span>
-          )}
-        </button>
+        {tabs.map(t => (
+          <button
+            key={t.key}
+            onClick={() => { setTab(t.key); setSearch('') }}
+            className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${tab === t.key ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+          >
+            {t.label}
+            {!!t.count && (
+              <span className={`text-xs font-bold rounded-full px-1.5 py-0.5 leading-none ${tab === t.key ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-500'}`}>
+                {t.count}
+              </span>
+            )}
+          </button>
+        ))}
       </div>
 
       <div className="mb-5">
         <input
           value={search}
           onChange={e => setSearch(e.target.value)}
-          placeholder={tab === 'customers' ? 'Search by name, registration number, industry…' : 'Search principals or customers…'}
+          placeholder={tab === 'all' ? 'Search by name, registration number, industry…' : 'Search by principal or contractor / customer…'}
           className="input max-w-md"
         />
       </div>
 
-      {tab === 'customers' ? (
+      {tab === 'all' && (
         <div className="card overflow-hidden">
           <div className="overflow-x-auto">
           <table className="min-w-full">
@@ -178,72 +269,26 @@ export default function CustomersPage() {
           </table>
           </div>
         </div>
-      ) : (
-        /* ── Principals tab ── */
-        <div className="card overflow-hidden">
-          <div className="overflow-x-auto">
-          <table className="min-w-full">
-            <thead>
-              <tr className="border-b border-gray-100 bg-stone-50">
-                <th className="table-th">Principal Name</th>
-                <th className="table-th">Submitted By (Customer)</th>
-                <th className="table-th">Total Cases</th>
-                <th className="table-th">Active</th>
-                <th className="table-th">Won</th>
-                <th className="table-th">Total Exposure</th>
-                <th className="table-th">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {principals.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-5 py-12 text-center text-gray-400">
-                    {search ? 'No principals match your search.' : 'No principals yet. Set a "Principal" on a case when the bond is issued in a different name from the customer.'}
-                  </td>
-                </tr>
-              ) : principals.map(p => (
-                <tr key={p.name} className="hover:bg-stone-50 transition-colors">
-                  <td className="table-td">
-                    <p className="font-semibold text-indigo-700 whitespace-nowrap">{p.name}</p>
-                  </td>
-                  <td className="table-td">
-                    <div className="flex flex-wrap gap-1">
-                      {p.customers.map(c => (
-                        <span key={c} className="text-xs bg-gray-100 text-gray-600 rounded-full px-2 py-0.5">{c}</span>
-                      ))}
-                    </div>
-                  </td>
-                  <td className="table-td">
-                    <span className="text-sm font-semibold text-gray-800">{p.totalCases}</span>
-                    <span className="text-xs text-gray-400 ml-1">case{p.totalCases !== 1 ? 's' : ''}</span>
-                  </td>
-                  <td className="table-td">
-                    {p.activeCases > 0
-                      ? <span className="text-xs font-semibold bg-blue-100 text-blue-700 rounded-full px-2 py-0.5">{p.activeCases} active</span>
-                      : <span className="text-xs text-gray-300">—</span>}
-                  </td>
-                  <td className="table-td">
-                    {p.wonCases > 0
-                      ? <span className="text-xs font-semibold bg-green-100 text-green-700 rounded-full px-2 py-0.5">{p.wonCases} won</span>
-                      : <span className="text-xs text-gray-300">—</span>}
-                  </td>
-                  <td className="table-td font-semibold text-gray-800 whitespace-nowrap">
-                    {formatCurrency(p.totalExposure)}
-                  </td>
-                  <td className="table-td whitespace-nowrap">
-                    <Link
-                      href={`/cases?principal=${encodeURIComponent(p.name)}`}
-                      className="btn-xs bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
-                    >
-                      View Cases →
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          </div>
-        </div>
+      )}
+
+      {tab === 'principals' && (
+        <PartyTable
+          rows={matching(principals)}
+          nameHeading="Principal Name"
+          linkedHeading="Contractor / Customers"
+          casesParam="principal"
+          emptyMessage={search ? 'No principals match your search.' : 'No principals yet. The Principal is chosen when a case is created.'}
+        />
+      )}
+
+      {tab === 'contractors' && (
+        <PartyTable
+          rows={matching(contractors)}
+          nameHeading="Contractor / Customer Name"
+          linkedHeading="Principal"
+          casesParam="contractor"
+          emptyMessage={search ? 'No contractors / customers match your search.' : 'None yet. Choose a Contractor / Customer on a case and it will appear here.'}
+        />
       )}
 
       <Modal isOpen={modal === 'add'} onClose={closeModal} title="Add Customer">

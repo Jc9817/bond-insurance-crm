@@ -39,7 +39,7 @@ export default function CaseForm({ initial, existing, customers, pics, onSave, o
   pics: { name: string }[]
   onSave: (d: FormData) => void
   onCancel: () => void
-  newCustomerDraft?: CustomerFormData   // pre-fills "+ New Contractor" (e.g. a contractor the AI found)
+  newCustomerDraft?: CustomerFormData   // pre-fills "+ New Principal" (e.g. a company the AI found)
   saveLabel?: string
   saving?: boolean
   children?: ReactNode                  // extra content shown above the buttons
@@ -48,12 +48,14 @@ export default function CaseForm({ initial, existing, customers, pics, onSave, o
   const [form, setForm] = useState<FormData>(initial)
   const [error, setError] = useState('')
   const [selectedPkgId, setSelectedPkgId] = useState('')
-  const [addingCustomer, setAddingCustomer] = useState(false)
+  const [addingFor, setAddingFor] = useState<'principal' | 'contractor' | null>(null)
 
   const saveNewCustomer = (d: Parameters<typeof addCustomer>[0]) => {
     const newId = addCustomer(d)
-    setForm(prev => ({ ...prev, customerId: newId, customerName: d.customerName }))
-    setAddingCustomer(false)
+    setForm(prev => addingFor === 'contractor'
+      ? { ...prev, bondPrincipal: d.customerName }
+      : { ...prev, customerId: newId, customerName: d.customerName })
+    setAddingFor(null)
   }
 
   const set = (k: keyof FormData) =>
@@ -105,7 +107,7 @@ export default function CaseForm({ initial, existing, customers, pics, onSave, o
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!form.caseTitle.trim()) { setError('Case title is required.'); return }
-    if (!form.customerId) { setError('Please select a main contractor.'); return }
+    if (!form.customerId) { setError('Please select a principal.'); return }
     if (!form.requestType) { setError('Please select a request type.'); return }
     const businessType = customers.find(c => c.id === form.customerId)?.businessType
     onSave({ ...form, ...workflowForSave(form, products, t => getWorkflowTemplate(t, workflowTemplates, businessType), existing) })
@@ -130,9 +132,9 @@ export default function CaseForm({ initial, existing, customers, pics, onSave, o
       </div>
       <div>
         <div className="flex items-center justify-between">
-          <label className="label">Main Contractor *</label>
-          <button type="button" onClick={() => setAddingCustomer(true)} className="text-xs font-semibold text-blue-600 hover:underline mb-1.5">
-            + New Contractor
+          <label className="label">Principal *</label>
+          <button type="button" onClick={() => setAddingFor('principal')} className="text-xs font-semibold text-blue-600 hover:underline mb-1.5">
+            + New Principal
           </button>
         </div>
         <SearchableSelect
@@ -140,21 +142,26 @@ export default function CaseForm({ initial, existing, customers, pics, onSave, o
           value={form.customerId}
           options={customers.map(c => ({ value: c.id, label: c.customerName }))}
           onChange={val => set('customerId')({ target: { value: val } } as React.ChangeEvent<HTMLSelectElement>)}
-          placeholder="— Search contractor —"
+          placeholder="— Search principal —"
         />
       </div>
       <div>
-        <label className="label">Contractor <span className="text-gray-400 font-normal">(optional)</span></label>
+        <div className="flex items-center justify-between">
+          <label className="label">Contractor / Customers <span className="text-gray-400 font-normal">(optional)</span></label>
+          <button type="button" onClick={() => setAddingFor('contractor')} className="text-xs font-semibold text-blue-600 hover:underline mb-1.5">
+            + New Contractor / Customer
+          </button>
+        </div>
         <SearchableSelect
           value={form.bondPrincipal || ''}
           options={[
-            { value: '', label: '— Same as Main Contractor —' },
+            { value: '', label: '— Same as Principal —' },
             ...customers.map(c => ({ value: c.customerName, label: c.customerName })),
           ]}
           onChange={val => setForm(prev => ({ ...prev, bondPrincipal: val }))}
-          placeholder="— Same as Main Contractor —"
+          placeholder="— Same as Principal —"
         />
-        <p className="text-xs text-gray-400 mt-1">Select only if a sub-contractor is executing the works under the Main Contractor&apos;s name or licence.</p>
+        <p className="text-xs text-gray-400 mt-1">Select only if a sub-contractor is executing the works under the Principal&apos;s name or licence.</p>
       </div>
 
       {/* ── Product selection ── */}
@@ -263,8 +270,8 @@ export default function CaseForm({ initial, existing, customers, pics, onSave, o
       </div>
     </form>
 
-    <Modal isOpen={addingCustomer} onClose={() => setAddingCustomer(false)} title="New Contractor">
-      <CustomerForm initial={newCustomerDraft ?? emptyCustomerForm} onSave={saveNewCustomer} onCancel={() => setAddingCustomer(false)} />
+    <Modal isOpen={addingFor !== null} onClose={() => setAddingFor(null)} title={addingFor === 'contractor' ? 'New Contractor / Customer' : 'New Principal'}>
+      <CustomerForm initial={addingFor === 'principal' && newCustomerDraft ? newCustomerDraft : emptyCustomerForm} onSave={saveNewCustomer} onCancel={() => setAddingFor(null)} />
     </Modal>
     </>
   )

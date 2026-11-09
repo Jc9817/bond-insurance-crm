@@ -75,7 +75,7 @@ export default function CaseDetailPage() {
   const [editInfoModal, setEditInfoModal] = useState(false)
   const [editInfoForm, setEditInfoForm] = useState({ caseTitle: '', caseType: '', amount: 0, personInCharge: '', bondPrincipal: '', bondExpiryDate: '', waitingFor: '', targetInsurer: '', customerId: '', requestType: '', selectedProducts: [] as CaseProduct[] })
   const [editPkgId, setEditPkgId] = useState('')
-  const [addingCustomer, setAddingCustomer] = useState(false)
+  const [addingFor, setAddingFor] = useState<'principal' | 'contractor' | null>(null)
   const [closingModal, setClosingModal] = useState(false)
   const [deleteModal, setDeleteModal] = useState(false)
   const [closingForm, setClosingForm] = useState({
@@ -255,7 +255,7 @@ export default function CaseDetailPage() {
                 ? <Link href={`/customers/${customer.id}`} className="text-blue-600 hover:underline font-medium">{customer.customerName}</Link>
                 : <span className="font-medium text-gray-700">{caseItem.customerName}</span>}
               {caseItem.bondPrincipal && caseItem.bondPrincipal !== caseItem.customerName && (
-                <><span className="text-gray-300">→</span><span className="font-medium text-indigo-700">Contractor: {caseItem.bondPrincipal}</span></>
+                <><span className="text-gray-300">→</span><span className="font-medium text-indigo-700">Contractor / Customer: {caseItem.bondPrincipal}</span></>
               )}
               {caseItem.requestType && <><span>·</span><span className="font-medium">{caseItem.requestType}</span></>}
               {(caseItem.selectedProducts ?? []).length > 0 && <><span>·</span><span>{(caseItem.selectedProducts ?? []).map(p => p.productName).join(', ')}</span></>}
@@ -609,15 +609,15 @@ export default function CaseDetailPage() {
               </button>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-5">
-              <DetailRow label="Main Contractor *">
+              <DetailRow label="Principal *">
                 {customer
                   ? <Link href={`/customers/${customer.id}`} className="text-sm font-semibold text-blue-600 hover:underline">{customer.customerName}</Link>
                   : <span className="text-sm font-semibold text-gray-800">{caseItem.customerName}</span>}
               </DetailRow>
-              <DetailRow label="Contractor">
+              <DetailRow label="Contractor / Customers">
                 {caseItem.bondPrincipal
                   ? <span className="text-sm font-semibold text-indigo-700">{caseItem.bondPrincipal}</span>
-                  : <span className="text-sm text-gray-400 italic">Same as Main Contractor</span>}
+                  : <span className="text-sm text-gray-400 italic">Same as Principal</span>}
               </DetailRow>
               <DetailRow label="Request Type">
                 {caseItem.requestType
@@ -948,13 +948,13 @@ export default function CaseDetailPage() {
             e.preventDefault()
             const changes: string[] = []
             const newCustomer = customers.find(c => c.id === editInfoForm.customerId)
-            if (editInfoForm.customerId !== caseItem.customerId) changes.push(`Main Contractor: ${caseItem.customerName} → ${newCustomer?.customerName ?? '—'}`)
+            if (editInfoForm.customerId !== caseItem.customerId) changes.push(`Principal: ${caseItem.customerName} → ${newCustomer?.customerName ?? '—'}`)
             if (editInfoForm.caseTitle !== caseItem.caseTitle) changes.push(`Title: "${caseItem.caseTitle}" → "${editInfoForm.caseTitle}"`)
             const workflow = workflowForSave(editInfoForm, products, t => getWorkflowTemplate(t, workflowTemplates, newCustomer?.businessType ?? customer?.businessType), caseItem)
             if (workflow.caseType !== caseItem.caseType) changes.push(`Type: ${caseItem.caseType || '—'} → ${workflow.caseType || '—'}`)
             if (editInfoForm.amount !== caseItem.amount) changes.push(`Amount: RM ${caseItem.amount.toLocaleString()} → RM ${editInfoForm.amount.toLocaleString()}`)
             if (editInfoForm.personInCharge !== caseItem.personInCharge) changes.push(`Person in Charge: ${caseItem.personInCharge || '—'} → ${editInfoForm.personInCharge || '—'}`)
-            if (editInfoForm.bondPrincipal !== (caseItem.bondPrincipal ?? '')) changes.push(`Contractor: ${caseItem.bondPrincipal || '—'} → ${editInfoForm.bondPrincipal || '—'}`)
+            if (editInfoForm.bondPrincipal !== (caseItem.bondPrincipal ?? '')) changes.push(`Contractor / Customer: ${caseItem.bondPrincipal || '—'} → ${editInfoForm.bondPrincipal || '—'}`)
             if (editInfoForm.bondExpiryDate !== (caseItem.bondExpiryDate ?? '')) changes.push(`Bond Expiry: ${caseItem.bondExpiryDate || '—'} → ${editInfoForm.bondExpiryDate || '—'}`)
             if (editInfoForm.waitingFor !== (caseItem.waitingFor ?? '')) changes.push(`Waiting For: ${caseItem.waitingFor || '—'} → ${editInfoForm.waitingFor || '—'}`)
             if (editInfoForm.targetInsurer !== (caseItem.finalInsurer ?? '')) changes.push(`Target Insurer: ${caseItem.finalInsurer || '—'} → ${editInfoForm.targetInsurer || '—'}`)
@@ -969,9 +969,9 @@ export default function CaseDetailPage() {
         >
           <div>
             <div className="flex items-center justify-between">
-              <label className="label">Main Contractor *</label>
-              <button type="button" onClick={() => setAddingCustomer(true)} className="text-xs font-semibold text-blue-600 hover:underline mb-1.5">
-                + New Contractor
+              <label className="label">Principal *</label>
+              <button type="button" onClick={() => setAddingFor('principal')} className="text-xs font-semibold text-blue-600 hover:underline mb-1.5">
+                + New Principal
               </button>
             </div>
             <SearchableSelect
@@ -979,7 +979,7 @@ export default function CaseDetailPage() {
               value={editInfoForm.customerId}
               options={customers.map(c => ({ value: c.id, label: c.customerName }))}
               onChange={val => setEditInfoForm(p => ({ ...p, customerId: val }))}
-              placeholder="— Search contractor —"
+              placeholder="— Search principal —"
             />
           </div>
           <div>
@@ -987,20 +987,23 @@ export default function CaseDetailPage() {
             <input className="input" value={editInfoForm.caseTitle} onChange={e => setEditInfoForm(p => ({ ...p, caseTitle: e.target.value }))} required />
           </div>
           <div>
-            <label className="label">
-              Contractor <span className="text-gray-400 font-normal">(optional)</span>
-            </label>
+            <div className="flex items-center justify-between">
+              <label className="label">Contractor / Customers <span className="text-gray-400 font-normal">(optional)</span></label>
+              <button type="button" onClick={() => setAddingFor('contractor')} className="text-xs font-semibold text-blue-600 hover:underline mb-1.5">
+                + New Contractor / Customer
+              </button>
+            </div>
             <SearchableSelect
               value={editInfoForm.bondPrincipal}
               options={[
-                { value: '', label: '— Same as Main Contractor —' },
+                { value: '', label: '— Same as Principal —' },
                 ...customers.map(c => ({ value: c.customerName, label: c.customerName })),
               ]}
               onChange={val => setEditInfoForm(p => ({ ...p, bondPrincipal: val }))}
-              placeholder="— Same as Main Contractor —"
+              placeholder="— Same as Principal —"
             />
             <p className="text-xs text-gray-400 mt-1">
-              Select only if a <strong>sub-contractor</strong> is executing the works under the Main Contractor&apos;s name or licence. If left blank, the Main Contractor is assumed to be the Contractor.
+              Select only if a <strong>sub-contractor</strong> is executing the works under the Principal&apos;s name or licence. If left blank, the Principal is assumed to be the Contractor / Customer.
             </p>
           </div>
           <div>
@@ -1120,15 +1123,15 @@ export default function CaseDetailPage() {
         </form>
       </Modal>
 
-      <Modal isOpen={addingCustomer} onClose={() => setAddingCustomer(false)} title="New Contractor">
+      <Modal isOpen={addingFor !== null} onClose={() => setAddingFor(null)} title={addingFor === 'contractor' ? 'New Contractor / Customer' : 'New Principal'}>
         <CustomerForm
           initial={emptyCustomerForm}
           onSave={d => {
             const newId = addCustomer(d)
-            setEditInfoForm(p => ({ ...p, customerId: newId }))
-            setAddingCustomer(false)
+            setEditInfoForm(p => addingFor === 'contractor' ? { ...p, bondPrincipal: d.customerName } : { ...p, customerId: newId })
+            setAddingFor(null)
           }}
-          onCancel={() => setAddingCustomer(false)}
+          onCancel={() => setAddingFor(null)}
         />
       </Modal>
 
