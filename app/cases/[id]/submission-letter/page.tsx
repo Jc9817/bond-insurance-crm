@@ -287,8 +287,8 @@ export default function SubmissionLetterPage() {
     bondAmount: '',
     contractSum: caseItem ? String(caseItem.amount || '') : '',
     projectName: caseItem?.caseTitle ?? '',
-    principal: caseItem?.bondPrincipal ?? '',
-    contractor: caseItem?.customerName ?? '',
+    principal: caseItem?.customerName ?? '',
+    contractor: caseItem?.bondPrincipal || caseItem?.customerName || '',
     agentName: currentUser?.fullName ?? caseItem?.personInCharge ?? '',
     agentCode: '',
   }))
@@ -496,7 +496,7 @@ export default function SubmissionLetterPage() {
                     <textarea className="input" rows={3} value={header.projectName} onChange={e => setH('projectName', e.target.value)} />
                   </Field>
                   <Field label="Principal">
-                    <input className="input" value={header.principal} onChange={e => setH('principal', e.target.value)} placeholder="e.g. DEWAN BANDARAYA KUALA LUMPUR" />
+                    <input className="input" value={header.principal} onChange={e => setH('principal', e.target.value)} placeholder="e.g. KY Jaya Sdn Bhd" />
                   </Field>
                   <Field label="Contractor">
                     <input className="input" value={header.contractor} onChange={e => setH('contractor', e.target.value)} />

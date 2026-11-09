@@ -60,7 +60,7 @@ export default function QuotationEmailPanel({ caseItem, step, customerName, docu
   }, [])
 
   const [bondDetails, setBondDetails] = useState<BondDetails>({
-    principalName: caseItem.bondPrincipal ?? customerName,
+    principalName: customerName,
     bondAmount: caseItem.amount,
     bondType: caseItem.caseType,
     projectName: caseItem.caseTitle,
