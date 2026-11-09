@@ -271,7 +271,7 @@ export default function CaseForm({ initial, existing, customers, pics, onSave, o
     </form>
 
     <Modal isOpen={addingFor !== null} onClose={() => setAddingFor(null)} title={addingFor === 'contractor' ? 'New Contractor / Customer' : 'New Principal'}>
-      <CustomerForm initial={addingFor === 'principal' && newCustomerDraft ? newCustomerDraft : emptyCustomerForm} onSave={saveNewCustomer} onCancel={() => setAddingFor(null)} />
+      <CustomerForm person={addingFor === 'contractor'} initial={addingFor === 'principal' && newCustomerDraft ? newCustomerDraft : emptyCustomerForm} onSave={saveNewCustomer} onCancel={() => setAddingFor(null)} />
     </Modal>
     </>
   )

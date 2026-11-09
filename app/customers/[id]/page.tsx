@@ -171,6 +171,8 @@ export default function CustomerDetailPage() {
             <button onClick={() => setEditingCustomer(true)} className="btn-xs bg-gray-100 hover:bg-gray-200 text-gray-700">Edit</button>
           </div>
           <div className="space-y-3">
+            <InfoRow label="Company Name" value={customer.companyName ?? ''} />
+            <InfoRow label="Position" value={customer.contactType ?? ''} />
             <InfoRow label="Business Type" value={customer.businessType} />
             <InfoRow label="Main Phone" value={customer.mainPhone} />
             <InfoRow label="Main Email" value={customer.mainEmail} isEmail />
@@ -312,6 +314,7 @@ export default function CustomerDetailPage() {
         <CustomerForm
           initial={customerFormData(customer)}
           editingId={customer.id}
+          person={customer.isPerson}
           onSave={d => { updateCustomer(customer.id, d); setEditingCustomer(false) }}
           onCancel={() => setEditingCustomer(false)}
         />

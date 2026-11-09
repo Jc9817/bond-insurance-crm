@@ -1125,6 +1125,7 @@ export default function CaseDetailPage() {
 
       <Modal isOpen={addingFor !== null} onClose={() => setAddingFor(null)} title={addingFor === 'contractor' ? 'New Contractor / Customer' : 'New Principal'}>
         <CustomerForm
+          person={addingFor === 'contractor'}
           initial={emptyCustomerForm}
           onSave={d => {
             const newId = addCustomer(d)

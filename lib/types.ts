@@ -14,6 +14,9 @@ export type Customer = {
   id: string
   customerName: string
   companyRegistrationNo: string
+  isPerson?: boolean            // a Contractor / Customer: a person, with the two fields below
+  companyName?: string
+  contactType?: string          // their position, from CONTACT_TYPES; blank if not chosen
   businessType: string          // Sole Proprietor | Sdn. Bhd. | etc.
   industry: string
   mainPhone: string

@@ -300,6 +300,7 @@ export default function CustomersPage() {
           <CustomerForm
             initial={customerFormData(selected)}
             editingId={selected.id}
+            person={selected.isPerson}
             onSave={d => { updateCustomer(selected.id, d); closeModal() }}
             onCancel={closeModal}
           />

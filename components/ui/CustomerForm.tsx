@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import type { Customer } from '@/lib/types'
-import { INDUSTRIES, BUSINESS_TYPES } from '@/lib/types'
+import { INDUSTRIES, BUSINESS_TYPES, CONTACT_TYPES } from '@/lib/types'
 import { useStore } from '@/lib/store'
 import { findCustomerBySsm, nameKey } from '@/lib/ssm'
 
@@ -16,11 +16,13 @@ export const emptyCustomerForm: CustomerFormData = {
 export const customerFormData = (c: Customer): CustomerFormData => ({
   customerName: c.customerName, companyRegistrationNo: c.companyRegistrationNo, businessType: c.businessType ?? '', industry: c.industry,
   mainPhone: c.mainPhone, mainEmail: c.mainEmail, notes: c.notes,
+  isPerson: c.isPerson, companyName: c.companyName ?? '', contactType: c.contactType ?? '',
 })
 
 // editingId: the customer being edited, so it isn't flagged as its own duplicate.
-export default function CustomerForm({ initial, editingId, onSave, onCancel }: {
-  initial: CustomerFormData; editingId?: string; onSave: (d: CustomerFormData) => void; onCancel: () => void
+// person: a Contractor / Customer, which has a company name and position instead of a registration number.
+export default function CustomerForm({ initial, editingId, person = false, onSave, onCancel }: {
+  initial: CustomerFormData; editingId?: string; person?: boolean; onSave: (d: CustomerFormData) => void; onCancel: () => void
 }) {
   const { customers } = useStore()
   const [form, setForm] = useState<CustomerFormData>(initial)
@@ -46,15 +48,15 @@ export default function CustomerForm({ initial, editingId, onSave, onCancel }: {
     if (sameName && !confirm(`A customer named "${sameName.customerName}" already exists. Save this as a separate customer anyway?`)) {
       return
     }
-    onSave(form)
+    onSave({ ...form, isPerson: person })
   }
 
   return (
     <form onSubmit={submit} className="px-6 py-5 space-y-4">
       {error && <p className="text-sm text-red-600 bg-red-50 rounded-xl p-3">{error}</p>}
       <div>
-        <label className="label">Company / Customer Name *</label>
-        <input className="input" value={form.customerName} onChange={set('customerName')} placeholder="e.g. Bina Perkasa Sdn Bhd" />
+        <label className="label">{person ? 'Contractor / Customer Name *' : 'Company / Customer Name *'}</label>
+        <input className="input" value={form.customerName} onChange={set('customerName')} placeholder={person ? 'e.g. Razif Harun' : 'e.g. Bina Perkasa Sdn Bhd'} />
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div>
@@ -71,10 +73,26 @@ export default function CustomerForm({ initial, editingId, onSave, onCancel }: {
             {INDUSTRIES.map(i => <option key={i} value={i}>{i}</option>)}
           </select>
         </div>
-        <div>
-          <label className="label">Company Reg. No.</label>
-          <input className="input" value={form.companyRegistrationNo} onChange={set('companyRegistrationNo')} placeholder="e.g. 199801012345" />
-        </div>
+        {person ? (
+          <>
+            <div>
+              <label className="label">Company Name</label>
+              <input className="input" value={form.companyName ?? ''} onChange={set('companyName')} placeholder="e.g. Bina Perkasa Sdn Bhd" />
+            </div>
+            <div>
+              <label className="label">Position</label>
+              <select className="input" value={form.contactType ?? ''} onChange={set('contactType')}>
+                <option value="">— Select —</option>
+                {CONTACT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+          </>
+        ) : (
+          <div>
+            <label className="label">Company Reg. No.</label>
+            <input className="input" value={form.companyRegistrationNo} onChange={set('companyRegistrationNo')} placeholder="e.g. 199801012345" />
+          </div>
+        )}
         <div>
           <label className="label">Main Phone</label>
           <input className="input" type="tel" value={form.mainPhone} onChange={set('mainPhone')} placeholder="03-XXXXXXXX" />

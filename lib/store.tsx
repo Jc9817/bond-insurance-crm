@@ -129,12 +129,14 @@ type Row = Record<string, any>
 
 const fromCustomer = (r: Row): Customer => ({
   id: r.id, customerName: r.customer_name, companyRegistrationNo: r.company_registration_no ?? '',
+  isPerson: r.is_person ?? false, companyName: r.company_name ?? '', contactType: r.contact_type ?? '',
   businessType: r.business_type ?? '', industry: r.industry ?? '',
   mainPhone: r.main_phone ?? '', mainEmail: r.main_email ?? '',
   notes: r.notes ?? '', createdAt: r.created_at,
 })
 const toCustomer = (c: Customer) => ({
   id: c.id, customer_name: c.customerName, company_registration_no: c.companyRegistrationNo,
+  is_person: c.isPerson, company_name: c.companyName, contact_type: c.contactType,
   business_type: c.businessType, industry: c.industry, main_phone: c.mainPhone,
   main_email: c.mainEmail, notes: c.notes, created_at: c.createdAt,
 })
