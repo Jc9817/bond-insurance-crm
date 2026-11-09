@@ -163,7 +163,7 @@ function DecisionPanel({ mail, onAction, onAskAi, onUndo }: {
         <div>
           {s.customer && <Detail label="Customer">{s.customer.name}{s.customer.ssm ? ` · ${s.customer.ssm}` : ''}{s.customer.isNew ? ' (new)' : ''}</Detail>}
           {s.caseTitle && <Detail label="Project">{s.caseTitle}</Detail>}
-          {s.principal && <Detail label="Principal">{s.principal}</Detail>}
+          {s.principal && <Detail label="Project Owner">{s.principal}</Detail>}
           {s.amount ? <Detail label="Value">{formatCurrency(s.amount)}</Detail> : null}
           {s.coverTypes && <Detail label="Covers">{s.coverTypes}</Detail>}
           {s.policies.length > 0 && (

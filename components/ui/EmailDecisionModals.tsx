@@ -242,7 +242,7 @@ export function CreateCaseFromEmail({ mail, onClose, onDone }: {
 
       // What the AI read that has no field on the case, kept as a note
       const facts = [
-        s?.principal && `Principal: ${s.principal}`,
+        s?.principal && `Project Owner: ${s.principal}`,
         s?.coverTypes && `Covers: ${s.coverTypes}`,
         s?.references && `References: ${s.references}`,
       ].filter(Boolean)
