@@ -39,6 +39,8 @@ statements**.
 - Every logged-in user can currently see every customer and case.
   _Decide whether some staff should only see their own cases._
 - Admins can add, deactivate and change users. Deactivated users cannot log in.
+- Any logged-in user can delete a case for good, after confirming twice. The
+  deletion and who did it stay on record in the activity history.
 - No customer data is visible without logging in, including file links and
   the case report page.
 

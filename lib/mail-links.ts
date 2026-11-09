@@ -1,4 +1,4 @@
-import type { MailReference, MailSuggestion, ReferenceKind } from './types'
+import type { MailAttachment, MailReference, MailSuggestion, ReferenceKind } from './types'
 
 // How the Emails screen ties emails to cases beyond what the AI reads:
 //
@@ -177,6 +177,14 @@ export function applyCaseMatch(
     ...s, action: 'existing_case', caseId: match.caseId, caseTitle: undefined,
     confidence: Math.max(s.confidence, REFERENCE_CONFIDENCE), matchReason: reason,
   }
+}
+
+/** An email's attachments with a deleted case's filings taken off. */
+export function withoutCaseFilings(attachments: MailAttachment[], caseId: string): MailAttachment[] {
+  return attachments.map(({ filedTo, alsoFiledTo, ...file }) => {
+    const [first, ...rest] = [...(filedTo ? [filedTo] : []), ...(alsoFiledTo ?? [])].filter(f => f.caseId !== caseId)
+    return { ...file, ...(first ? { filedTo: first } : {}), ...(rest.length ? { alsoFiledTo: rest } : {}) }
+  })
 }
 
 // ─── Threads on the Emails screen ───────────────────────────────────────────

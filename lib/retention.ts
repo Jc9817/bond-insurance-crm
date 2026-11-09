@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { STORAGE_BUCKET, storagePath } from './storage'
 import { deleteSharePointCopy, sharePointStorageEnabled } from './sharepoint-files'
 import { graphConfigured, sendGraphEmail } from './msGraph'
+import { releaseEmailsFromCase } from './mail-inbox'
 
 // Server-only. How long DocFlow keeps a case (fix list 5.6, see
 // docs/PDPA-note.md):
@@ -97,6 +98,8 @@ export async function deleteCaseAndFiles(sb: SupabaseClient, caseId: string): Pr
   }
   const { error } = await sb.from('cases').delete().eq('id', caseId)
   if (error) throw new Error(error.message)
+
+  await releaseEmailsFromCase(sb, caseId)
 
   const paths = (files ?? []).map(f => storagePath(f.file_data_url)).filter((p): p is string => !!p)
   if (paths.length) await sb.storage.from(STORAGE_BUCKET).remove(paths)

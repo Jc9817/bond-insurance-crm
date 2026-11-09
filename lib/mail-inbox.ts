@@ -4,7 +4,7 @@ import { graphConfigured, graphDownload, graphRequest } from './msGraph'
 import type { Customer, MailAttachment, MailReference, MailSuggestion } from './types'
 import { CASE_TYPES, MAIL_ACTIONS, REFERENCE_KINDS, REQUEST_TYPES, filedCases } from './types'
 import {
-  applyCaseMatch, cleanReferences, findCaseMatch, loadedStore, normalizeReference, recordFiling, splitReferences,
+  applyCaseMatch, cleanReferences, findCaseMatch, loadedStore, normalizeReference, recordFiling, splitReferences, withoutCaseFilings,
   type CaseLinkStore, type CaseMatch,
 } from './mail-links'
 import { matchCustomer, ssmKey } from './ssm'
@@ -459,6 +459,31 @@ async function rematchWaiting(sb: SupabaseClient) {
     if (chosen?.customer_id) next.customer = { id: chosen.customer_id, name: chosen.customer_name ?? '', isNew: false }
     await sb.from('mail_messages').update({ ai_suggestion: next }).eq('id', id).eq('status', 'ready')
   }
+}
+
+/**
+ * After a case is deleted: emails filed only to it go back to To do, and
+ * emails waiting with a suggestion naming it are read again. Nothing in the
+ * mailbox changes.
+ */
+export async function releaseEmailsFromCase(sb: SupabaseClient, caseId: string) {
+  const fresh = { status: 'new', ai_suggestion: null, ai_error: null, decided_by: null, decided_at: null }
+
+  const { data: filed, error } = await sb.from('mail_messages')
+    .select('id, case_ids, attachments').contains('case_ids', [caseId])
+  if (error) console.error('[mail] release from deleted case failed:', error.message)
+  for (const m of filed ?? []) {
+    const caseIds = (m.case_ids as string[]).filter(c => c !== caseId)
+    await sb.from('mail_messages').update({
+      case_ids: caseIds, attachments: withoutCaseFilings(m.attachments as MailAttachment[], caseId),
+      ...(caseIds.length ? {} : fresh),
+    }).eq('id', m.id)
+  }
+
+  const { data: waiting } = await sb.from('mail_messages')
+    .select('id, ai_suggestion').eq('status', 'ready').not('ai_suggestion', 'is', null).limit(500)
+  const stale = (waiting ?? []).filter(m => JSON.stringify(m.ai_suggestion).includes(caseId)).map(m => m.id)
+  if (stale.length) await sb.from('mail_messages').update(fresh).in('id', stale)
 }
 
 // ─── Threads and references (lib/mail-links.ts) ─────────────────────────────

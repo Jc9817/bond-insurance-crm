@@ -4,7 +4,6 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { useStore } from '@/lib/store'
-import { useAuth } from '@/lib/auth'
 import type { Case } from '@/lib/types'
 import { CASE_STATUSES } from '@/lib/types'
 import { formatCurrency, timeAgo, formatDate } from '@/lib/utils'
@@ -24,8 +23,6 @@ const WAITING_COLOR: Record<string, string> = {
 
 export default function CasesPage() {
   const { cases, customers, pics, caseFiles, followUps, workflowTemplates, addCase, updateCase, archiveCase, restoreCase } = useStore()
-  const { currentUser } = useAuth()
-  const isAdmin = currentUser?.role === 'Admin'
   const searchParams = useSearchParams()
   const [view, setView] = useState<'list' | 'board'>('list')
   const [search, setSearch] = useState('')
@@ -185,7 +182,7 @@ export default function CasesPage() {
                           ? <button onClick={() => restoreCase(c.id)} className="btn-xs bg-green-50 text-green-700 hover:bg-green-100">Restore</button>
                           : <button onClick={() => setDeleteTarget(c)} className="btn-xs bg-amber-50 text-amber-700 hover:bg-amber-100">Archive</button>
                         }
-                        {isAdmin && <button onClick={() => setConfirmDelete(c)} className="btn-xs bg-red-50 text-red-600 hover:bg-red-100">Delete</button>}
+                        <button onClick={() => setConfirmDelete(c)} className="btn-xs bg-red-50 text-red-600 hover:bg-red-100">Delete</button>
                       </div>
                     </td>
                   </tr>
@@ -233,16 +230,14 @@ export default function CasesPage() {
                 Archive Case
               </button>
             </div>
-            {isAdmin && (
-              <div className="mt-3 pt-3 border-t border-gray-100">
-                <button
-                  onClick={() => { setConfirmDelete(deleteTarget); setDeleteTarget(null) }}
-                  className="w-full text-xs text-red-500 hover:text-red-700 transition-colors py-1"
-                >
-                  Delete permanently instead
-                </button>
-              </div>
-            )}
+            <div className="mt-3 pt-3 border-t border-gray-100">
+              <button
+                onClick={() => { setConfirmDelete(deleteTarget); setDeleteTarget(null) }}
+                className="w-full text-xs text-red-500 hover:text-red-700 transition-colors py-1"
+              >
+                Delete permanently instead
+              </button>
+            </div>
           </div>
         )}
       </Modal>

@@ -316,14 +316,12 @@ export default function CaseDetailPage() {
             >
               Edit
             </button>
-            {currentUser?.role === 'Admin' && (
-              <button
-                onClick={() => setDeleteModal(true)}
-                className="btn-secondary text-sm text-red-600 border-red-200 hover:bg-red-50"
-              >
-                Delete
-              </button>
-            )}
+            <button
+              onClick={() => setDeleteModal(true)}
+              className="btn-secondary text-sm text-red-600 border-red-200 hover:bg-red-50"
+            >
+              Delete
+            </button>
           </div>
         </div>
       </div>
