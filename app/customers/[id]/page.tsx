@@ -4,15 +4,17 @@ import { useState } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { useStore } from '@/lib/store'
-import type { Contact } from '@/lib/types'
+import type { Contact, ContactType } from '@/lib/types'
 import { CONTACT_TYPES, INDUSTRIES } from '@/lib/types'
 import { formatDate, formatCurrency, getDaysUntil } from '@/lib/utils'
 import StatusBadge from '@/components/ui/StatusBadge'
 import Modal from '@/components/ui/Modal'
+import CustomerForm, { customerFormData } from '@/components/ui/CustomerForm'
 
 type ContactFormData = Omit<Contact, 'id' | 'customerId'>
 const emptyContact = (): ContactFormData => ({
-  contactName: '', role: '', phone: '', email: '', contactType: 'Owner', isPrimary: false, notes: '',
+  // Starts blank so nobody is labelled Owner just because the form wasn't changed
+  contactName: '', role: '', phone: '', email: '', contactType: '' as ContactType, isPrimary: false, notes: '',
 })
 
 function ContactForm({ initial, onSave, onCancel }: {
@@ -30,6 +32,7 @@ function ContactForm({ initial, onSave, onCancel }: {
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!form.contactName.trim()) { setError('Contact name is required.'); return }
+    if (!form.contactType) { setError('Choose a contact type, such as Owner or Staff.'); return }
     onSave(form)
   }
 
@@ -46,8 +49,9 @@ function ContactForm({ initial, onSave, onCancel }: {
           <input className="input" value={form.role} onChange={set('role')} placeholder="e.g. Managing Director" />
         </div>
         <div>
-          <label className="label">Contact Type</label>
+          <label className="label">Contact Type *</label>
           <select className="input" value={form.contactType} onChange={set('contactType')}>
+            <option value="" disabled>— Select —</option>
             {CONTACT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
         </div>
@@ -89,6 +93,7 @@ export default function CustomerDetailPage() {
   const [contactModal, setContactModal] = useState<'add' | 'edit' | null>(null)
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null)
   const [deleteContactId, setDeleteContactId] = useState<string | null>(null)
+  const [editingCustomer, setEditingCustomer] = useState(false)
 
   if (!customer) {
     return (
@@ -161,7 +166,10 @@ export default function CustomerDetailPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
         {/* Company info */}
         <div className="card-section">
-          <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">Company Information</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Company Information</h2>
+            <button onClick={() => setEditingCustomer(true)} className="btn-xs bg-gray-100 hover:bg-gray-200 text-gray-700">Edit</button>
+          </div>
           <div className="space-y-3">
             <InfoRow label="Business Type" value={customer.businessType} />
             <InfoRow label="Main Phone" value={customer.mainPhone} />
@@ -234,11 +242,12 @@ export default function CustomerDetailPage() {
                   <div>
                     <div className="flex items-center gap-2">
                       <p className="text-sm font-semibold text-gray-900">{c.contactName}</p>
+                      <span className={`text-xs rounded-full px-2 py-0.5 font-medium ${c.contactType === 'Owner' ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'}`}>{c.contactType}</span>
                       {c.isPrimary && (
                         <span className="text-xs bg-blue-50 text-blue-600 rounded-full px-2 py-0.5 font-medium">Primary</span>
                       )}
                     </div>
-                    <p className="text-xs text-gray-500">{c.role} · {c.contactType}</p>
+                    {c.role && <p className="text-xs text-gray-500">{c.role}</p>}
                     <div className="flex gap-3 mt-1">
                       {c.phone && <p className="text-xs text-gray-500">{c.phone}</p>}
                       {c.email && <a href={`mailto:${c.email}`} className="text-xs text-blue-600 hover:underline">{c.email}</a>}
@@ -299,6 +308,15 @@ export default function CustomerDetailPage() {
       </div>
 
       {/* Modals */}
+      <Modal isOpen={editingCustomer} onClose={() => setEditingCustomer(false)} title="Edit Customer">
+        <CustomerForm
+          initial={customerFormData(customer)}
+          editingId={customer.id}
+          onSave={d => { updateCustomer(customer.id, d); setEditingCustomer(false) }}
+          onCancel={() => setEditingCustomer(false)}
+        />
+      </Modal>
+
       <Modal isOpen={contactModal === 'add'} onClose={closeModal} title="Add Contact">
         <ContactForm
           initial={emptyContact()}

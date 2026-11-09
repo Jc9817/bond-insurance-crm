@@ -593,6 +593,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return row.id
   }
   const updateCustomer = (id: string, c: Partial<Customer>) => {
+    // Cases and follow-ups keep their own copy of the name, shown on their lists
+    if (c.customerName && c.customerName !== customers.find(x => x.id === id)?.customerName) {
+      const customerName = c.customerName
+      setCases(prev => prev.map(x => x.customerId === id ? { ...x, customerName } : x))
+      setFollowUps(prev => prev.map(x => x.customerId === id ? { ...x, customerName } : x))
+      createClient().from('cases').update({ customer_name: customerName }).eq('customer_id', id).then()
+      createClient().from('follow_ups').update({ customer_name: customerName }).eq('customer_id', id).then()
+    }
     setCustomers(prev => prev.map(x => x.id === id ? { ...x, ...c } : x))
     createClient().from('customers').update(
       Object.fromEntries(Object.entries(toCustomer({ ...c, id } as Customer)).filter(([, v]) => v !== undefined))

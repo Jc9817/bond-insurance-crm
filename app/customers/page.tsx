@@ -7,7 +7,7 @@ import type { Customer } from '@/lib/types'
 import { formatCurrency } from '@/lib/utils'
 import PageHeader from '@/components/ui/PageHeader'
 import Modal from '@/components/ui/Modal'
-import CustomerForm, { emptyCustomerForm as empty } from '@/components/ui/CustomerForm'
+import CustomerForm, { customerFormData, emptyCustomerForm as empty } from '@/components/ui/CustomerForm'
 
 export default function CustomersPage() {
   const { customers, contacts, cases, addCustomer, updateCustomer, deleteCustomer } = useStore()
@@ -253,7 +253,7 @@ export default function CustomersPage() {
       <Modal isOpen={modal === 'edit'} onClose={closeModal} title="Edit Customer">
         {selected && (
           <CustomerForm
-            initial={{ customerName: selected.customerName, companyRegistrationNo: selected.companyRegistrationNo, businessType: selected.businessType ?? '', industry: selected.industry, mainPhone: selected.mainPhone, mainEmail: selected.mainEmail, notes: selected.notes }}
+            initial={customerFormData(selected)}
             editingId={selected.id}
             onSave={d => { updateCustomer(selected.id, d); closeModal() }}
             onCancel={closeModal}

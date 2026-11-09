@@ -13,6 +13,11 @@ export const emptyCustomerForm: CustomerFormData = {
   mainPhone: '', mainEmail: '', notes: '',
 }
 
+export const customerFormData = (c: Customer): CustomerFormData => ({
+  customerName: c.customerName, companyRegistrationNo: c.companyRegistrationNo, businessType: c.businessType ?? '', industry: c.industry,
+  mainPhone: c.mainPhone, mainEmail: c.mainEmail, notes: c.notes,
+})
+
 // editingId: the customer being edited, so it isn't flagged as its own duplicate.
 export default function CustomerForm({ initial, editingId, onSave, onCancel }: {
   initial: CustomerFormData; editingId?: string; onSave: (d: CustomerFormData) => void; onCancel: () => void

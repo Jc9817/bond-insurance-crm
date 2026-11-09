@@ -26,6 +26,7 @@ export type Customer = {
 
 export const CONTACT_TYPES = [
   'Owner',
+  'Staff',
   'Director',
   'Manager',
   'Finance',
