@@ -97,7 +97,8 @@ function Detail({ label, children }: { label: string; children: React.ReactNode 
   return <p className="text-sm text-gray-500 leading-6">{label} <span className="text-gray-900">{children}</span></p>
 }
 
-function DecisionPanel({ bundle, known, hasFile, onAction, onAskAi, onUndo, onLink }: {
+function DecisionPanel({ bundle, known, hasFile, aiEnabled, onAction, onAskAi, onUndo, onLink }: {
+  aiEnabled: boolean
   bundle: WaBundle
   known: boolean
   hasFile: boolean
@@ -177,6 +178,10 @@ function DecisionPanel({ bundle, known, hasFile, onAction, onAskAi, onUndo, onLi
         </>
       ) : bundle.aiError ? (
         aiErrorBox
+      ) : !aiEnabled ? (
+        <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
+          Open the files in the chat, then choose what to do with them below.
+        </div>
       ) : (
         <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
           {hasFile ? 'Not read by the AI yet (it waits until the customer has stopped sending for 2 minutes).' : 'Text only — the AI reads messages that include a file.'}
@@ -203,7 +208,7 @@ function DecisionPanel({ bundle, known, hasFile, onAction, onAskAi, onUndo, onLi
       <button onClick={() => onAction('existing')} className={`${primary('existing_case')} w-full`}>Add to existing case</button>
       <button onClick={() => onAction('split')} className={`${primary('split')} w-full`}>Split across cases</button>
       <button onClick={() => onAction('not_case')} className={`${primary('not_case')} w-full`}>Not a case</button>
-      {bundle.status !== 'analysing' && hasFile && (
+      {aiEnabled && bundle.status !== 'analysing' && hasFile && (
         <button onClick={onAskAi} className="text-xs font-semibold text-blue-600 hover:underline w-full">
           {s || bundle.aiError ? 'Ask the AI again' : 'Ask the AI'}
         </button>
@@ -261,7 +266,7 @@ function Bubble({ message, faded, suggestion }: { message: WaMessage; faded: boo
 
 // ─── Page ────────────────────────────────────────────────────────────────────
 
-type Status = { missing: string[]; lastEventAt: string | null; failedDownloads7d: number; unmatchedNumbers: number }
+type Status = { missing: string[]; aiEnabled?: boolean; lastEventAt: string | null; failedDownloads7d: number; unmatchedNumbers: number }
 type TestResult = Status & { recentEvents: { type: string; result: string | null; receivedAt: string }[]; endpoint: { ok: boolean; message: string } }
 
 const isTodo = (b: WaBundle) => TODO.includes(b.status)
@@ -524,7 +529,7 @@ export default function WhatsAppPage() {
         {/* ── Decision ── */}
         <div className="p-4 overflow-y-auto min-h-0 bg-gray-50/50">
           {selected && selectedSender ? (
-            <DecisionPanel bundle={selected} known={selectedSender.known} hasFile={selectedFiles.length > 0}
+            <DecisionPanel bundle={selected} known={selectedSender.known} hasFile={selectedFiles.length > 0} aiEnabled={!!status?.aiEnabled}
               onAction={onAction} onAskAi={() => askAi(selected.id)} onUndo={() => decide('undo')} onLink={() => setModal('link')} />
           ) : (
             <p className="text-sm text-gray-400">The AI&apos;s suggestion and your options appear here.</p>

@@ -3,8 +3,9 @@
 _14 Nov 2026_
 
 After these steps, every document or photo a customer sends the agency's
-WhatsApp Business number also appears on DocFlow's **WhatsApp** page. The
-AI suggests which case it belongs to, and a person files it.
+WhatsApp Business number also appears on DocFlow's **WhatsApp** page. Staff
+open the files there and file them to a case. (An AI that suggests the case
+can be switched on later; it is **off** to start with.)
 
 - **Staff keep using WhatsApp on the phone as normal.** DocFlow only reads
   messages. It never sends any, and it has no reply box.
@@ -83,11 +84,12 @@ In Vercel → the DocFlow project → **Settings → Environment Variables**, ad
 | `WHATSAPP_BUSINESS_NUMBER` | the connected number with country code, e.g. `+60123456789` |
 | `WHATSAPP_STORE_AUDIO_VIDEO` | leave out, or `false`. `true` keeps voice notes and videos too |
 | `WHATSAPP_SYNC_BUSINESS_APP` | leave out, or `false`. `true` shows what staff send from the phone |
+| `WHATSAPP_AI` | leave out to start. `true` has the AI read each burst and suggest the case (see "AI (optional, off to start)" below) |
 
 Then **redeploy** (Deployments → the latest → ⋯ → Redeploy).
 
-`ANTHROPIC_API_KEY`, `CRON_SECRET` and `OPS_NOTIFY_EMAIL` are already set
-for the Emails screen. WhatsApp uses them too.
+`CRON_SECRET` and `OPS_NOTIFY_EMAIL` are already set for the Emails screen.
+WhatsApp uses them too (and `ANTHROPIC_API_KEY`, only if the AI is switched on).
 
 ## Part 5. Check it works
 
@@ -105,10 +107,9 @@ for the Emails screen. WhatsApp uses them too.
 ## How it works day to day
 
 - A text followed by photos or PDFs from the same number within 10 minutes
-  shows as **one row**. When the customer has stopped sending for 2 minutes,
-  the AI reads the whole burst and suggests **Create case**, **Add to
-  existing case**, **Split across cases** or **Not a case**.
-- Rows with only text are shown but not read by the AI.
+  shows as **one row**. Click it to see the chat and open the files.
+- Choose **Create case**, **Add to existing case**, **Split across cases** or
+  **Not a case**, and pick each file's document type.
 - If a number isn't known, click **Link to customer / contact**. The next
   messages from that number then match by themselves.
 - Filing puts the files on the case in the right checklist slot, with their
@@ -119,7 +120,12 @@ for the Emails screen. WhatsApp uses them too.
   that keeps failing. If something is wrong, an email goes to
   `OPS_NOTIFY_EMAIL`.
 
-## AI cost
+## AI (optional, off to start)
+
+With `WHATSAPP_AI` set to `true`, once the customer has stopped sending for 2
+minutes the AI reads the burst and suggests the action, the case and each
+file's document type. A person still decides. To switch it on later, add the
+setting in Vercel and redeploy; nothing else changes.
 
 The AI reading uses Claude Haiku 5.5, and Claude Sonnet 5.5 when Haiku is
 unsure or a photo is hard to read. That should be roughly RM 0.01–0.30 per

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { serviceClient } from '@/lib/supabase-service'
 import { requireUser } from '@/lib/admin-auth'
 import { analyseBundle, bundlesToAnalyse } from '@/lib/whatsapp-intake'
+import { whatsappConfig } from '@/lib/whatsapp-config'
 
 // WhatsApp screen: has the AI read one bundle ({ id }) — "Ask the AI again" —
 // or ({ due: true }) the bundles that have been quiet for 2 minutes and hold
@@ -12,6 +13,7 @@ export const maxDuration = 300
 export async function POST(req: NextRequest) {
   const who = await requireUser()
   if (who instanceof NextResponse) return who
+  if (!whatsappConfig().aiEnabled) return NextResponse.json({ ok: true, analysed: 0, aiOff: true })
   const body = await req.json().catch(() => ({}))
   const sb = serviceClient()
 

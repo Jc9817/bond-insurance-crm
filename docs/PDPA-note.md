@@ -30,7 +30,7 @@ statements**.
 - **Email:** sent from `operation@tridentmanagement.com.my` through
   Microsoft 365. Copies are kept in its Sent Items.
 - **AI document reading:** documents are sent to Anthropic (Claude) to extract
-  details. _Check that Anthropic's data retention settings are acceptable._
+  details (WhatsApp files only if `WHATSAPP_AI` is switched on; it is off). _Check that Anthropic's data retention settings are acceptable._
 - **WhatsApp:** messages pass through YCloud (an official WhatsApp partner),
   which keeps media for 30 days. DocFlow copies documents and photos into the
   same private storage as case files (folder `whatsapp/`) as soon as they

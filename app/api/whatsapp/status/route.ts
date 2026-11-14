@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { serviceClient } from '@/lib/supabase-service'
 import { requireAdmin, requireUser } from '@/lib/admin-auth'
-import { missingWhatsappSettings } from '@/lib/whatsapp-config'
+import { missingWhatsappSettings, whatsappConfig } from '@/lib/whatsapp-config'
 import { checkWebhookEndpoint, whatsappHealth } from '@/lib/whatsapp-intake'
 
 // WhatsApp screen: which settings are missing, and how the connection is
@@ -15,11 +15,12 @@ export async function GET(req: NextRequest) {
   if (who instanceof NextResponse) return who
 
   const missing = missingWhatsappSettings()
+  const aiEnabled = whatsappConfig().aiEnabled
   const health = await whatsappHealth(serviceClient())
   if (!test) {
     return NextResponse.json({
-      missing, lastEventAt: health.lastEventAt, failedDownloads7d: health.failedDownloads7d, unmatchedNumbers: health.unmatchedNumbers,
+      missing, aiEnabled, lastEventAt: health.lastEventAt, failedDownloads7d: health.failedDownloads7d, unmatchedNumbers: health.unmatchedNumbers,
     })
   }
-  return NextResponse.json({ missing, ...health, endpoint: await checkWebhookEndpoint() })
+  return NextResponse.json({ missing, aiEnabled, ...health, endpoint: await checkWebhookEndpoint() })
 }

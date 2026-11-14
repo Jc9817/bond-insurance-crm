@@ -615,7 +615,7 @@ export async function dailyWhatsapp(sb: SupabaseClient) {
   }
 
   let analysed = 0
-  for (const id of await bundlesToAnalyse(sb, 20)) {
+  for (const id of whatsappConfig().aiEnabled ? await bundlesToAnalyse(sb, 20) : []) {
     await analyseBundle(sb, id)
     analysed++
   }

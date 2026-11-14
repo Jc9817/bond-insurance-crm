@@ -6,6 +6,8 @@
 //   WHATSAPP_BUSINESS_NUMBER     the connected number, e.g. +60123456789; other numbers are ignored
 //   WHATSAPP_STORE_AUDIO_VIDEO   "true" to keep voice notes and videos too (default: off)
 //   WHATSAPP_SYNC_BUSINESS_APP   "true" to also show what staff send from the phone (default: off)
+//   WHATSAPP_AI                  "true" to have the AI read messages and suggest a case (default: off —
+//                                staff read the messages and files and file them by hand)
 
 const on = (v: string | undefined) => (v ?? '').trim().toLowerCase() === 'true'
 
@@ -16,6 +18,7 @@ export function whatsappConfig() {
     businessNumber: process.env.WHATSAPP_BUSINESS_NUMBER?.trim() ?? '',
     storeAudioVideo: on(process.env.WHATSAPP_STORE_AUDIO_VIDEO),
     syncBusinessApp: on(process.env.WHATSAPP_SYNC_BUSINESS_APP),
+    aiEnabled: on(process.env.WHATSAPP_AI),
   }
 }
 

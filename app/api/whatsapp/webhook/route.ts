@@ -13,7 +13,8 @@ import { claimEvent, finishEvent } from '@/lib/whatsapp-events'
 // YCloud wants an answer within a few seconds and retries otherwise, so the
 // event id is recorded (a repeat is answered 200 and dropped) and the reply
 // goes out at once; the message is saved, its file downloaded and — once the
-// customer has stopped sending for 2 minutes — read by the AI, afterwards.
+// customer has stopped sending for 2 minutes — read by the AI (only when
+// WHATSAPP_AI is on), afterwards.
 //
 // DocFlow never sends WhatsApp messages.
 
@@ -65,7 +66,7 @@ export async function POST(req: NextRequest) {
 
     // The AI reads the bundle once nothing new has come for 2 minutes.
     // Each message waits; only the last one of a burst finds it quiet.
-    if (!bundleId || event.message.direction !== 'in') return
+    if (!config.aiEnabled || !bundleId || event.message.direction !== 'in') return
     await wait(ANALYSE_DELAY_MS + 5000)
     const { data: bundle } = await sb.from('whatsapp_bundles').select('last_at, status').eq('id', bundleId).maybeSingle()
     if (bundle?.status === 'new' && quietLongEnough(bundle.last_at)) {

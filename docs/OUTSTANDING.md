@@ -455,8 +455,9 @@ the Emails screen and uploads on the case.
 ## [ ] WhatsApp through YCloud — set up, then check
 
 New (14 Nov 2026, branch **`whatsapp-ycloud`**): a **WhatsApp** page shows
-what customers send the agency's WhatsApp Business number. The AI suggests
-a case for each burst of messages, and you decide, as on Emails. DocFlow only
+what customers send the agency's WhatsApp Business number, with the files
+opening from DocFlow, and you file them to a case. The AI is **off** to
+start (switch on later with `WHATSAPP_AI=true`). DocFlow only
 reads: it never sends a WhatsApp message. The Emails screen and existing
 data are unchanged. The manual way in [whatsapp-to-docflow.md](whatsapp-to-docflow.md)
 still works.
@@ -472,7 +473,7 @@ To switch it on:
 - [ ] Vercel settings, then redeploy: `YCLOUD_API_KEY`,
       `YCLOUD_WEBHOOK_SECRET`, `WHATSAPP_BUSINESS_NUMBER` (e.g.
       `+60123456789`). Optional: `WHATSAPP_STORE_AUDIO_VIDEO`,
-      `WHATSAPP_SYNC_BUSINESS_APP` (both off unless set to `true`)
+      `WHATSAPP_SYNC_BUSINESS_APP`, `WHATSAPP_AI` (all off unless set to `true`)
 - [ ] Vercel → Settings → Cron Jobs shows `/api/cron/whatsapp` once a day
       (08:30 Malaysia time)
 
@@ -480,8 +481,8 @@ Checks:
 - [ ] WhatsApp → **Test connection** (Admin) says "YCloud webhook: Active"
 - [ ] From another phone, send the business number a PDF: within a minute it
       shows on the WhatsApp page with the file opening from DocFlow
-- [ ] Send a text then 3 photos within a minute: one row, 4 messages, one
-      suggestion (the AI reads it about 2 minutes after the last photo)
+- [ ] Send a text then 3 photos within a minute: one row, 4 messages, and
+      the photos open when clicked
 - [ ] An unknown number shows "Link to customer / contact"; after linking,
       the next message matches
 - [ ] Filing puts the files on the case, with "Filed from WhatsApp" in the
