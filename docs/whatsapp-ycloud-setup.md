@@ -37,6 +37,25 @@ on the phone keeps working, and YCloud gets a copy of the messages.
 _Menu names in YCloud and Meta may differ slightly from those below; look
 for the nearest match._
 
+## Part 0. Meta Business account (if the company has no Facebook yet)
+
+WhatsApp belongs to Meta, which needs a free **Meta Business account** for
+the company. You don't need a Facebook Page or any posts.
+
+1. Use a real person's **own Facebook login**: the owner's or a trusted
+   staff member's. Don't create a fake or second account, because Meta locks
+   those. The business account belongs to the company, not to the person.
+   Customers never see the personal profile.
+2. Go to **business.facebook.com → Create account**. Enter the company name
+   as registered with SSM, your name and a work email, then confirm the email.
+   (Or skip this and choose **Create new** when the Meta window in Part 1
+   asks for a business account.)
+3. Add a **second admin** under **Settings → People**, so the company never
+   depends on one person's Facebook.
+4. Turn on **two-step login** on the admins' Facebook accounts.
+5. Keep the **SSM certificate** ready, in case Meta asks to verify the
+   business.
+
 ## Part 1. YCloud account and the WhatsApp link (about 20 minutes)
 
 You need: the phone with the WhatsApp Business app, and a Facebook login
