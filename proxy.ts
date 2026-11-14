@@ -49,9 +49,9 @@ export async function proxy(request: NextRequest) {
 export const config = {
   matcher: [
     // Exclude static files, images, and routes called by outside services without a login
-    // (Microsoft Graph notifications, Vercel Cron)
-    // — they have their own auth via a shared secret — and the Microsoft sign-in
+    // (Microsoft Graph notifications, Vercel Cron, YCloud's WhatsApp webhook)
+    // — they have their own auth via a shared secret or signature — and the Microsoft sign-in
     // return page (auth/callback), which runs before the user is logged in
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$|api/intake/email/notify|api/cron/|auth/callback).*)',
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$|api/intake/email/notify|api/cron/|api/whatsapp/webhook|auth/callback).*)',
   ],
 }
